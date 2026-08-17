@@ -1,0 +1,88 @@
+<?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+namespace qtype_graph;
+
+/**
+ * Builds the HTML skeleton for the graph editor widget.
+ *
+ * Shared between the question edit form (full editor) and the attempt
+ * renderer (teacher graph + student additions), so both get the exact same
+ * markup that amd/src/editor.js expects to find inside the container.
+ *
+ * @package    qtype_graph
+ * @copyright  2026 Rutas Digitales
+ * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+class editor_ui {
+    /**
+     * Render the container markup for one graph editor instance.
+     *
+     * @param string $id the DOM id to give the outer container.
+     * @return string HTML.
+     */
+    public static function render(string $id): string {
+        return <<<HTML
+<div id="{$id}" class="qtype_graph-container">
+  <div class="qtype_graph-toolbar">
+    <div class="qtype_graph-modecontrols">
+      <div class="qtype_graph-segmented" data-role="mode-toggle">
+        <button type="button" class="active" data-mode="graph">Modo grafo</button>
+        <button type="button" data-mode="tree">Modo árbol</button>
+      </div>
+      <div class="qtype_graph-segmented" data-role="orientation-toggle" hidden>
+        <button type="button" class="active" data-orientation="vertical">V</button>
+        <button type="button" data-orientation="horizontal">H</button>
+      </div>
+      <div class="qtype_graph-segmented" data-role="linestyle-toggle">
+        <button type="button" class="active" data-line-style="straight">/</button>
+        <button type="button" data-line-style="orthogonal">⌐</button>
+      </div>
+      <div class="qtype_graph-segmented qtype_graph-zoomcontrols" data-role="zoom-controls">
+        <button type="button" data-role="zoom-out" aria-label="-">-</button>
+        <button type="button" data-role="zoom-reset">100%</button>
+        <button type="button" data-role="zoom-in" aria-label="+">+</button>
+      </div>
+    </div>
+  </div>
+  <div class="qtype_graph-canvas" data-role="canvas">
+    <div class="qtype_graph-content" data-role="content">
+      <svg class="qtype_graph-edges" data-role="edges"></svg>
+    </div>
+    <div class="qtype_graph-nodemenu" data-role="node-menu" hidden>
+      <div class="qtype_graph-menusection" data-role="node-text-section">
+        <span class="qtype_graph-menulabel">Texto</span>
+        <input type="text" data-role="node-text-input" class="qtype_graph-textinput">
+      </div>
+      <div class="qtype_graph-menusection" data-role="node-color-section">
+        <span class="qtype_graph-menulabel">Color</span>
+        <div class="qtype_graph-colorrow" data-role="color-row"></div>
+      </div>
+      <button type="button" class="qtype_graph-menubtn" data-role="add-connected-btn">+ Nodo conectado</button>
+      <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-node-btn">Eliminar nodo</button>
+    </div>
+    <div class="qtype_graph-nodemenu" data-role="edge-menu" hidden>
+      <div class="qtype_graph-menusection">
+        <span class="qtype_graph-menulabel">Etiqueta</span>
+        <input type="text" data-role="edge-label-input" class="qtype_graph-textinput" maxlength="40">
+      </div>
+      <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-edge-btn">Eliminar conexión</button>
+    </div>
+  </div>
+</div>
+HTML;
+    }
+}

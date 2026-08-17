@@ -1,0 +1,318 @@
+.qtype_graph-container {
+  --qtype-graph-bg: #0f1115;
+  --qtype-graph-grid: #1b1f27;
+  --qtype-graph-panel: #171a21;
+  --qtype-graph-border: #2a2f3a;
+  --qtype-graph-text: #e7e9ee;
+  --qtype-graph-muted: #8a90a0;
+  --qtype-graph-accent: #5b8cff;
+  --qtype-graph-accent-soft: rgba(91, 140, 255, 0.15);
+
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  height: 560px;
+  max-height: 75vh;
+  overflow: hidden;
+  background: var(--qtype-graph-bg);
+  color: var(--qtype-graph-text);
+  border: 1px solid var(--qtype-graph-border);
+  border-radius: 10px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  position: relative;
+}
+
+.qtype_graph-container *,
+.qtype_graph-container *::before,
+.qtype_graph-container *::after {
+  box-sizing: border-box;
+}
+
+.qtype_graph-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--qtype-graph-panel);
+  border-bottom: 1px solid var(--qtype-graph-border);
+  z-index: 10;
+}
+
+.qtype_graph-modecontrols {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.qtype_graph-segmented {
+  display: flex;
+  background: var(--qtype-graph-bg);
+  border: 1px solid var(--qtype-graph-border);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.qtype_graph-segmented button {
+  border: none;
+  background: transparent;
+  color: var(--qtype-graph-muted);
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.qtype_graph-segmented button:hover {
+  color: var(--qtype-graph-text);
+}
+
+.qtype_graph-segmented button.active {
+  background: var(--qtype-graph-accent);
+  color: #0b0e14;
+  font-weight: 600;
+}
+
+.qtype_graph-zoomcontrols {
+  padding: 2px;
+}
+
+.qtype_graph-zoomcontrols button {
+  min-width: 24px;
+}
+
+.qtype_graph-canvas {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+  background-image:
+    linear-gradient(var(--qtype-graph-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--qtype-graph-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+  cursor: grab;
+}
+
+.qtype_graph-canvas.qtype_graph-canvas--tree .qtype_graph-node {
+  cursor: pointer;
+}
+
+.qtype_graph-content {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+  transition: transform 0.12s ease;
+}
+
+.qtype_graph-content.qtype_graph-panning {
+  transition: none;
+  cursor: grabbing;
+}
+
+.qtype_graph-edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.qtype_graph-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.qtype_graph-edge-line {
+  fill: none;
+  stroke: var(--qtype-graph-muted);
+  stroke-width: 1.5;
+  pointer-events: none;
+  transition: stroke 0.15s ease, stroke-width 0.15s ease;
+}
+
+.qtype_graph-edge-group:hover .qtype_graph-edge-line {
+  stroke: #aab2c5;
+}
+
+.qtype_graph-edge-group--selected .qtype_graph-edge-line {
+  stroke: var(--qtype-graph-accent);
+  stroke-width: 2;
+}
+
+.qtype_graph-edge-label {
+  fill: var(--qtype-graph-text);
+  font-size: 12px;
+  paint-order: stroke;
+  stroke: var(--qtype-graph-bg);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+  pointer-events: none;
+  user-select: none;
+}
+
+.qtype_graph-node {
+  --node-color: var(--qtype-graph-accent);
+  position: absolute;
+  min-width: 120px;
+  max-width: 240px;
+  padding: 14px 18px;
+  background: color-mix(in srgb, var(--node-color) 15%, var(--qtype-graph-panel));
+  border: 1.5px solid var(--node-color);
+  border-radius: 10px;
+  color: var(--qtype-graph-text);
+  font-size: 14px;
+  line-height: 1.4;
+  text-align: center;
+  cursor: grab;
+  user-select: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+  transition: box-shadow 0.15s ease, transform 0.1s ease, left 0.3s ease, top 0.3s ease;
+}
+
+.qtype_graph-node:hover {
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+}
+
+.qtype_graph-node--locked {
+  cursor: pointer;
+  opacity: 0.92;
+}
+
+.qtype_graph-node--dragging {
+  cursor: grabbing;
+  transform: scale(1.02);
+  z-index: 100;
+}
+
+.qtype_graph-node--editing {
+  cursor: text;
+  border-color: #8fb3ff;
+  box-shadow: 0 0 0 3px var(--qtype-graph-accent-soft);
+}
+
+.qtype_graph-node--menuopen {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-color) 40%, transparent);
+}
+
+.qtype_graph-node-text {
+  outline: none;
+  word-break: break-word;
+  display: block;
+}
+
+.qtype_graph-node--editing .qtype_graph-node-text {
+  user-select: text;
+}
+
+.qtype_graph-nodemenu[hidden] {
+  display: none;
+}
+
+.qtype_graph-nodemenu {
+  position: absolute;
+  z-index: 200;
+  background: var(--qtype-graph-panel);
+  border: 1px solid var(--qtype-graph-border);
+  border-radius: 10px;
+  padding: 12px;
+  min-width: 200px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.qtype_graph-menusection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.qtype_graph-menusection[hidden] {
+  display: none;
+}
+
+.qtype_graph-menulabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--qtype-graph-muted);
+}
+
+.qtype_graph-colorrow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.qtype_graph-colorswatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+
+.qtype_graph-colorswatch--selected {
+  border-color: var(--qtype-graph-text);
+}
+
+.qtype_graph-textinput {
+  background: var(--qtype-graph-bg);
+  border: 1px solid var(--qtype-graph-border);
+  border-radius: 6px;
+  color: var(--qtype-graph-text);
+  font-size: 13px;
+  padding: 7px 9px;
+  outline: none;
+  font-family: inherit;
+  width: 100%;
+}
+
+.qtype_graph-textinput:focus {
+  border-color: var(--qtype-graph-accent);
+}
+
+.qtype_graph-menubtn {
+  background: var(--qtype-graph-accent-soft);
+  border: 1px solid var(--qtype-graph-accent);
+  color: var(--qtype-graph-text);
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.qtype_graph-menubtn[hidden] {
+  display: none;
+}
+
+.qtype_graph-menubtn:hover {
+  background: color-mix(in srgb, var(--qtype-graph-accent) 30%, var(--qtype-graph-panel));
+}
+
+.qtype_graph-menubtn.qtype_graph-danger {
+  border-color: #ff6b6b;
+}
+
+.qtype_graph-menubtn.qtype_graph-danger:hover {
+  background: color-mix(in srgb, #ff6b6b 30%, var(--qtype-graph-panel));
+}
+
+.qtype_graph-menubtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  background: var(--qtype-graph-accent-soft);
+}
+
+.qtype_graph-container--readonly .qtype_graph-node {
+  cursor: default;
+}
