@@ -76,6 +76,16 @@
   font-weight: 600;
 }
 
+.qtype_graph-segmented button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.qtype_graph-segmented button:disabled.active {
+  background: var(--qtype-graph-accent-soft);
+  color: var(--qtype-graph-text);
+}
+
 .qtype_graph-zoomcontrols {
   padding: 2px;
 }

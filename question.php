@@ -39,6 +39,12 @@ class qtype_graph_question extends question_with_responses {
     /** @var string JSON-encoded teacher-authored graph (nodes, edges, view settings). */
     public $graphjson;
 
+    /** @var bool whether students may add new nodes. */
+    public $allowaddnodes = true;
+
+    /** @var bool whether students may delete the teacher-authored (original) nodes. */
+    public $allowdeletenodes = false;
+
     public function make_behaviour(question_attempt $qa, $preferredbehaviour) {
         return question_engine::make_behaviour('manualgraded', $qa, $preferredbehaviour);
     }

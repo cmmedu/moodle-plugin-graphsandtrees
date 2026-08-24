@@ -30,5 +30,7 @@ $string['pluginnamesummary'] = 'The teacher builds a graph (nodes and connection
 $string['graphjson'] = 'Graph';
 $string['graphjson_help'] = 'Build the graph the student will see. Click a node to edit its text/color, add connected nodes, or delete it.';
 $string['err_emptygraph'] = 'The graph must have at least one node.';
+$string['allowaddnodes'] = 'Allow students to add new nodes';
+$string['allowdeletenodes'] = 'Allow students to delete original nodes';
 $string['addednodessummary'] = '{$a} student-added node(s)';
 $string['privacy:metadata'] = 'The Graph question type plugin does not store any personal data itself. Student responses (the nodes they add) are stored as part of the standard question attempt data, which is covered by the question engine\'s own privacy provider.';

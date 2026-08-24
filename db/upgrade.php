@@ -29,6 +29,27 @@
  * @return bool
  */
 function xmldb_qtype_graph_upgrade(int $oldversion): bool {
-    // No upgrade steps yet - this is the first version of the plugin.
+    global $DB;
+
+    $dbman = $DB->get_manager();
+
+    if ($oldversion < 2026082400) {
+        $table = new xmldb_table('qtype_graph_options');
+
+        $field = new xmldb_field('allowaddnodes', XMLDB_TYPE_INTEGER, '1', null,
+                XMLDB_NOTNULL, null, '1', 'graphjson');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $field = new xmldb_field('allowdeletenodes', XMLDB_TYPE_INTEGER, '1', null,
+                XMLDB_NOTNULL, null, '0', 'allowaddnodes');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026082400, 'qtype', 'graph');
+    }
+
     return true;
 }

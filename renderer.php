@@ -59,6 +59,8 @@ class qtype_graph_renderer extends qtype_renderer {
             $fieldname,
             $question->graphjson,
             (bool) $options->readonly,
+            (bool) $question->allowaddnodes,
+            (bool) $question->allowdeletenodes,
         ]);
 
         return $output;

@@ -71,11 +71,15 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * Create one graph editor instance bound to a container element.
      *
      * @param {Element} root the .qtype_graph-container element.
-     * @param {Object} opts {editable: bool, onChange: function(serializedState)}
+     * @param {Object} opts {editable: bool, lockLayout: bool, allowAddNodes: bool, allowDeleteNodes: bool,
+     *                       onChange: function(serializedState)}
      * @return {Object} {hydrate, serialize}
      */
     function createGraphEditor(root, opts) {
         const editable = !!opts.editable;
+        const lockLayout = !!opts.lockLayout;
+        const allowAddNodes = opts.allowAddNodes !== false;
+        const allowDeleteNodes = opts.allowDeleteNodes !== false;
         const onChange = opts.onChange || function() {};
 
         const canvas = root.querySelector('[data-role="canvas"]');
@@ -97,6 +101,12 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const zoomInBtn = root.querySelector('[data-role="zoom-in"]');
         const zoomOutBtn = root.querySelector('[data-role="zoom-out"]');
         const zoomResetBtn = root.querySelector('[data-role="zoom-reset"]');
+
+        if (lockLayout) {
+            [...modeToggle.children, ...orientationToggle.children].forEach((btn) => {
+                btn.disabled = true;
+            });
+        }
 
         let nodeCounter = 0;
         const nodes = new Map();
@@ -388,7 +398,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
 
         function deleteNode(id) {
             const record = nodes.get(id);
-            if (!record || record.locked) {
+            if (!record) {
+                return;
+            }
+            if (record.locked && !allowDeleteNodes) {
                 return;
             }
             [...record.edges].forEach(removeEdge);
@@ -487,9 +500,11 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             record.el.classList.add('qtype_graph-node--menuopen');
 
             const locked = record.locked;
+            const canDeleteThisNode = locked ? allowDeleteNodes : true;
             nodeTextSection.hidden = locked;
             nodeColorSection.hidden = locked;
-            deleteNodeBtn.hidden = locked;
+            addConnectedBtn.hidden = !allowAddNodes;
+            deleteNodeBtn.hidden = !canDeleteThisNode;
 
             if (!locked) {
                 nodeTextInput.value = record.textEl.textContent;
@@ -511,7 +526,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                     });
                     colorRow.appendChild(swatch);
                 });
+            }
 
+            if (canDeleteThisNode) {
                 deleteNodeBtn.disabled = nodes.size <= 1;
                 deleteNodeBtn.title = deleteNodeBtn.disabled ? 'No puedes eliminar el único nodo' : '';
             }
@@ -906,8 +923,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * @param {string} hiddenFieldId id of the response hidden field (nodesjson).
      * @param {string} teacherJson the teacher-authored graph, as JSON.
      * @param {boolean} readOnly true if the question is being displayed read-only (e.g. review).
+     * @param {boolean} allowAddNodes true if the student may add new nodes.
+     * @param {boolean} allowDeleteNodes true if the student may delete the teacher-authored nodes.
      */
-    function initAttempt(containerId, hiddenFieldId, teacherJson, readOnly) {
+    function initAttempt(containerId, hiddenFieldId, teacherJson, readOnly, allowAddNodes, allowDeleteNodes) {
         const root = document.getElementById(containerId);
         const hidden = document.getElementById(hiddenFieldId);
         if (!root || !hidden) {
@@ -937,12 +956,24 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             }
         }
 
+        // Teacher nodes/edges the student has already deleted (only possible when
+        // allowdeletenodes was on at the time). Kept out of every future hydrate so
+        // they do not reappear, since teacherData is always re-merged in fresh.
+        const removedTeacherIds = new Set(
+                Array.isArray(studentData.removednodes) ?
+                        studentData.removednodes.filter((id) => teacherIds.has(id)) : []);
+
         const merged = {
             nodes: [
-                ...teacherData.nodes.map((n) => Object.assign({}, n, {locked: true})),
+                ...teacherData.nodes.filter((n) => !removedTeacherIds.has(n.id))
+                        .map((n) => Object.assign({}, n, {locked: true})),
                 ...studentData.nodes.map((n) => Object.assign({}, n, {locked: false})),
             ],
-            edges: [...(teacherData.edges || []), ...(studentData.edges || [])],
+            edges: [
+                ...(teacherData.edges || []).filter(
+                        (e) => !removedTeacherIds.has(e.from) && !removedTeacherIds.has(e.to)),
+                ...(studentData.edges || []),
+            ],
             mode: teacherData.mode || 'graph',
             orientation: teacherData.orientation || 'vertical',
             lineStyle: teacherData.lineStyle || 'straight',
@@ -950,11 +981,24 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
 
         const editor = createGraphEditor(root, {
             editable: !readOnly,
+            lockLayout: true,
+            allowAddNodes: allowAddNodes !== false,
+            allowDeleteNodes: allowDeleteNodes !== false,
             onChange: (data) => {
+                const liveIds = new Set(data.nodes.map((n) => n.id));
+                teacherIds.forEach((id) => {
+                    if (!liveIds.has(id)) {
+                        removedTeacherIds.add(id);
+                    }
+                });
                 const studentNodes = data.nodes.filter((n) => !teacherIds.has(n.id));
                 const studentEdges = data.edges.filter(
                         (e) => !(teacherIds.has(e.from) && teacherIds.has(e.to)));
-                hidden.value = JSON.stringify({nodes: studentNodes, edges: studentEdges});
+                hidden.value = JSON.stringify({
+                    nodes: studentNodes,
+                    edges: studentEdges,
+                    removednodes: [...removedTeacherIds],
+                });
                 const form = root.closest('form');
                 if (form) {
                     FormChangeChecker.markFormAsDirty(form);

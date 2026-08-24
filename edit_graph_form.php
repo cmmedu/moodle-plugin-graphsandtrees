@@ -40,6 +40,12 @@ class qtype_graph_edit_form extends question_edit_form {
         $mform->setExpanded('graphheader');
         $mform->addElement('static', 'graphjsonhelp', '', get_string('graphjson_help', 'qtype_graph'));
 
+        $mform->addElement('advcheckbox', 'allowaddnodes', get_string('allowaddnodes', 'qtype_graph'));
+        $mform->setDefault('allowaddnodes', 1);
+
+        $mform->addElement('advcheckbox', 'allowdeletenodes', get_string('allowdeletenodes', 'qtype_graph'));
+        $mform->setDefault('allowdeletenodes', 0);
+
         $containerid = 'qtype_graph_editor_' . html_writer::random_id('editor');
         $mform->addElement('html', \qtype_graph\editor_ui::render($containerid));
 
@@ -55,6 +61,8 @@ class qtype_graph_edit_form extends question_edit_form {
 
         if (!empty($question->options)) {
             $question->graphjson = $question->options->graphjson;
+            $question->allowaddnodes = $question->options->allowaddnodes;
+            $question->allowdeletenodes = $question->options->allowdeletenodes;
         }
 
         return $question;
