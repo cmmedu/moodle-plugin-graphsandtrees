@@ -1,0 +1,26 @@
+# Node / build tooling (Moodle grunt AMD build)
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Editor / IDE
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Local Moodle/PHP tooling
+.phpunit.result.cache
+vendor/
+composer.lock
+
+# Logs and env
+*.log
+.env
+
+#agent
+CLAUDE.md
