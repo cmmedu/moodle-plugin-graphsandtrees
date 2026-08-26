@@ -34,8 +34,12 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     const SVG_NS = 'http://www.w3.org/2000/svg';
     const COLORS = ['#5b8cff', '#ff6b6b', '#4ade80', '#facc15', '#c084fc', '#38bdf8'];
     const CLICK_THRESHOLD = 4;
-    const TREE_LEVEL_SPACING = {vertical: 130, horizontal: 240};
-    const TREE_SIBLING_SPACING = 170;
+    // Nodes can be up to 240px wide (.qtype_graph-node's max-width) and grow tall
+    // with wrapped/multi-blank content, so these need real margin beyond that or
+    // adjacent-level/sibling nodes can end up edge-to-edge with no visible
+    // connecting line between them.
+    const TREE_LEVEL_SPACING = {vertical: 170, horizontal: 300};
+    const TREE_SIBLING_SPACING = 200;
     const TREE_MARGIN = 80;
     const ZOOM_MIN = 0.4;
     const ZOOM_MAX = 2;
@@ -67,6 +71,101 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         return {d: `M ${x1} ${y1} V ${midY} H ${x2} V ${y2}`, lx: (x1 + x2) / 2, ly: midY};
     }
 
+    // Matches a full authoring-time token with 0+ semicolon-quoted answers, e.g.
+    // {{T_INPUT;"Paris";"paris"}} - and also the sanitized bare marker
+    // {{T_INPUT}} the PHP layer emits for the student-facing page, since `*`
+    // (zero-or-more) means this one regex parses both shapes.
+    const BLANK_TOKEN_RE = /\{\{T_INPUT((?:\s*;\s*"[^"]*")*)\}\}/g;
+    const BLANK_ANSWER_RE = /"([^"]*)"/g;
+
+    /**
+     * Quick existence check for a fill-in-the-blank token in a label.
+     *
+     * @param {string} text
+     * @return {boolean}
+     */
+    function hasBlankTokens(text) {
+        return typeof text === 'string' && /\{\{T_INPUT\b/.test(text);
+    }
+
+    /**
+     * Split a node/edge label into alternating plain-text and blank segments.
+     *
+     * @param {string} text raw label text.
+     * @return {Array} [{type:'text', value}, {type:'blank', index, answers}, ...]
+     */
+    function parseLabelSegments(text) {
+        const segments = [];
+        if (typeof text !== 'string' || text === '') {
+            return segments;
+        }
+        let lastIndex = 0;
+        let blankIndex = 0;
+        let match;
+        BLANK_TOKEN_RE.lastIndex = 0;
+        while ((match = BLANK_TOKEN_RE.exec(text)) !== null) {
+            if (match.index > lastIndex) {
+                segments.push({type: 'text', value: text.slice(lastIndex, match.index)});
+            }
+            const answers = [];
+            let answerMatch;
+            BLANK_ANSWER_RE.lastIndex = 0;
+            while ((answerMatch = BLANK_ANSWER_RE.exec(match[1] || '')) !== null) {
+                answers.push(answerMatch[1]);
+            }
+            segments.push({type: 'blank', index: blankIndex, answers});
+            blankIndex += 1;
+            lastIndex = match.index + match[0].length;
+        }
+        if (lastIndex < text.length) {
+            segments.push({type: 'text', value: text.slice(lastIndex)});
+        }
+        return segments;
+    }
+
+    /**
+     * Render a label's segments (plain text + fillable inputs) into a container.
+     * Used identically for locked node text and locked edge labels in attempt mode.
+     *
+     * @param {Element} container element to fill (its previous content is discarded).
+     * @param {string} text raw label text.
+     * @param {string} ownerKind 'node' or 'edge'.
+     * @param {string} ownerId the node/edge's stable id.
+     * @param {boolean} editableInputs whether the generated inputs should be editable.
+     * @param {Function} [getBlankValue] (blankId) => initial value.
+     * @param {Function} [onBlankChange] (blankId, value) => void, called on input.
+     */
+    function renderLabelSegments(container, text, ownerKind, ownerId, editableInputs, getBlankValue, onBlankChange) {
+        container.innerHTML = '';
+        parseLabelSegments(text).forEach((seg) => {
+            if (seg.type === 'text') {
+                container.appendChild(document.createTextNode(seg.value));
+                return;
+            }
+            const blankId = `${ownerKind}:${ownerId}:${seg.index}`;
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.className = 'qtype_graph-blank-input';
+            input.dataset.blankId = blankId;
+            input.readOnly = !editableInputs;
+            input.value = (getBlankValue && getBlankValue(blankId)) || '';
+            input.addEventListener('mousedown', (e) => e.stopPropagation());
+            input.addEventListener('click', (e) => e.stopPropagation());
+            input.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    input.blur();
+                }
+            });
+            input.addEventListener('input', () => {
+                if (onBlankChange) {
+                    onBlankChange(blankId, input.value);
+                }
+            });
+            container.appendChild(input);
+        });
+    }
+
     /**
      * Create one graph editor instance bound to a container element.
      *
@@ -81,6 +180,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const allowAddNodes = opts.allowAddNodes !== false;
         const allowDeleteNodes = opts.allowDeleteNodes !== false;
         const onChange = opts.onChange || function() {};
+        const attemptMode = opts.mode === 'attempt';
 
         const canvas = root.querySelector('[data-role="canvas"]');
         const graphContent = root.querySelector('[data-role="content"]');
@@ -109,6 +209,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         }
 
         let nodeCounter = 0;
+        let edgeCounter = 0;
         const nodes = new Map();
         const edges = [];
         let activeNodeId = null;
@@ -228,12 +329,38 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             panState = null;
         });
 
+        // The foreignObject starts pinned to this generous upper-bound box so its
+        // HTML content always has room to lay out and be measured (a foreignObject
+        // with no size yet can fail to render its content in some browsers), then
+        // setEdgeGeometry shrinks it to fit the label's actual rendered size on
+        // every reposition - a short/empty blank must not claim a big fixed
+        // footprint that blots out the connecting line underneath it.
+        const EDGE_LABEL_FO_MAX_WIDTH = 220;
+        const EDGE_LABEL_FO_MAX_HEIGHT = 60;
+        const EDGE_LABEL_FO_MIN_WIDTH = 24;
+        const EDGE_LABEL_FO_MIN_HEIGHT = 20;
+        const EDGE_LABEL_FO_PADDING = 8;
+
         function setEdgeGeometry(edge, x1, y1, x2, y2) {
             const {d, lx, ly} = computeEdgeGeometry(x1, y1, x2, y2, lineStyle, mode, orientation);
             edge.hitPath.setAttribute('d', d);
             edge.visiblePath.setAttribute('d', d);
-            edge.textEl.setAttribute('x', lx);
-            edge.textEl.setAttribute('y', ly);
+            if (edge.htmlLabel) {
+                const {fo, div} = edge.htmlLabel;
+                const w = Math.min(
+                        Math.max(div.offsetWidth + EDGE_LABEL_FO_PADDING, EDGE_LABEL_FO_MIN_WIDTH),
+                        EDGE_LABEL_FO_MAX_WIDTH);
+                const h = Math.min(
+                        Math.max(div.offsetHeight + EDGE_LABEL_FO_PADDING, EDGE_LABEL_FO_MIN_HEIGHT),
+                        EDGE_LABEL_FO_MAX_HEIGHT);
+                fo.setAttribute('x', lx - w / 2);
+                fo.setAttribute('y', ly - h / 2);
+                fo.setAttribute('width', w);
+                fo.setAttribute('height', h);
+            } else {
+                edge.textEl.setAttribute('x', lx);
+                edge.textEl.setAttribute('y', ly);
+            }
         }
 
         function positionEdge(edge) {
@@ -342,9 +469,17 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             });
         }
 
-        function createEdge(fromId, toId, label) {
+        function createEdge(fromId, toId, label, locked, id) {
+            if (!id) {
+                edgeCounter += 1;
+                id = `edge-${Date.now().toString(36)}-${edgeCounter}`;
+            }
+
             const group = document.createElementNS(SVG_NS, 'g');
             group.classList.add('qtype_graph-edge-group');
+            if (locked) {
+                group.classList.add('qtype_graph-edge-group--locked');
+            }
 
             const hitPath = document.createElementNS(SVG_NS, 'path');
             hitPath.classList.add('qtype_graph-edge-hit');
@@ -354,20 +489,40 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             textEl.classList.add('qtype_graph-edge-label');
             textEl.setAttribute('text-anchor', 'middle');
             textEl.setAttribute('dominant-baseline', 'middle');
-            textEl.textContent = label || '';
 
             group.appendChild(hitPath);
             group.appendChild(visiblePath);
             group.appendChild(textEl);
+
+            let htmlLabel = null;
+            if (locked && attemptMode && hasBlankTokens(label)) {
+                const fo = document.createElementNS(SVG_NS, 'foreignObject');
+                fo.classList.add('qtype_graph-edge-label-fo');
+                const div = document.createElement('div');
+                div.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+                div.className = 'qtype_graph-edge-label-html';
+                fo.setAttribute('width', EDGE_LABEL_FO_MAX_WIDTH);
+                fo.setAttribute('height', EDGE_LABEL_FO_MAX_HEIGHT);
+                fo.appendChild(div);
+                renderLabelSegments(div, label, 'edge', id, editable, opts.getBlankValue, opts.onBlankChange);
+                group.appendChild(fo);
+                htmlLabel = {fo, div};
+            } else {
+                textEl.textContent = label || '';
+            }
+
             edgesLayer.appendChild(group);
 
-            const edge = {group, hitPath, visiblePath, textEl, fromId, toId, label: label || ''};
+            const edge = {
+                id, group, hitPath, visiblePath, textEl, htmlLabel,
+                fromId, toId, label: label || '', locked: !!locked,
+            };
             edges.push(edge);
             nodes.get(fromId).edges.add(edge);
             nodes.get(toId).edges.add(edge);
             updateEdgesFor(fromId);
 
-            if (editable) {
+            if (editable && !locked) {
                 hitPath.addEventListener('click', (e) => {
                     e.stopPropagation();
                     openEdgeMenu(edge, e.clientX, e.clientY);
@@ -507,7 +662,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             deleteNodeBtn.hidden = !canDeleteThisNode;
 
             if (!locked) {
-                nodeTextInput.value = record.textEl.textContent;
+                nodeTextInput.value = getRecordText(record);
 
                 const currentColor = getComputedStyle(record.el).getPropertyValue('--node-color').trim();
                 colorRow.innerHTML = '';
@@ -562,7 +717,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             if (limited !== nodeTextInput.value) {
                 nodeTextInput.value = limited;
             }
-            record.textEl.textContent = limited;
+            setRecordText(record, limited);
             notifyChange();
         });
 
@@ -574,7 +729,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         });
 
         nodeTextInput.addEventListener('blur', () => {
-            if (!activeNodeId) {
+            // Attempt-mode nodes use an <input> (no .textContent) and are allowed
+            // to stay empty - the "restore default text" behavior below is
+            // teacher-authoring-only.
+            if (!activeNodeId || attemptMode) {
                 return;
             }
             const record = nodes.get(activeNodeId);
@@ -592,8 +750,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const parent = nodes.get(activeNodeId).el;
             const siblingIndex = edges.filter((edge) => edge.fromId === activeNodeId).length;
             const {left, top} = positionForNewNode(parent, siblingIndex);
-            const newId = createNode(left, top, 'Nuevo nodo', COLORS[0], false);
-            createEdge(activeNodeId, newId, '');
+            const newId = createNode(left, top, attemptMode ? '' : 'Nuevo nodo', COLORS[0], false);
+            createEdge(activeNodeId, newId, '', false);
             closeMenus();
             relayoutTree();
             notifyChange();
@@ -675,6 +833,18 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             };
         }
 
+        function getRecordText(record) {
+            return record.textEl.tagName === 'INPUT' ? record.textEl.value : record.textEl.textContent;
+        }
+
+        function setRecordText(record, value) {
+            if (record.textEl.tagName === 'INPUT') {
+                record.textEl.value = value;
+            } else {
+                record.textEl.textContent = value;
+            }
+        }
+
         function createNode(left, top, text, color, locked, id) {
             if (!id) {
                 nodeCounter += 1;
@@ -690,11 +860,46 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             el.style.top = `${top}px`;
             el.style.setProperty('--node-color', color || COLORS[0]);
 
-            const textEl = document.createElement('span');
-            textEl.className = 'qtype_graph-node-text';
-            textEl.contentEditable = 'false';
-            textEl.dataset.maxWords = String(DEFAULT_MAX_WORDS);
-            textEl.textContent = text || 'Nuevo nodo';
+            let textEl;
+            if (locked && attemptMode && hasBlankTokens(text)) {
+                textEl = document.createElement('span');
+                textEl.className = 'qtype_graph-node-text';
+                textEl.dataset.maxWords = String(DEFAULT_MAX_WORDS);
+                renderLabelSegments(textEl, text, 'node', id, editable, opts.getBlankValue, opts.onBlankChange);
+            } else if (!locked && attemptMode) {
+                textEl = document.createElement('input');
+                textEl.type = 'text';
+                textEl.className = 'qtype_graph-node-text qtype_graph-node-text-input';
+                textEl.placeholder = 'Nuevo nodo';
+                textEl.dataset.maxWords = String(DEFAULT_MAX_WORDS);
+                textEl.value = text || '';
+                textEl.readOnly = !editable;
+                textEl.addEventListener('mousedown', (e) => e.stopPropagation());
+                textEl.addEventListener('click', (e) => e.stopPropagation());
+                textEl.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        textEl.blur();
+                    }
+                });
+                textEl.addEventListener('input', () => {
+                    const maxWords = parseInt(textEl.dataset.maxWords, 10) || DEFAULT_MAX_WORDS;
+                    const limited = limitWordsPlain(textEl.value, maxWords);
+                    if (limited !== textEl.value) {
+                        textEl.value = limited;
+                    }
+                    if (activeNodeId === id) {
+                        nodeTextInput.value = textEl.value;
+                    }
+                    notifyChange();
+                });
+            } else {
+                textEl = document.createElement('span');
+                textEl.className = 'qtype_graph-node-text';
+                textEl.contentEditable = 'false';
+                textEl.dataset.maxWords = String(DEFAULT_MAX_WORDS);
+                textEl.textContent = text || 'Nuevo nodo';
+            }
 
             el.appendChild(textEl);
             graphContent.appendChild(el);
@@ -777,39 +982,41 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 dragState = null;
             });
 
-            node.addEventListener('dblclick', () => {
-                closeMenus();
-                node.classList.add('qtype_graph-node--editing');
-                textEl.contentEditable = 'true';
-                textEl.focus();
-                placeCaretAtEnd(textEl);
-            });
+            if (!attemptMode) {
+                node.addEventListener('dblclick', () => {
+                    closeMenus();
+                    node.classList.add('qtype_graph-node--editing');
+                    textEl.contentEditable = 'true';
+                    textEl.focus();
+                    placeCaretAtEnd(textEl);
+                });
 
-            textEl.addEventListener('input', () => {
-                limitWords(textEl);
-                if (activeNodeId === record.id) {
-                    nodeTextInput.value = textEl.textContent;
-                }
-            });
+                textEl.addEventListener('input', () => {
+                    limitWords(textEl);
+                    if (activeNodeId === record.id) {
+                        nodeTextInput.value = textEl.textContent;
+                    }
+                });
 
-            textEl.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    textEl.blur();
-                }
-            });
+                textEl.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        textEl.blur();
+                    }
+                });
 
-            textEl.addEventListener('blur', () => {
-                node.classList.remove('qtype_graph-node--editing');
-                textEl.contentEditable = 'false';
-                if (!textEl.textContent.trim()) {
-                    textEl.textContent = 'Nuevo nodo';
-                }
-                if (activeNodeId === record.id) {
-                    nodeTextInput.value = textEl.textContent;
-                }
-                notifyChange();
-            });
+                textEl.addEventListener('blur', () => {
+                    node.classList.remove('qtype_graph-node--editing');
+                    textEl.contentEditable = 'false';
+                    if (!textEl.textContent.trim()) {
+                        textEl.textContent = 'Nuevo nodo';
+                    }
+                    if (activeNodeId === record.id) {
+                        nodeTextInput.value = textEl.textContent;
+                    }
+                    notifyChange();
+                });
+            }
         }
 
         document.addEventListener('keydown', (e) => {
@@ -834,11 +1041,13 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                     id: record.id,
                     left: parseFloat(record.el.style.left) || 0,
                     top: parseFloat(record.el.style.top) || 0,
-                    text: record.textEl.textContent,
+                    text: getRecordText(record),
                     color: getComputedStyle(record.el).getPropertyValue('--node-color').trim(),
                     locked: !!record.locked,
                 })),
-                edges: edges.map((edge) => ({from: edge.fromId, to: edge.toId, label: edge.label})),
+                edges: edges.map((edge) => ({
+                    id: edge.id, from: edge.fromId, to: edge.toId, label: edge.label, locked: !!edge.locked,
+                })),
             };
         }
 
@@ -852,7 +1061,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const edgeList = Array.isArray(data.edges) ? data.edges : [];
             edgeList.forEach((e) => {
                 if (nodes.has(e.from) && nodes.has(e.to)) {
-                    createEdge(e.from, e.to, e.label || '');
+                    createEdge(e.from, e.to, e.label || '', !!e.locked, e.id);
                 }
             });
             if (data.mode === 'tree') {
@@ -886,6 +1095,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
 
         const editor = createGraphEditor(root, {
             editable: true,
+            mode: 'editor',
             onChange: (data) => {
                 hidden.value = JSON.stringify(data);
             },
@@ -971,39 +1181,52 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             ],
             edges: [
                 ...(teacherData.edges || []).filter(
-                        (e) => !removedTeacherIds.has(e.from) && !removedTeacherIds.has(e.to)),
-                ...(studentData.edges || []),
+                        (e) => !removedTeacherIds.has(e.from) && !removedTeacherIds.has(e.to))
+                        .map((e) => Object.assign({}, e, {locked: true})),
+                ...(studentData.edges || []).map((e) => Object.assign({}, e, {locked: false})),
             ],
             mode: teacherData.mode || 'graph',
             orientation: teacherData.orientation || 'vertical',
             lineStyle: teacherData.lineStyle || 'straight',
         };
 
+        let blankValues = (studentData && studentData.blanks && typeof studentData.blanks === 'object') ?
+                Object.assign({}, studentData.blanks) : {};
+
+        function writeResponse(data) {
+            const liveIds = new Set(data.nodes.map((n) => n.id));
+            teacherIds.forEach((id) => {
+                if (!liveIds.has(id)) {
+                    removedTeacherIds.add(id);
+                }
+            });
+            const studentNodes = data.nodes.filter((n) => !teacherIds.has(n.id));
+            const studentEdges = data.edges.filter(
+                    (e) => !(teacherIds.has(e.from) && teacherIds.has(e.to)));
+            hidden.value = JSON.stringify({
+                nodes: studentNodes,
+                edges: studentEdges,
+                removednodes: [...removedTeacherIds],
+                blanks: blankValues,
+            });
+            const form = root.closest('form');
+            if (form) {
+                FormChangeChecker.markFormAsDirty(form);
+            }
+        }
+
         const editor = createGraphEditor(root, {
             editable: !readOnly,
             lockLayout: true,
+            mode: 'attempt',
             allowAddNodes: allowAddNodes !== false,
             allowDeleteNodes: allowDeleteNodes !== false,
-            onChange: (data) => {
-                const liveIds = new Set(data.nodes.map((n) => n.id));
-                teacherIds.forEach((id) => {
-                    if (!liveIds.has(id)) {
-                        removedTeacherIds.add(id);
-                    }
-                });
-                const studentNodes = data.nodes.filter((n) => !teacherIds.has(n.id));
-                const studentEdges = data.edges.filter(
-                        (e) => !(teacherIds.has(e.from) && teacherIds.has(e.to)));
-                hidden.value = JSON.stringify({
-                    nodes: studentNodes,
-                    edges: studentEdges,
-                    removednodes: [...removedTeacherIds],
-                });
-                const form = root.closest('form');
-                if (form) {
-                    FormChangeChecker.markFormAsDirty(form);
-                }
+            getBlankValue: (blankId) => blankValues[blankId],
+            onBlankChange: (blankId, value) => {
+                blankValues[blankId] = value;
+                writeResponse(editor.serialize());
             },
+            onChange: (data) => writeResponse(data),
         });
 
         editor.hydrate(merged);

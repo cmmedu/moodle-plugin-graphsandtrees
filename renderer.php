@@ -57,7 +57,7 @@ class qtype_graph_renderer extends qtype_renderer {
         $this->page->requires->js_call_amd('qtype_graph/editor', 'initAttempt', [
             $containerid,
             $fieldname,
-            $question->graphjson,
+            \qtype_graph\blank_token::strip_answers($question->graphjson),
             (bool) $options->readonly,
             (bool) $question->allowaddnodes,
             (bool) $question->allowdeletenodes,
