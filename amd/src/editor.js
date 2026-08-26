@@ -78,6 +78,17 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     const BLANK_TOKEN_RE = /\{\{T_INPUT((?:\s*;\s*"[^"]*")*)\}\}/g;
     const BLANK_ANSWER_RE = /"([^"]*)"/g;
 
+    // The bare marker the "Marcar como input" button writes - must match
+    // classes/blank_token.php's SANITIZED_MARKER exactly, and BLANK_TOKEN_RE
+    // above must accept it (zero answers is a valid match of that pattern).
+    const BLANK_MARKER = '{{T_INPUT}}';
+
+    // Keyed by container id, populated by every createGraphEditor instance on
+    // this page - lets one editor (the default graph) reach into another (the
+    // result graph) by container id at click time, regardless of which was
+    // created first.
+    const editorRegistry = new Map();
+
     /**
      * Quick existence check for a fill-in-the-blank token in a label.
      *
@@ -181,6 +192,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const allowDeleteNodes = opts.allowDeleteNodes !== false;
         const onChange = opts.onChange || function() {};
         const attemptMode = opts.mode === 'attempt';
+        const enableAddInput = !!opts.enableAddInput;
+        const addInputTargetContainerId = opts.addInputTargetContainerId || null;
 
         const canvas = root.querySelector('[data-role="canvas"]');
         const graphContent = root.querySelector('[data-role="content"]');
@@ -191,10 +204,27 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const nodeTextInput = root.querySelector('[data-role="node-text-input"]');
         const colorRow = root.querySelector('[data-role="color-row"]');
         const addConnectedBtn = root.querySelector('[data-role="add-connected-btn"]');
+        const addInputBtn = root.querySelector('[data-role="add-input-btn"]');
         const deleteNodeBtn = root.querySelector('[data-role="delete-node-btn"]');
         const edgeMenu = root.querySelector('[data-role="edge-menu"]');
+        const addEdgeInputBtn = root.querySelector('[data-role="add-edge-input-btn"]');
         const deleteEdgeBtn = root.querySelector('[data-role="delete-edge-btn"]');
         const edgeLabelInput = root.querySelector('[data-role="edge-label-input"]');
+
+        if (enableAddInput) {
+            addInputBtn.hidden = false;
+            addEdgeInputBtn.hidden = false;
+        }
+
+        /**
+         * Look up the sibling editor (by container id) this instance is configured
+         * to push fill-in-the-blank changes into, if any.
+         *
+         * @return {Object|null}
+         */
+        function getAddInputTarget() {
+            return addInputTargetContainerId ? (editorRegistry.get(addInputTargetContainerId) || null) : null;
+        }
         const modeToggle = root.querySelector('[data-role="mode-toggle"]');
         const orientationToggle = root.querySelector('[data-role="orientation-toggle"]');
         const lineStyleToggle = root.querySelector('[data-role="linestyle-toggle"]');
@@ -641,11 +671,39 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             notifyChange();
         });
 
+        addEdgeInputBtn.addEventListener('click', () => {
+            if (!activeEdge) {
+                return;
+            }
+            activeEdge.label = BLANK_MARKER;
+            activeEdge.textEl.textContent = BLANK_MARKER;
+            edgeLabelInput.value = BLANK_MARKER;
+            notifyChange();
+            const target = getAddInputTarget();
+            if (target) {
+                target.setEdgeLabel(activeEdge.id, '');
+            }
+        });
+
         deleteNodeBtn.addEventListener('click', () => {
             if (!activeNodeId) {
                 return;
             }
             deleteNode(activeNodeId);
+        });
+
+        addInputBtn.addEventListener('click', () => {
+            if (!activeNodeId) {
+                return;
+            }
+            const record = nodes.get(activeNodeId);
+            setRecordText(record, BLANK_MARKER);
+            nodeTextInput.value = BLANK_MARKER;
+            notifyChange();
+            const target = getAddInputTarget();
+            if (target) {
+                target.setNodeText(activeNodeId, '');
+            }
         });
 
         function openMenu(nodeId) {
@@ -1077,7 +1135,48 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             suppress = false;
         }
 
-        return {hydrate, serialize};
+        /**
+         * Directly set one node's text by id, without a full hydrate (keeps this
+         * editor's own zoom/pan/menu state untouched). Used by a sibling editor's
+         * "Marcar como input" button to clear the matching node here. No-ops if
+         * no node with this id exists in this editor.
+         *
+         * @param {string} id
+         * @param {string} text
+         * @return {boolean} whether a matching node was found and updated.
+         */
+        function setNodeText(id, text) {
+            const record = nodes.get(id);
+            if (!record) {
+                return false;
+            }
+            setRecordText(record, text);
+            notifyChange();
+            return true;
+        }
+
+        /**
+         * Directly set one edge's label by id, without a full hydrate. Same
+         * purpose/caller as setNodeText above, for edges.
+         *
+         * @param {string} id
+         * @param {string} text
+         * @return {boolean} whether a matching edge was found and updated.
+         */
+        function setEdgeLabel(id, text) {
+            const edge = edges.find((e) => e.id === id);
+            if (!edge) {
+                return false;
+            }
+            edge.label = text;
+            edge.textEl.textContent = text;
+            notifyChange();
+            return true;
+        }
+
+        const api = {hydrate, serialize, setNodeText, setEdgeLabel};
+        editorRegistry.set(root.id, api);
+        return api;
     }
 
     /**
@@ -1088,8 +1187,12 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * @param {string} [resetButtonId] id of a button that, when clicked, overwrites this editor's
      *                 graph with a copy of the graph currently held in `sourceHiddenFieldId`.
      * @param {string} [sourceHiddenFieldId] id of the hidden field to copy from on reset.
+     * @param {string} [addInputTargetContainerId] container id of a sibling editor (typically the
+     *                 result graph) whose matching node/edge gets cleared to '' whenever a node/edge
+     *                 here is marked as a fill-in-the-blank input via the node/edge menu button.
+     *                 Passing this also reveals that "Marcar como input" button in this editor's menus.
      */
-    function initEditor(containerId, hiddenFieldId, resetButtonId, sourceHiddenFieldId) {
+    function initEditor(containerId, hiddenFieldId, resetButtonId, sourceHiddenFieldId, addInputTargetContainerId) {
         const root = document.getElementById(containerId);
         const hidden = document.getElementById(hiddenFieldId);
         if (!root || !hidden) {
@@ -1099,6 +1202,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const editor = createGraphEditor(root, {
             editable: true,
             mode: 'editor',
+            enableAddInput: !!addInputTargetContainerId,
+            addInputTargetContainerId: addInputTargetContainerId || null,
             onChange: (data) => {
                 hidden.value = JSON.stringify(data);
             },

@@ -46,14 +46,20 @@ class qtype_graph_edit_form extends question_edit_form {
         $mform->addElement('advcheckbox', 'allowdeletenodes', get_string('allowdeletenodes', 'qtype_graph'));
         $mform->setDefault('allowdeletenodes', 0);
 
+        // Generated upfront (before either canvas is rendered) so the default graph's
+        // initEditor call below can reference the result graph's container id as its
+        // "Marcar como input" sync target, even though that second canvas is only
+        // rendered later in this method.
         $containerid = 'qtype_graph_editor_' . html_writer::random_id('editor');
+        $resultcontainerid = 'qtype_graph_editor_' . html_writer::random_id('editor');
+
         $mform->addElement('html', \qtype_graph\editor_ui::render($containerid));
 
         $mform->addElement('hidden', 'graphjson', null, ['id' => 'id_graphjson']);
         $mform->setType('graphjson', PARAM_RAW);
 
         $PAGE->requires->js_call_amd('qtype_graph/editor', 'initEditor',
-                [$containerid, 'id_graphjson']);
+                [$containerid, 'id_graphjson', null, null, $resultcontainerid]);
 
         $mform->addElement('header', 'resultgraphheader', get_string('resultgraphjson', 'qtype_graph'));
         $mform->setExpanded('resultgraphheader');
@@ -66,8 +72,6 @@ class qtype_graph_edit_form extends question_edit_form {
             'class' => 'btn btn-outline-danger mb-2',
             'data-confirm' => get_string('resetresultgraph_confirm', 'qtype_graph'),
         ]));
-
-        $resultcontainerid = 'qtype_graph_editor_' . html_writer::random_id('editor');
         $mform->addElement('html', \qtype_graph\editor_ui::render($resultcontainerid));
 
         $mform->addElement('hidden', 'resultgraphjson', null, ['id' => 'id_resultgraphjson']);

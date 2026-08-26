@@ -72,6 +72,7 @@ class editor_ui {
         <div class="qtype_graph-colorrow" data-role="color-row"></div>
       </div>
       <button type="button" class="qtype_graph-menubtn" data-role="add-connected-btn">+ Nodo conectado</button>
+      <button type="button" class="qtype_graph-menubtn" data-role="add-input-btn" hidden>Marcar como input</button>
       <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-node-btn">Eliminar nodo</button>
     </div>
     <div class="qtype_graph-nodemenu" data-role="edge-menu" hidden>
@@ -79,6 +80,7 @@ class editor_ui {
         <span class="qtype_graph-menulabel">Etiqueta</span>
         <input type="text" data-role="edge-label-input" class="qtype_graph-textinput" maxlength="40">
       </div>
+      <button type="button" class="qtype_graph-menubtn" data-role="add-edge-input-btn" hidden>Marcar como input</button>
       <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-edge-btn">Eliminar conexión</button>
     </div>
   </div>
