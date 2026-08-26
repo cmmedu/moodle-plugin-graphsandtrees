@@ -54,6 +54,27 @@ class qtype_graph_edit_form extends question_edit_form {
 
         $PAGE->requires->js_call_amd('qtype_graph/editor', 'initEditor',
                 [$containerid, 'id_graphjson']);
+
+        $mform->addElement('header', 'resultgraphheader', get_string('resultgraphjson', 'qtype_graph'));
+        $mform->setExpanded('resultgraphheader');
+        $mform->addElement('static', 'resultgraphjsonhelp', '', get_string('resultgraphjson_help', 'qtype_graph'));
+
+        $resetbuttonid = 'qtype_graph_reset_' . html_writer::random_id('reset');
+        $mform->addElement('html', html_writer::tag('button', get_string('resetresultgraph', 'qtype_graph'), [
+            'type' => 'button',
+            'id' => $resetbuttonid,
+            'class' => 'btn btn-outline-danger mb-2',
+            'data-confirm' => get_string('resetresultgraph_confirm', 'qtype_graph'),
+        ]));
+
+        $resultcontainerid = 'qtype_graph_editor_' . html_writer::random_id('editor');
+        $mform->addElement('html', \qtype_graph\editor_ui::render($resultcontainerid));
+
+        $mform->addElement('hidden', 'resultgraphjson', null, ['id' => 'id_resultgraphjson']);
+        $mform->setType('resultgraphjson', PARAM_RAW);
+
+        $PAGE->requires->js_call_amd('qtype_graph/editor', 'initEditor',
+                [$resultcontainerid, 'id_resultgraphjson', $resetbuttonid, 'id_graphjson']);
     }
 
     protected function data_preprocessing($question) {
@@ -61,6 +82,7 @@ class qtype_graph_edit_form extends question_edit_form {
 
         if (!empty($question->options)) {
             $question->graphjson = $question->options->graphjson;
+            $question->resultgraphjson = $question->options->resultgraphjson ?? '';
             $question->allowaddnodes = $question->options->allowaddnodes;
             $question->allowdeletenodes = $question->options->allowdeletenodes;
         }

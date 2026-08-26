@@ -39,6 +39,9 @@ class qtype_graph_question extends question_with_responses {
     /** @var string JSON-encoded teacher-authored graph (nodes, edges, view settings). */
     public $graphjson;
 
+    /** @var string JSON-encoded expected/correct result graph, used for automatic grading. */
+    public $resultgraphjson;
+
     /** @var bool whether students may add new nodes. */
     public $allowaddnodes = true;
 

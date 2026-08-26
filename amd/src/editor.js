@@ -1085,8 +1085,11 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      *
      * @param {string} containerId id of the .qtype_graph-container element.
      * @param {string} hiddenFieldId id of the hidden form field to write the graph JSON into.
+     * @param {string} [resetButtonId] id of a button that, when clicked, overwrites this editor's
+     *                 graph with a copy of the graph currently held in `sourceHiddenFieldId`.
+     * @param {string} [sourceHiddenFieldId] id of the hidden field to copy from on reset.
      */
-    function initEditor(containerId, hiddenFieldId) {
+    function initEditor(containerId, hiddenFieldId, resetButtonId, sourceHiddenFieldId) {
         const root = document.getElementById(containerId);
         const hidden = document.getElementById(hiddenFieldId);
         if (!root || !hidden) {
@@ -1124,6 +1127,34 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
 
         editor.hydrate(initial);
         hidden.value = JSON.stringify(editor.serialize());
+
+        if (resetButtonId && sourceHiddenFieldId) {
+            const btn = document.getElementById(resetButtonId);
+            const sourceHidden = document.getElementById(sourceHiddenFieldId);
+            if (btn && sourceHidden) {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    if (btn.dataset.confirm && !window.confirm(btn.dataset.confirm)) {
+                        return;
+                    }
+                    let data;
+                    try {
+                        data = JSON.parse(sourceHidden.value);
+                    } catch (err) {
+                        return;
+                    }
+                    if (!data || !Array.isArray(data.nodes)) {
+                        return;
+                    }
+                    editor.hydrate(data);
+                    hidden.value = JSON.stringify(editor.serialize());
+                    const form = root.closest('form');
+                    if (form) {
+                        FormChangeChecker.markFormAsDirty(form);
+                    }
+                });
+            }
+        }
     }
 
     /**

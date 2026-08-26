@@ -56,6 +56,7 @@ class qtype_graph extends question_type {
         }
 
         $options->graphjson = $formdata->graphjson ?? '';
+        $options->resultgraphjson = $formdata->resultgraphjson ?? '';
         $options->allowaddnodes = !empty($formdata->allowaddnodes) ? 1 : 0;
         $options->allowdeletenodes = !empty($formdata->allowdeletenodes) ? 1 : 0;
         $DB->update_record('qtype_graph_options', $options);
@@ -64,6 +65,7 @@ class qtype_graph extends question_type {
     protected function initialise_question_instance(question_definition $question, $questiondata) {
         parent::initialise_question_instance($question, $questiondata);
         $question->graphjson = $questiondata->options->graphjson;
+        $question->resultgraphjson = $questiondata->options->resultgraphjson ?? '';
         $question->allowaddnodes = (bool) $questiondata->options->allowaddnodes;
         $question->allowdeletenodes = (bool) $questiondata->options->allowdeletenodes;
     }
