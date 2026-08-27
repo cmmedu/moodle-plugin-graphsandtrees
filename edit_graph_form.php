@@ -40,7 +40,10 @@ class qtype_graph_edit_form extends question_edit_form {
         $mform->setExpanded('graphheader');
         $mform->addElement('static', 'graphjsonhelp', '', get_string('graphjson_help', 'qtype_graph'));
 
-        $mform->addElement('advcheckbox', 'allowaddnodes', get_string('allowaddnodes', 'qtype_graph'));
+        // Explicit id (rather than relying on mform's default id_<name> generation) since
+        // initValidation() below needs to read its live checked state by id.
+        $mform->addElement('advcheckbox', 'allowaddnodes', get_string('allowaddnodes', 'qtype_graph'),
+                null, ['id' => 'id_allowaddnodes']);
         $mform->setDefault('allowaddnodes', 1);
 
         $mform->addElement('advcheckbox', 'allowdeletenodes', get_string('allowdeletenodes', 'qtype_graph'));
@@ -90,7 +93,7 @@ class qtype_graph_edit_form extends question_edit_form {
                 [$resultcontainerid, 'id_resultgraphjson', $resetbuttonid, 'id_graphjson']);
 
         $PAGE->requires->js_call_amd('qtype_graph/editor', 'initValidation',
-                [$validatebuttonid, $validateoutputid, 'id_graphjson', 'id_resultgraphjson']);
+                [$validatebuttonid, $validateoutputid, 'id_graphjson', 'id_resultgraphjson', 'id_allowaddnodes']);
     }
 
     protected function data_preprocessing($question) {

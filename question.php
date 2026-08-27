@@ -64,7 +64,8 @@ class qtype_graph_question extends question_graded_automatically {
     }
 
     public function grade_response(array $response) {
-        $fraction = \qtype_graph\grading::grade($this->graphjson, $this->resultgraphjson, $response);
+        $fraction = \qtype_graph\grading::grade($this->graphjson, $this->resultgraphjson, $response,
+                (bool) $this->allowaddnodes);
         return array($fraction, question_state::graded_state_for_fraction($fraction));
     }
 

@@ -40,6 +40,24 @@ namespace qtype_graph;
  *   reachable by hand-typing the legacy embedded-answer syntax) would have
  *   its later blanks silently ungraded.
  *
+ * A node id in the result graph with NO counterpart in the default graph at
+ * all is a different kind of item: the student is expected to *create* it
+ * (only possible when $allowaddnodes is true, since only then can a student
+ * add nodes at all). Since a student-created node's id is generated at
+ * creation time and can never match the teacher's id for it, matching is by
+ * content instead: find an "anchor" - a result-graph edge connecting this
+ * node to a node id that DOES exist in the default graph - then check
+ * whether the student added any new node, connected by an edge to that same
+ * anchor, whose text satisfies the expected node's accepted-answer field.
+ * If no such anchor exists (e.g. the new node is only connected to another
+ * new node - a chain), the item is skipped entirely (excluded from both
+ * $total and $correct) rather than counted wrong, since no student could
+ * ever satisfy it; same if $allowaddnodes is false. A genuinely new EDGE
+ * between two nodes that both already exist in the default graph is not
+ * handled at all - there is no student-facing way to draw a connection
+ * between two already-existing nodes (see editor.js, createEdge is only
+ * ever invoked together with a new node, or from hydrate()).
+ *
  * @package    qtype_graph
  * @copyright  2026 Rutas Digitales
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -51,26 +69,34 @@ class grading {
      * @param string $graphjson the default (student-visible) graph.
      * @param string $resultgraphjson the expected/correct result graph.
      * @param array $response the question's response array (has 'nodesjson').
+     * @param bool $allowaddnodes whether this question allows students to add new nodes.
      * @return float fraction correct, 0.0 to 1.0.
      */
-    public static function grade(string $graphjson, string $resultgraphjson, array $response): float {
+    public static function grade(string $graphjson, string $resultgraphjson, array $response,
+            bool $allowaddnodes = true): float {
         $default = json_decode($graphjson, true);
         if (!is_array($default) || empty($default['nodes'])) {
             return 0.0;
         }
         $result = json_decode($resultgraphjson, true);
         $result = is_array($result) ? $result : [];
+        $defaultnodes = self::index_by_id($default['nodes']);
         $resultnodes = self::index_by_id($result['nodes'] ?? []);
         $resultedges = self::index_by_id($result['edges'] ?? []);
 
         $responsedata = json_decode($response['nodesjson'] ?? '', true);
         $removednodes = [];
         $blanks = [];
+        $studentnodes = [];
+        $studentedges = [];
         if (is_array($responsedata)) {
             $removedlist = is_array($responsedata['removednodes'] ?? null) ? $responsedata['removednodes'] : [];
             $removednodes = array_flip($removedlist);
             $blanks = is_array($responsedata['blanks'] ?? null) ? $responsedata['blanks'] : [];
+            $studentnodes = is_array($responsedata['nodes'] ?? null) ? $responsedata['nodes'] : [];
+            $studentedges = is_array($responsedata['edges'] ?? null) ? $responsedata['edges'] : [];
         }
+        $studentnodesbyid = self::index_by_id($studentnodes);
 
         $total = 0;
         $correct = 0;
@@ -88,7 +114,80 @@ class grading {
             }
         }
 
+        if ($allowaddnodes) {
+            foreach (($result['nodes'] ?? []) as $resultnode) {
+                $id = $resultnode['id'] ?? null;
+                if ($id === null || array_key_exists($id, $defaultnodes)) {
+                    continue;
+                }
+                $anchorid = self::find_anchor($id, $result['edges'] ?? [], $defaultnodes);
+                if ($anchorid === null) {
+                    continue;
+                }
+                $total++;
+                if (self::new_node_created($anchorid, $resultnode['text'] ?? '', $studentedges, $studentnodesbyid)) {
+                    $correct++;
+                }
+            }
+        }
+
         return $total > 0 ? $correct / $total : 0.0;
+    }
+
+    /**
+     * Find the default-graph node a result-graph-only node is anchored to,
+     * i.e. the other endpoint of a result-graph edge connecting them.
+     *
+     * @param string $nodeid the result-only node's id.
+     * @param array $resultedges the result graph's raw edges list.
+     * @param array $defaultnodes default-graph nodes indexed by id.
+     * @return string|null the anchor's id, or null if not found.
+     */
+    protected static function find_anchor(string $nodeid, array $resultedges, array $defaultnodes): ?string {
+        foreach ($resultedges as $edge) {
+            $from = $edge['from'] ?? null;
+            $to = $edge['to'] ?? null;
+            if ($from === $nodeid && $to !== null && array_key_exists($to, $defaultnodes)) {
+                return $to;
+            }
+            if ($to === $nodeid && $from !== null && array_key_exists($from, $defaultnodes)) {
+                return $from;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Did the student add a new node, connected to $anchorid, whose text
+     * satisfies the expected answer?
+     *
+     * @param string $anchorid
+     * @param string $expectedtext the result-graph node's accepted-answer field.
+     * @param array $studentedges the response's student-added edges.
+     * @param array $studentnodesbyid the response's student-added nodes, indexed by id.
+     * @return bool
+     */
+    protected static function new_node_created(string $anchorid, string $expectedtext, array $studentedges,
+            array $studentnodesbyid): bool {
+        foreach ($studentedges as $edge) {
+            $from = $edge['from'] ?? null;
+            $to = $edge['to'] ?? null;
+            if ($from === $anchorid) {
+                $candidateid = $to;
+            } else if ($to === $anchorid) {
+                $candidateid = $from;
+            } else {
+                continue;
+            }
+            if (!array_key_exists($candidateid, $studentnodesbyid)) {
+                continue;
+            }
+            $candidatetext = $studentnodesbyid[$candidateid]['text'] ?? '';
+            if (answer_matcher::matches($candidatetext, $expectedtext)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

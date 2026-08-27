@@ -1293,15 +1293,40 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     }
 
     /**
+     * Find the result-graph edge that anchors a result-graph-only node to a
+     * node id that DOES exist in the default graph. Mirrors
+     * classes/grading.php's find_anchor() (which only needs the anchor id;
+     * this also returns the edge itself, so callers can avoid double-flagging
+     * it as an unrelated "orphan edge").
+     *
+     * @param {string} nodeId the result-only node's id.
+     * @param {Array} resultEdges the result graph's raw edges list.
+     * @param {Set} defaultNodeIds ids present in the default graph.
+     * @return {Object|null} the anchoring edge, or null if none found.
+     */
+    function findAnchorEdge(nodeId, resultEdges, defaultNodeIds) {
+        for (const edge of resultEdges) {
+            if (edge.from === nodeId && defaultNodeIds.has(edge.to)) {
+                return edge;
+            }
+            if (edge.to === nodeId && defaultNodeIds.has(edge.from)) {
+                return edge;
+            }
+        }
+        return null;
+    }
+
+    /**
      * Traverse the default graph and result graph together, matched by id,
      * and report every mismatch the "Automatic grading" design (see
      * CLAUDE.md) would silently misgrade or ignore.
      *
      * @param {{nodes: Array, edges: Array}} defaultData
      * @param {{nodes: Array, edges: Array}} resultData
+     * @param {boolean} allowAddNodes whether this question allows students to add new nodes.
      * @return {Array} {severity: 'error'|'warning'|'info', message} objects.
      */
-    function validateGraphs(defaultData, resultData) {
+    function validateGraphs(defaultData, resultData, allowAddNodes) {
         const issues = [];
         const resultNodes = indexById(resultData.nodes);
         const resultEdges = indexById(resultData.edges);
@@ -1335,14 +1360,35 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             }
         });
 
+        // Tracks anchor edges consumed below, so the generic orphan-edge check further down
+        // doesn't also flag "this edge is ignored" on the very edge that makes a new-node
+        // item gradable.
+        const usedAnchorEdgeIds = new Set();
+
         resultData.nodes.forEach((node) => {
-            if (!defaultNodeIds.has(node.id)) {
-                issues.push({severity: 'warning', message: `El grafo de respuesta tiene un nodo "${node.text || node.id}" ` +
-                        'que no existe en el grafo por defecto: se ignorará al calificar.'});
+            if (defaultNodeIds.has(node.id)) {
+                return;
             }
+            const label = node.text || node.id;
+            if (!allowAddNodes) {
+                issues.push({severity: 'warning', message: `El nodo nuevo "${label}" del grafo de respuesta nunca podrá ` +
+                        'calificarse: esta pregunta no permite que los alumnos agreguen nodos nuevos.'});
+                return;
+            }
+            const anchorEdge = findAnchorEdge(node.id, resultData.edges, defaultNodeIds);
+            if (!anchorEdge) {
+                issues.push({severity: 'warning', message: `El nodo nuevo "${label}" del grafo de respuesta no está ` +
+                        'conectado a ningún nodo existente: no se puede calificar automáticamente (las cadenas de ' +
+                        'varios nodos nuevos conectados entre sí todavía no son compatibles).'});
+                return;
+            }
+            usedAnchorEdgeIds.add(anchorEdge.id);
+            const anchorId = anchorEdge.from === node.id ? anchorEdge.to : anchorEdge.from;
+            issues.push({severity: 'info', message: `El nodo nuevo "${label}" se calificará correcto si el alumno ` +
+                    `agrega un nodo con esa respuesta, conectado al nodo "${anchorId}".`});
         });
         resultData.edges.forEach((edge) => {
-            if (!defaultEdgeIds.has(edge.id)) {
+            if (!defaultEdgeIds.has(edge.id) && !usedAnchorEdgeIds.has(edge.id)) {
                 issues.push({severity: 'warning', message: `El grafo de respuesta tiene una conexión "${edge.label || edge.id}" ` +
                         'que no existe en el grafo por defecto: se ignorará al calificar.'});
             }
@@ -1388,18 +1434,21 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * @param {string} outputId
      * @param {string} defaultHiddenFieldId id of the default graph's hidden field.
      * @param {string} resultHiddenFieldId id of the result graph's hidden field.
+     * @param {string} allowAddNodesFieldId id of the "allow students to add new nodes" checkbox.
      */
-    function initValidation(buttonId, outputId, defaultHiddenFieldId, resultHiddenFieldId) {
+    function initValidation(buttonId, outputId, defaultHiddenFieldId, resultHiddenFieldId, allowAddNodesFieldId) {
         const button = document.getElementById(buttonId);
         const output = document.getElementById(outputId);
         const defaultField = document.getElementById(defaultHiddenFieldId);
         const resultField = document.getElementById(resultHiddenFieldId);
+        const allowAddNodesField = document.getElementById(allowAddNodesFieldId);
         if (!button || !output || !defaultField || !resultField) {
             return;
         }
         button.addEventListener('click', (e) => {
             e.preventDefault();
-            const issues = validateGraphs(safeParseGraph(defaultField.value), safeParseGraph(resultField.value));
+            const allowAddNodes = !allowAddNodesField || allowAddNodesField.checked;
+            const issues = validateGraphs(safeParseGraph(defaultField.value), safeParseGraph(resultField.value), allowAddNodes);
             renderValidationIssues(output, issues);
         });
     }
