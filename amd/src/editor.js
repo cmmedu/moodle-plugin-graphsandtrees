@@ -71,17 +71,27 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         return {d: `M ${x1} ${y1} V ${midY} H ${x2} V ${y2}`, lx: (x1 + x2) / 2, ly: midY};
     }
 
-    // Matches a full authoring-time token with 0+ semicolon-quoted answers, e.g.
-    // {{T_INPUT;"Paris";"paris"}} - and also the sanitized bare marker
-    // {{T_INPUT}} the PHP layer emits for the student-facing page, since `*`
-    // (zero-or-more) means this one regex parses both shapes.
-    const BLANK_TOKEN_RE = /\{\{T_INPUT((?:\s*;\s*"[^"]*")*)\}\}/g;
+    // Matches the bare blank marker a locked node/edge label can contain in
+    // attempt mode. Only ever parsed client-side on text the server already
+    // sanitized (renderer.php runs blank_token.php::strip_answers() on
+    // graphjson before it reaches the student's browser), so this only needs
+    // to recognize the bare marker "Marcar como input" writes - not the
+    // legacy {{T_INPUT;"a";"b"}} embedded-answer form blank_token.php strips
+    // server-side. Must match classes/blank_token.php's SANITIZED_MARKER.
+    const BLANK_TOKEN_RE = /\{\{T_INPUT\}\}/g;
+    // Extracts each quoted answer out of a result-graph {{"a";"b"}} answer
+    // list - unrelated to BLANK_TOKEN_RE above; see parseAcceptedAnswers().
     const BLANK_ANSWER_RE = /"([^"]*)"/g;
 
-    // The bare marker the "Marcar como input" button writes - must match
-    // classes/blank_token.php's SANITIZED_MARKER exactly, and BLANK_TOKEN_RE
-    // above must accept it (zero answers is a valid match of that pattern).
     const BLANK_MARKER = '{{T_INPUT}}';
+
+    // Result-graph answer-field grammar (see CLAUDE.md "Planned answer-field
+    // grammar") - these describe what a *result* graph node/edge's text means
+    // for a blank, as opposed to BLANK_TOKEN_RE/BLANK_MARKER above, which
+    // describe the *default* graph's blank marker.
+    const ANSWER_LIST_RE = /^\{\{\s*(?:"[^"]*"\s*;?\s*)+\}\}$/;
+    const ANY_ANSWER_MARKER = '{{T_ANY}}';
+    const ANY_OR_EMPTY_ANSWER_MARKER = '{{T_ANY_N_EMPTY}}';
 
     // Keyed by container id, populated by every createGraphEditor instance on
     // this page - lets one editor (the default graph) reach into another (the
@@ -90,20 +100,20 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     const editorRegistry = new Map();
 
     /**
-     * Quick existence check for a fill-in-the-blank token in a label.
+     * Quick existence check for a fill-in-the-blank marker in a label.
      *
      * @param {string} text
      * @return {boolean}
      */
     function hasBlankTokens(text) {
-        return typeof text === 'string' && /\{\{T_INPUT\b/.test(text);
+        return typeof text === 'string' && text.indexOf(BLANK_MARKER) !== -1;
     }
 
     /**
      * Split a node/edge label into alternating plain-text and blank segments.
      *
      * @param {string} text raw label text.
-     * @return {Array} [{type:'text', value}, {type:'blank', index, answers}, ...]
+     * @return {Array} [{type:'text', value}, {type:'blank', index}, ...]
      */
     function parseLabelSegments(text) {
         const segments = [];
@@ -118,13 +128,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             if (match.index > lastIndex) {
                 segments.push({type: 'text', value: text.slice(lastIndex, match.index)});
             }
-            const answers = [];
-            let answerMatch;
-            BLANK_ANSWER_RE.lastIndex = 0;
-            while ((answerMatch = BLANK_ANSWER_RE.exec(match[1] || '')) !== null) {
-                answers.push(answerMatch[1]);
-            }
-            segments.push({type: 'blank', index: blankIndex, answers});
+            segments.push({type: 'blank', index: blankIndex});
             blankIndex += 1;
             lastIndex = match.index + match[0].length;
         }
@@ -175,6 +179,54 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             });
             container.appendChild(input);
         });
+    }
+
+    /**
+     * Parse a result-graph node/edge's text into the answer-field grammar
+     * documented in CLAUDE.md: empty means "not authored yet", {{T_ANY}} /
+     * {{T_ANY_N_EMPTY}} are the wildcard markers, {{"a";"b"}} is a list of
+     * accepted answers, and any other text is a single accepted answer.
+     *
+     * Not called anywhere yet - a building block for the future grading pass,
+     * not wired into any comparison logic yet.
+     *
+     * @param {string} text raw result-graph field text.
+     * @return {{type: string, answers: Array}} type is one of 'unset', 'any',
+     *         'any_or_empty', 'exact'; answers is only populated for 'exact'.
+     */
+    function parseAcceptedAnswers(text) {
+        const trimmed = typeof text === 'string' ? text.trim() : '';
+        if (trimmed === '') {
+            return {type: 'unset', answers: []};
+        }
+        if (trimmed === ANY_ANSWER_MARKER) {
+            return {type: 'any', answers: []};
+        }
+        if (trimmed === ANY_OR_EMPTY_ANSWER_MARKER) {
+            return {type: 'any_or_empty', answers: []};
+        }
+        if (ANSWER_LIST_RE.test(trimmed)) {
+            const answers = [];
+            let match;
+            BLANK_ANSWER_RE.lastIndex = 0;
+            while ((match = BLANK_ANSWER_RE.exec(trimmed)) !== null) {
+                answers.push(match[1]);
+            }
+            return {type: 'exact', answers};
+        }
+        return {type: 'exact', answers: [trimmed]};
+    }
+
+    /**
+     * Normalize a value for answer comparison: trim whitespace, lowercase.
+     *
+     * Not called anywhere yet - a building block for the future grading pass.
+     *
+     * @param {string} value
+     * @return {string}
+     */
+    function normalize(value) {
+        return typeof value === 'string' ? value.trim().toLowerCase() : '';
     }
 
     /**
@@ -1180,6 +1232,179 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     }
 
     /**
+     * Parse a hidden field's raw JSON value into a {nodes, edges} shape,
+     * tolerating malformed/empty JSON (returns empty arrays instead).
+     *
+     * @param {string} value raw hidden-field value.
+     * @return {{nodes: Array, edges: Array}}
+     */
+    function safeParseGraph(value) {
+        try {
+            const data = JSON.parse(value || '{}');
+            return {
+                nodes: Array.isArray(data.nodes) ? data.nodes : [],
+                edges: Array.isArray(data.edges) ? data.edges : [],
+            };
+        } catch (e) {
+            return {nodes: [], edges: []};
+        }
+    }
+
+    /**
+     * Index a list of {id: ...} records by id.
+     *
+     * @param {Array} items
+     * @return {Map}
+     */
+    function indexById(items) {
+        const map = new Map();
+        items.forEach((item) => {
+            if (item && item.id) {
+                map.set(item.id, item);
+            }
+        });
+        return map;
+    }
+
+    /**
+     * Check one result-graph answer field for the usual authoring mistakes
+     * and push any problem found onto `issues`.
+     *
+     * @param {string} itemDescription human-readable "el nodo \"X\"" / "la conexión \"X\"" prefix.
+     * @param {string} acceptedRaw the result-graph node/edge's text for this blank.
+     * @param {Array} issues {severity, message} objects to push onto.
+     */
+    function checkAnswerField(itemDescription, acceptedRaw, issues) {
+        const spec = parseAcceptedAnswers(acceptedRaw);
+        const trimmed = typeof acceptedRaw === 'string' ? acceptedRaw.trim() : '';
+        if (spec.type === 'unset') {
+            issues.push({severity: 'error', message: `${itemDescription} no tiene ninguna respuesta definida en el grafo de respuesta.`});
+            return;
+        }
+        if (trimmed === BLANK_MARKER) {
+            issues.push({severity: 'error',
+                    message: `${itemDescription} todavía tiene el marcador {{T_INPUT}} sin completar en el grafo de respuesta.`});
+            return;
+        }
+        if (spec.type === 'exact' && spec.answers.some((a) => a.trim() === '')) {
+            issues.push({severity: 'warning',
+                    message: `${itemDescription} tiene una respuesta vacía dentro de su lista de respuestas aceptadas.`});
+        }
+    }
+
+    /**
+     * Traverse the default graph and result graph together, matched by id,
+     * and report every mismatch the "Automatic grading" design (see
+     * CLAUDE.md) would silently misgrade or ignore.
+     *
+     * @param {{nodes: Array, edges: Array}} defaultData
+     * @param {{nodes: Array, edges: Array}} resultData
+     * @return {Array} {severity: 'error'|'warning'|'info', message} objects.
+     */
+    function validateGraphs(defaultData, resultData) {
+        const issues = [];
+        const resultNodes = indexById(resultData.nodes);
+        const resultEdges = indexById(resultData.edges);
+        const defaultNodeIds = new Set(defaultData.nodes.map((n) => n.id));
+        const defaultEdgeIds = new Set(defaultData.edges.map((e) => e.id));
+
+        defaultData.nodes.forEach((node) => {
+            // A blank node's own text is just the unreadable {{T_INPUT}} marker - show its id instead.
+            const label = hasBlankTokens(node.text) ? node.id : (node.text || node.id);
+            const resultNode = resultNodes.get(node.id);
+            if (!resultNode) {
+                issues.push({severity: 'info',
+                        message: `El nodo "${label}" no existe en el grafo de respuesta: se espera que el alumno lo elimine.`});
+                return;
+            }
+            if (hasBlankTokens(node.text)) {
+                checkAnswerField(`El input del nodo "${label}"`, resultNode.text, issues);
+            }
+        });
+
+        defaultData.edges.forEach((edge) => {
+            const label = hasBlankTokens(edge.label) ? edge.id : (edge.label || edge.id);
+            const resultEdge = resultEdges.get(edge.id);
+            if (!resultEdge) {
+                issues.push({severity: 'info', message: `La conexión "${label}" no existe en el grafo de respuesta: ` +
+                        'se espera que el alumno la elimine (borrando uno de sus nodos).'});
+                return;
+            }
+            if (hasBlankTokens(edge.label)) {
+                checkAnswerField(`El input de la conexión "${label}"`, resultEdge.label, issues);
+            }
+        });
+
+        resultData.nodes.forEach((node) => {
+            if (!defaultNodeIds.has(node.id)) {
+                issues.push({severity: 'warning', message: `El grafo de respuesta tiene un nodo "${node.text || node.id}" ` +
+                        'que no existe en el grafo por defecto: se ignorará al calificar.'});
+            }
+        });
+        resultData.edges.forEach((edge) => {
+            if (!defaultEdgeIds.has(edge.id)) {
+                issues.push({severity: 'warning', message: `El grafo de respuesta tiene una conexión "${edge.label || edge.id}" ` +
+                        'que no existe en el grafo por defecto: se ignorará al calificar.'});
+            }
+        });
+
+        return issues;
+    }
+
+    /**
+     * Render the result of validateGraphs() into an output container.
+     *
+     * @param {Element} output
+     * @param {Array} issues
+     */
+    function renderValidationIssues(output, issues) {
+        output.innerHTML = '';
+        if (issues.length === 0) {
+            const p = document.createElement('p');
+            p.className = 'text-success';
+            p.textContent = 'No se encontraron problemas.';
+            output.appendChild(p);
+            return;
+        }
+        const severityLabel = {error: 'Error', warning: 'Aviso', info: 'Info'};
+        const severityClass = {error: 'text-danger', warning: 'text-warning', info: 'text-info'};
+        const list = document.createElement('ul');
+        issues.forEach((issue) => {
+            const li = document.createElement('li');
+            li.className = severityClass[issue.severity] || '';
+            li.textContent = `${severityLabel[issue.severity] || ''}: ${issue.message}`;
+            list.appendChild(li);
+        });
+        output.appendChild(list);
+    }
+
+    /**
+     * Wire up a "validate" button that traverses the default graph and the
+     * result graph together (see validateGraphs()) and prints the findings
+     * into an output container. Purely an authoring-time aid - does not
+     * affect grading, which runs server-side in classes/grading.php.
+     *
+     * @param {string} buttonId
+     * @param {string} outputId
+     * @param {string} defaultHiddenFieldId id of the default graph's hidden field.
+     * @param {string} resultHiddenFieldId id of the result graph's hidden field.
+     */
+    function initValidation(buttonId, outputId, defaultHiddenFieldId, resultHiddenFieldId) {
+        const button = document.getElementById(buttonId);
+        const output = document.getElementById(outputId);
+        const defaultField = document.getElementById(defaultHiddenFieldId);
+        const resultField = document.getElementById(resultHiddenFieldId);
+        if (!button || !output || !defaultField || !resultField) {
+            return;
+        }
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            const issues = validateGraphs(safeParseGraph(defaultField.value), safeParseGraph(resultField.value));
+            renderValidationIssues(output, issues);
+        });
+    }
+
+    /**
      * Full editing widget for the question edit form. Nothing is locked.
      *
      * @param {string} containerId id of the .qtype_graph-container element.
@@ -1375,5 +1600,6 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     return {
         initEditor,
         initAttempt,
+        initValidation,
     };
 });

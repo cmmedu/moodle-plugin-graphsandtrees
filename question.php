@@ -28,13 +28,15 @@ require_once($CFG->dirroot . '/question/type/questionbase.php');
 
 /**
  * Represents a graph question: the teacher's graph, plus whatever the
- * student adds to it. Always manually graded - there is no notion of a
- * "correct" graph in this first version.
+ * student adds to it. Automatically graded (via classes/grading.php) once
+ * the teacher has authored a result graph; falls back to fully manual
+ * grading - exactly as before this feature existed - for any question
+ * where resultgraphjson is still empty.
  *
  * @copyright  2026 Rutas Digitales
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class qtype_graph_question extends question_with_responses {
+class qtype_graph_question extends question_graded_automatically {
 
     /** @var string JSON-encoded teacher-authored graph (nodes, edges, view settings). */
     public $graphjson;
@@ -49,16 +51,35 @@ class qtype_graph_question extends question_with_responses {
     public $allowdeletenodes = false;
 
     public function make_behaviour(question_attempt $qa, $preferredbehaviour) {
-        return question_engine::make_behaviour('manualgraded', $qa, $preferredbehaviour);
+        if (trim((string) $this->resultgraphjson) === '') {
+            // No result graph authored yet - stay fully manually graded,
+            // exactly like every graph question before this feature existed.
+            return question_engine::make_behaviour('manualgraded', $qa, $preferredbehaviour);
+        }
+        return parent::make_behaviour($qa, $preferredbehaviour);
     }
 
     public function get_expected_data() {
         return array('nodesjson' => PARAM_RAW);
     }
 
+    public function grade_response(array $response) {
+        $fraction = \qtype_graph\grading::grade($this->graphjson, $this->resultgraphjson, $response);
+        return array($fraction, question_state::graded_state_for_fraction($fraction));
+    }
+
+    public function get_validation_error(array $response) {
+        if ($this->is_gradable_response($response)) {
+            return '';
+        }
+        return get_string('invalidresponse', 'qtype_graph');
+    }
+
     public function get_correct_response() {
-        // There is no "correct" graph in this basic version - it is always
-        // manually graded by the teacher.
+        // Reconstructing a full "correct" nodesjson (with matching blanks
+        // values) from resultgraphjson is not implemented yet - grading
+        // itself (grade_response(), above) does not need it. Only affects
+        // get_right_answer_summary()'s display, which stays blank for now.
         return null;
     }
 

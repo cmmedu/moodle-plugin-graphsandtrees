@@ -72,6 +72,15 @@ class qtype_graph_edit_form extends question_edit_form {
             'class' => 'btn btn-outline-danger mb-2',
             'data-confirm' => get_string('resetresultgraph_confirm', 'qtype_graph'),
         ]));
+        $validatebuttonid = 'qtype_graph_validate_' . html_writer::random_id('validate');
+        $mform->addElement('html', html_writer::tag('button', get_string('validategraphs', 'qtype_graph'), [
+            'type' => 'button',
+            'id' => $validatebuttonid,
+            'class' => 'btn btn-outline-secondary mb-2 ml-2',
+        ]));
+        $validateoutputid = 'qtype_graph_validateoutput_' . html_writer::random_id('validateoutput');
+        $mform->addElement('html', html_writer::div('', 'qtype_graph-validation-output', ['id' => $validateoutputid]));
+
         $mform->addElement('html', \qtype_graph\editor_ui::render($resultcontainerid));
 
         $mform->addElement('hidden', 'resultgraphjson', null, ['id' => 'id_resultgraphjson']);
@@ -79,6 +88,9 @@ class qtype_graph_edit_form extends question_edit_form {
 
         $PAGE->requires->js_call_amd('qtype_graph/editor', 'initEditor',
                 [$resultcontainerid, 'id_resultgraphjson', $resetbuttonid, 'id_graphjson']);
+
+        $PAGE->requires->js_call_amd('qtype_graph/editor', 'initValidation',
+                [$validatebuttonid, $validateoutputid, 'id_graphjson', 'id_resultgraphjson']);
     }
 
     protected function data_preprocessing($question) {

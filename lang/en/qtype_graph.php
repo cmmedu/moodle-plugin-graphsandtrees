@@ -23,17 +23,19 @@
  */
 
 $string['pluginname'] = 'Graph';
-$string['pluginname_help'] = 'The student is shown a graph (nodes and connections) built by the teacher, and can add their own nodes connected to it. The question is always graded manually.';
+$string['pluginname_help'] = 'The student is shown a graph (nodes and connections) built by the teacher, and can add their own nodes connected to it. Graded automatically once the teacher has built a result graph, manually otherwise.';
 $string['pluginnameadding'] = 'Adding a Graph question';
 $string['pluginnameediting'] = 'Editing a Graph question';
-$string['pluginnamesummary'] = 'The teacher builds a graph (nodes and connections); students view it and add their own connected nodes as their answer. Graded manually.';
-$string['graphjson'] = 'Graph';
-$string['graphjson_help'] = 'Build the graph the student will see. Click a node to edit its text/color, add connected nodes, or delete it. To add a fill-in-the-blank inside a node or edge label, type {{T_INPUT;"answer1";"answer2"}} anywhere in the text (one or more accepted answers, each in double quotes and separated by semicolons - answers must not contain a " character) - it will show as an empty text box for the student to fill in.';
+$string['pluginnamesummary'] = 'The teacher builds a graph (nodes and connections); students view it and add their own connected nodes as their answer. Graded automatically once a result graph is set up, manually otherwise.';
+$string['graphjson'] = 'Default graph';
+$string['graphjson_help'] = 'Build the graph or tree the student will see. Click a node or edge to edit its text/color, add connected nodes, or delete it. To turn a node or edge into a fill-in-the-blank, click it and choose "Marcar como input" - this replaces its whole label with an empty box the student types into. The blank itself does not carry the correct answer: define that separately below, in the Answer graph, on the node/edge with the same id (clicking "Marcar como input" clears it there automatically, ready to fill in).';
 $string['err_emptygraph'] = 'The graph must have at least one node.';
-$string['resultgraphjson'] = 'Result graph (for automatic grading)';
-$string['resultgraphjson_help'] = 'Build the graph that represents the correct/expected final answer. This is a separate, independent canvas from the graph above - it does not affect what students see, and does not yet affect scoring (automatic grading against this graph is not implemented yet).';
+$string['invalidresponse'] = 'No valid graph response was submitted.';
+$string['resultgraphjson'] = 'Answer graph';
+$string['resultgraphjson_help'] = 'Build the graph or tree that represents the correct/expected final answer, matched against the default graph above by node/edge id - use "Reset to default graph" to start from a copy of it. Every node/edge here is checked automatically: delete one here to mark it as something the student is expected to delete; for one you marked "Marcar como input" above, type the accepted answer here instead - a single answer (e.g. Madrid), several with {{"answer1";"answer2"}}, {{T_ANY}} to accept anything non-empty, or {{T_ANY_N_EMPTY}} to accept anything, including a blank answer. Leave this whole canvas empty to keep this question fully manually graded, exactly as before this feature existed.';
 $string['resetresultgraph'] = 'Reset to default graph';
 $string['resetresultgraph_confirm'] = 'This will overwrite the result graph below with a copy of the graph above, discarding any changes made to it. Continue?';
+$string['validategraphs'] = 'Validate answer graph';
 $string['allowaddnodes'] = 'Allow students to add new nodes';
 $string['allowdeletenodes'] = 'Allow students to delete original nodes';
 $string['addednodessummary'] = '{$a} student-added node(s)';

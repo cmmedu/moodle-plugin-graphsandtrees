@@ -28,7 +28,8 @@ require_once($CFG->libdir . '/questionlib.php');
 
 /**
  * The graph question type: teacher builds a graph, students add nodes to it,
- * graded manually.
+ * graded automatically once a result graph is authored (see question.php),
+ * manually otherwise.
  *
  * @copyright  2026 Rutas Digitales
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
