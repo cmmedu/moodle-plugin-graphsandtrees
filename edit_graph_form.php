@@ -94,6 +94,13 @@ class qtype_graph_edit_form extends question_edit_form {
 
         $PAGE->requires->js_call_amd('qtype_graph/editor', 'initValidation',
                 [$validatebuttonid, $validateoutputid, 'id_graphjson', 'id_resultgraphjson', 'id_allowaddnodes']);
+
+        // Penalty + hints, which is what gives the student more than one try at
+        // the Check button under the interactive behaviour. Both options are on:
+        // the question class implements clear_wrong_from_response() and
+        // get_num_parts_right(). Only has any effect once an answer graph is
+        // authored, since without one the question stays manually graded.
+        $this->add_interactive_settings(true, true);
     }
 
     protected function data_preprocessing($question) {

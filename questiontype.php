@@ -61,6 +61,22 @@ class qtype_graph extends question_type {
         $options->allowaddnodes = !empty($formdata->allowaddnodes) ? 1 : 0;
         $options->allowdeletenodes = !empty($formdata->allowdeletenodes) ? 1 : 0;
         $DB->update_record('qtype_graph_options', $options);
+
+        // True: this question type's hints carry the "clear incorrect responses"
+        // and "show number of correct responses" options - see make_hint() below.
+        $this->save_hints($formdata, true);
+    }
+
+    /**
+     * Hints here are question_hint_with_parts, since a graph question is made of
+     * many independently gradable parts (every node and edge), so the multiple
+     * tries settings can offer to clear the wrong ones or count the right ones.
+     *
+     * @param stdClass $hint the DB row defining the hint.
+     * @return question_hint_with_parts
+     */
+    protected function make_hint($hint) {
+        return question_hint_with_parts::load_from_record($hint);
     }
 
     protected function initialise_question_instance(question_definition $question, $questiondata) {

@@ -69,6 +69,42 @@ class qtype_graph_question extends question_graded_automatically {
         return array($fraction, question_state::graded_state_for_fraction($fraction));
     }
 
+    /**
+     * Used by the interactive-with-parts behaviour ("Show the number of correct
+     * responses"). Every node and edge of the teacher's graph is one part, plus
+     * one for each new node the result graph expects the student to create.
+     *
+     * @param array $response the student's response.
+     * @return array [number of parts right, total number of parts].
+     */
+    public function get_num_parts_right(array $response) {
+        if (trim((string) $this->resultgraphjson) === '') {
+            // Manually graded: there are no automatically checkable parts to count.
+            return [null, null];
+        }
+        list($correct, $total) = \qtype_graph\grading::count_parts_right($this->graphjson,
+                $this->resultgraphjson, $response, (bool) $this->allowaddnodes);
+        // A null total tells qtype_renderer::num_parts_correct() to say nothing at all,
+        // which beats claiming the student got 0 out of 0 parts right.
+        return [$correct, $total > 0 ? $total : null];
+    }
+
+    /**
+     * Used by the interactive-with-parts behaviour ("Clear incorrect responses"):
+     * empties wrong blanks and drops wrongly added/deleted nodes, so the student
+     * retries only the parts they got wrong.
+     *
+     * @param array $response the student's response.
+     * @return array the response with its wrong parts reset.
+     */
+    public function clear_wrong_from_response(array $response) {
+        if (trim((string) $this->resultgraphjson) === '') {
+            return $response;
+        }
+        return \qtype_graph\grading::clear_wrong($this->graphjson, $this->resultgraphjson,
+                $response, (bool) $this->allowaddnodes);
+    }
+
     public function get_validation_error(array $response) {
         if ($this->is_gradable_response($response)) {
             return '';

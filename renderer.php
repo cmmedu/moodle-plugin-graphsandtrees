@@ -38,6 +38,13 @@ class qtype_graph_renderer extends qtype_renderer {
     public function formulation_and_controls(question_attempt $qa, question_display_options $options) {
         $question = $qa->get_question();
         $response = $qa->get_last_qt_data();
+        if ($options->clearwrong) {
+            // A hint with "Clear incorrect responses" is showing: the student
+            // gets their wrong parts back empty for the next try. Applied to the
+            // one hidden field below rather than through the base class's
+            // clear_wrong() - see that method's override at the end of this class.
+            $response = $question->clear_wrong_from_response($response);
+        }
         $nodesjson = $response['nodesjson'] ?? '';
 
         $output = html_writer::div($question->format_questiontext($qa), 'qtext');
@@ -64,6 +71,21 @@ class qtype_graph_renderer extends qtype_renderer {
         ]);
 
         return $output;
+    }
+
+    /**
+     * The whole response lives in a single hidden nodesjson field that the JS
+     * editor writes to by id, so the base class's approach - appending a second
+     * hidden field carrying the cleared response - would leave the form with two
+     * inputs of that name, and the one the editor is not updating would win on
+     * submit. formulation_and_controls() above puts the cleared response
+     * straight into that single field instead, so there is nothing to add here.
+     *
+     * @param question_attempt $qa the question attempt to display.
+     * @return string empty.
+     */
+    public function clear_wrong(question_attempt $qa) {
+        return '';
     }
 
     public function specific_feedback(question_attempt $qa) {

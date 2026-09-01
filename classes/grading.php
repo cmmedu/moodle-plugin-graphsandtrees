@@ -63,6 +63,15 @@ namespace qtype_graph;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class grading {
+    /** Gradable item the student got right. */
+    const ITEM_CORRECT = 'correct';
+    /** Wrong because the student's value for a {{T_INPUT}} blank does not match. */
+    const ITEM_WRONG_BLANK = 'wrongblank';
+    /** Wrong because the student deleted something the result graph still contains. */
+    const ITEM_WRONG_REMOVED = 'wrongremoved';
+    /** Wrong in a way clearing the response cannot undo (e.g. not deleted when it should be). */
+    const ITEM_WRONG = 'wrong';
+
     /**
      * Grade a student's response against the teacher's graphs.
      *
@@ -74,9 +83,114 @@ class grading {
      */
     public static function grade(string $graphjson, string $resultgraphjson, array $response,
             bool $allowaddnodes = true): float {
+        list($correct, $total) = self::count_parts_right($graphjson, $resultgraphjson, $response, $allowaddnodes);
+        return $total > 0 ? $correct / $total : 0.0;
+    }
+
+    /**
+     * How many of this question's gradable items the student got right, out of
+     * how many. Used by the "Show the number of correct responses" hint option
+     * (see qtype_graph_question::get_num_parts_right()); grade() is just this,
+     * expressed as a fraction.
+     *
+     * @param string $graphjson the default (student-visible) graph.
+     * @param string $resultgraphjson the expected/correct result graph.
+     * @param array $response the question's response array (has 'nodesjson').
+     * @param bool $allowaddnodes whether this question allows students to add new nodes.
+     * @return array [number of items correct, total number of items].
+     */
+    public static function count_parts_right(string $graphjson, string $resultgraphjson, array $response,
+            bool $allowaddnodes = true): array {
+        $report = self::evaluate($graphjson, $resultgraphjson, $response, $allowaddnodes);
+        return [$report['correct'], $report['total']];
+    }
+
+    /**
+     * Reset the parts of a response the student got wrong, keeping the rest,
+     * for the "Clear incorrect responses" hint option. Wrong blank values are
+     * emptied, nodes the student deleted but should have kept are restored,
+     * and added nodes that answer an expected new node incorrectly are removed.
+     *
+     * An item that is wrong in a way the student cannot fix by re-answering -
+     * a node the result graph expects them to delete and they didn't - is left
+     * alone: there is nothing in the response to clear.
+     *
+     * @param string $graphjson the default (student-visible) graph.
+     * @param string $resultgraphjson the expected/correct result graph.
+     * @param array $response the question's response array (has 'nodesjson').
+     * @param bool $allowaddnodes whether this question allows students to add new nodes.
+     * @return array the response with its wrong parts reset.
+     */
+    public static function clear_wrong(string $graphjson, string $resultgraphjson, array $response,
+            bool $allowaddnodes = true): array {
+        $data = json_decode($response['nodesjson'] ?? '', true);
+        if (!is_array($data)) {
+            return $response;
+        }
+        $report = self::evaluate($graphjson, $resultgraphjson, $response, $allowaddnodes);
+
+        if (is_array($data['blanks'] ?? null)) {
+            foreach (array_keys($report['wrongblanks']) as $key) {
+                if (array_key_exists($key, $data['blanks'])) {
+                    $data['blanks'][$key] = '';
+                }
+            }
+        }
+
+        if (is_array($data['removednodes'] ?? null) && $report['wrongremovals']) {
+            $kept = [];
+            foreach ($data['removednodes'] as $id) {
+                if (!isset($report['wrongremovals'][$id])) {
+                    $kept[] = $id;
+                }
+            }
+            $data['removednodes'] = $kept;
+        }
+
+        $studentnodes = is_array($data['nodes'] ?? null) ? $data['nodes'] : [];
+        $studentedges = is_array($data['edges'] ?? null) ? $data['edges'] : [];
+        $todelete = [];
+        foreach ($studentnodes as $node) {
+            if (self::added_node_is_wrong($node, $studentedges, $report['expectedbyanchor'])) {
+                $todelete[$node['id']] = true;
+            }
+        }
+        if ($todelete) {
+            $data['nodes'] = self::reject_nodes($studentnodes, $todelete);
+            $data['edges'] = self::reject_edges($studentedges, $todelete);
+        }
+
+        $response['nodesjson'] = json_encode($data);
+        return $response;
+    }
+
+    /**
+     * Walk every gradable item once, counting right/wrong and recording enough
+     * detail for clear_wrong() to undo the wrong ones. Single source of truth
+     * for what "correct" means; grade(), count_parts_right() and clear_wrong()
+     * are all built on it.
+     *
+     * @param string $graphjson the default (student-visible) graph.
+     * @param string $resultgraphjson the expected/correct result graph.
+     * @param array $response the question's response array (has 'nodesjson').
+     * @param bool $allowaddnodes whether this question allows students to add new nodes.
+     * @return array with keys total, correct, wrongblanks (blank key => true),
+     *      wrongremovals (node id => true) and expectedbyanchor
+     *      (default-graph node id => list of accepted texts for new nodes hung off it).
+     */
+    protected static function evaluate(string $graphjson, string $resultgraphjson, array $response,
+            bool $allowaddnodes): array {
+        $report = [
+            'total' => 0,
+            'correct' => 0,
+            'wrongblanks' => [],
+            'wrongremovals' => [],
+            'expectedbyanchor' => [],
+        ];
+
         $default = json_decode($graphjson, true);
         if (!is_array($default) || empty($default['nodes'])) {
-            return 0.0;
+            return $report;
         }
         $result = json_decode($resultgraphjson, true);
         $result = is_array($result) ? $result : [];
@@ -98,20 +212,17 @@ class grading {
         }
         $studentnodesbyid = self::index_by_id($studentnodes);
 
-        $total = 0;
-        $correct = 0;
-
         foreach ($default['nodes'] as $node) {
-            $total++;
-            if (self::node_correct($node, $resultnodes, $removednodes, $blanks)) {
-                $correct++;
-            }
+            $report['total']++;
+            $status = self::node_status($node, $resultnodes, $removednodes, $blanks);
+            self::record($report, $status, 'node:' . ($node['id'] ?? '') . ':0', $node['id'] ?? null);
         }
         foreach (($default['edges'] ?? []) as $edge) {
-            $total++;
-            if (self::edge_correct($edge, $resultedges, $removednodes, $blanks)) {
-                $correct++;
-            }
+            $report['total']++;
+            $status = self::edge_status($edge, $resultedges, $removednodes, $blanks);
+            // An edge is only ever "removed" as a side effect of deleting one of its
+            // endpoint nodes, so restoring it is that node's entry to undo, not the edge's.
+            self::record($report, $status, 'edge:' . ($edge['id'] ?? '') . ':0', null);
         }
 
         if ($allowaddnodes) {
@@ -124,14 +235,109 @@ class grading {
                 if ($anchorid === null) {
                     continue;
                 }
-                $total++;
-                if (self::new_node_created($anchorid, $resultnode['text'] ?? '', $studentedges, $studentnodesbyid)) {
-                    $correct++;
+                $expectedtext = $resultnode['text'] ?? '';
+                $report['expectedbyanchor'][$anchorid][] = $expectedtext;
+                $report['total']++;
+                if (self::new_node_created($anchorid, $expectedtext, $studentedges, $studentnodesbyid)) {
+                    $report['correct']++;
                 }
             }
         }
 
-        return $total > 0 ? $correct / $total : 0.0;
+        return $report;
+    }
+
+    /**
+     * Fold one item's status into the running report.
+     *
+     * @param array $report the report being built, modified in place.
+     * @param string $status one of the ITEM_* constants.
+     * @param string $blankkey the response's blanks-map key for this item.
+     * @param string|null $nodeid the node id to restore if the student wrongly deleted it.
+     */
+    protected static function record(array &$report, string $status, string $blankkey, ?string $nodeid): void {
+        if ($status === self::ITEM_CORRECT) {
+            $report['correct']++;
+        } else if ($status === self::ITEM_WRONG_BLANK) {
+            $report['wrongblanks'][$blankkey] = true;
+        } else if ($status === self::ITEM_WRONG_REMOVED && $nodeid !== null) {
+            $report['wrongremovals'][$nodeid] = true;
+        }
+    }
+
+    /**
+     * Should this student-added node be removed by "Clear incorrect responses"?
+     *
+     * Only nodes hung off an anchor the result graph expects a new node on are
+     * considered: a node the student added somewhere the result graph says
+     * nothing about earns and costs no marks, so it is not "wrong" and is kept.
+     *
+     * @param array $node a student-added node.
+     * @param array $studentedges the response's student-added edges.
+     * @param array $expectedbyanchor anchor node id => list of accepted texts.
+     * @return bool
+     */
+    protected static function added_node_is_wrong(array $node, array $studentedges, array $expectedbyanchor): bool {
+        $id = $node['id'] ?? null;
+        if ($id === null) {
+            return false;
+        }
+        $answersanexpectednode = false;
+        foreach ($studentedges as $edge) {
+            $from = $edge['from'] ?? null;
+            $to = $edge['to'] ?? null;
+            if ($from === $id) {
+                $anchor = $to;
+            } else if ($to === $id) {
+                $anchor = $from;
+            } else {
+                continue;
+            }
+            if ($anchor === null || !isset($expectedbyanchor[$anchor])) {
+                continue;
+            }
+            $answersanexpectednode = true;
+            foreach ($expectedbyanchor[$anchor] as $expectedtext) {
+                if (answer_matcher::matches($node['text'] ?? '', $expectedtext)) {
+                    return false;
+                }
+            }
+        }
+        return $answersanexpectednode;
+    }
+
+    /**
+     * Drop the given nodes from a student-added node list.
+     *
+     * @param array $nodes
+     * @param array $todelete node id => true.
+     * @return array
+     */
+    protected static function reject_nodes(array $nodes, array $todelete): array {
+        $kept = [];
+        foreach ($nodes as $node) {
+            if (!isset($todelete[$node['id'] ?? ''])) {
+                $kept[] = $node;
+            }
+        }
+        return $kept;
+    }
+
+    /**
+     * Drop any edge touching one of the given nodes from a student-added edge list.
+     *
+     * @param array $edges
+     * @param array $todelete node id => true.
+     * @return array
+     */
+    protected static function reject_edges(array $edges, array $todelete): array {
+        $kept = [];
+        foreach ($edges as $edge) {
+            if (!isset($todelete[$edge['from'] ?? '']) && !isset($todelete[$edge['to'] ?? ''])) {
+                $kept[] = $edge;
+            }
+        }
+        return $kept;
     }
 
     /**
@@ -213,28 +419,29 @@ class grading {
      * @param array $resultnodes result-graph nodes indexed by id.
      * @param array $removednodes ids the student deleted, as array keys.
      * @param array $blanks the response's blanks map.
-     * @return bool
+     * @return string one of the ITEM_* constants.
      */
-    protected static function node_correct(array $node, array $resultnodes, array $removednodes, array $blanks): bool {
+    protected static function node_status(array $node, array $resultnodes, array $removednodes,
+            array $blanks): string {
         $id = $node['id'] ?? null;
         if ($id === null) {
-            return false;
+            return self::ITEM_WRONG;
         }
         $deleted = array_key_exists($id, $removednodes);
         $expecteddeleted = !array_key_exists($id, $resultnodes);
         if ($expecteddeleted) {
-            return $deleted;
+            return $deleted ? self::ITEM_CORRECT : self::ITEM_WRONG;
         }
         if ($deleted) {
-            return false;
+            return self::ITEM_WRONG_REMOVED;
         }
         $text = $node['text'] ?? '';
         if (!answer_matcher::has_blank($text)) {
-            return true;
+            return self::ITEM_CORRECT;
         }
         $studentvalue = $blanks["node:{$id}:0"] ?? '';
         $accepted = $resultnodes[$id]['text'] ?? '';
-        return answer_matcher::matches($studentvalue, $accepted);
+        return answer_matcher::matches($studentvalue, $accepted) ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
     }
 
     /**
@@ -244,28 +451,29 @@ class grading {
      * @param array $resultedges result-graph edges indexed by id.
      * @param array $removednodes ids the student deleted, as array keys.
      * @param array $blanks the response's blanks map.
-     * @return bool
+     * @return string one of the ITEM_* constants.
      */
-    protected static function edge_correct(array $edge, array $resultedges, array $removednodes, array $blanks): bool {
+    protected static function edge_status(array $edge, array $resultedges, array $removednodes,
+            array $blanks): string {
         $id = $edge['id'] ?? null;
         if ($id === null) {
-            return false;
+            return self::ITEM_WRONG;
         }
         $endpointremoved = array_key_exists($edge['from'] ?? null, $removednodes)
                 || array_key_exists($edge['to'] ?? null, $removednodes);
         $expecteddeleted = !array_key_exists($id, $resultedges);
         if ($expecteddeleted) {
-            return $endpointremoved;
+            return $endpointremoved ? self::ITEM_CORRECT : self::ITEM_WRONG;
         }
         if ($endpointremoved) {
-            return false;
+            return self::ITEM_WRONG_REMOVED;
         }
         $text = $edge['label'] ?? '';
         if (!answer_matcher::has_blank($text)) {
-            return true;
+            return self::ITEM_CORRECT;
         }
         $studentvalue = $blanks["edge:{$id}:0"] ?? '';
         $accepted = $resultedges[$id]['label'] ?? '';
-        return answer_matcher::matches($studentvalue, $accepted);
+        return answer_matcher::matches($studentvalue, $accepted) ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
     }
 }
