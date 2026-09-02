@@ -233,13 +233,14 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * Create one graph editor instance bound to a container element.
      *
      * @param {Element} root the .qtype_graph-container element.
-     * @param {Object} opts {editable: bool, lockLayout: bool, allowAddNodes: bool, allowDeleteNodes: bool,
-     *                       onChange: function(serializedState)}
+     * @param {Object} opts {editable: bool, lockLayout: bool, hideLayoutControls: bool, allowAddNodes: bool,
+     *                       allowDeleteNodes: bool, onChange: function(serializedState)}
      * @return {Object} {hydrate, serialize}
      */
     function createGraphEditor(root, opts) {
         const editable = !!opts.editable;
         const lockLayout = !!opts.lockLayout;
+        const hideLayoutControls = !!opts.hideLayoutControls;
         const allowAddNodes = opts.allowAddNodes !== false;
         const allowDeleteNodes = opts.allowDeleteNodes !== false;
         const onChange = opts.onChange || function() {};
@@ -283,11 +284,29 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const zoomInBtn = root.querySelector('[data-role="zoom-in"]');
         const zoomOutBtn = root.querySelector('[data-role="zoom-out"]');
         const zoomResetBtn = root.querySelector('[data-role="zoom-reset"]');
+        const exportBtn = root.querySelector('[data-role="export-btn"]');
+        const importBtn = root.querySelector('[data-role="import-btn"]');
+        const jsonPanel = root.querySelector('[data-role="json-panel"]');
+        const jsonTextarea = root.querySelector('[data-role="json-textarea"]');
+        const jsonStatus = root.querySelector('[data-role="json-status"]');
+        const jsonBuildBtn = root.querySelector('[data-role="json-build-btn"]');
+        const jsonCopyBtn = root.querySelector('[data-role="json-copy-btn"]');
+        const jsonCloseBtn = root.querySelector('[data-role="json-close-btn"]');
 
         if (lockLayout) {
             [...modeToggle.children, ...orientationToggle.children].forEach((btn) => {
                 btn.disabled = true;
             });
+        }
+
+        // The result graph never chooses its own mode/orientation/line-style: it always
+        // mirrors the default graph's (see setLayout() below and initEditor()'s pre-hydrate
+        // override), so its copies of these controls are permanently hidden rather than just
+        // disabled.
+        if (hideLayoutControls) {
+            modeToggle.hidden = true;
+            orientationToggle.hidden = true;
+            lineStyleToggle.hidden = true;
         }
 
         let nodeCounter = 0;
@@ -363,6 +382,87 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         zoomInBtn.addEventListener('click', () => setZoom(zoom + ZOOM_STEP));
         zoomOutBtn.addEventListener('click', () => setZoom(zoom - ZOOM_STEP));
         zoomResetBtn.addEventListener('click', () => resetView());
+
+        // Export/import are only offered on the teacher authoring canvases (both the
+        // default graph and the result graph use opts.mode = 'editor', see initEditor()),
+        // never on the student attempt canvas (opts.mode = 'attempt').
+        if (opts.mode === 'editor') {
+            exportBtn.hidden = false;
+            importBtn.hidden = false;
+        }
+
+        function showJsonStatus(message, isError) {
+            jsonStatus.textContent = message;
+            jsonStatus.hidden = !message;
+            jsonStatus.classList.toggle('qtype_graph-jsonstatus--error', !!isError);
+        }
+
+        function openJsonPanel() {
+            jsonPanel.hidden = false;
+            showJsonStatus('', false);
+        }
+
+        exportBtn.addEventListener('click', () => {
+            jsonTextarea.value = JSON.stringify(serialize(), null, 2);
+            openJsonPanel();
+            jsonTextarea.focus();
+            jsonTextarea.select();
+        });
+        importBtn.addEventListener('click', () => {
+            openJsonPanel();
+            jsonTextarea.focus();
+        });
+        jsonCloseBtn.addEventListener('click', () => {
+            jsonPanel.hidden = true;
+        });
+        jsonBuildBtn.addEventListener('click', () => {
+            let data;
+            try {
+                data = JSON.parse(jsonTextarea.value);
+            } catch (e) {
+                showJsonStatus('JSON inválido: revisa la sintaxis.', true);
+                return;
+            }
+            if (!data || !Array.isArray(data.nodes)) {
+                showJsonStatus('El JSON debe tener un array "nodes".', true);
+                return;
+            }
+            if (jsonBuildBtn.dataset.confirm && !window.confirm(jsonBuildBtn.dataset.confirm)) {
+                return;
+            }
+            hydrate(data);
+            notifyChange();
+            const form = root.closest('form');
+            if (form) {
+                FormChangeChecker.markFormAsDirty(form);
+            }
+            showJsonStatus('Grafo construido correctamente.', false);
+        });
+        jsonCopyBtn.addEventListener('click', () => {
+            const restoreLabel = jsonCopyBtn.textContent;
+            const showCopied = () => {
+                jsonCopyBtn.textContent = 'Copiado';
+                setTimeout(() => {
+                    jsonCopyBtn.textContent = restoreLabel;
+                }, 1500);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(jsonTextarea.value).then(showCopied, () => {
+                    jsonTextarea.focus();
+                    jsonTextarea.select();
+                });
+                return;
+            }
+            jsonTextarea.focus();
+            jsonTextarea.select();
+            try {
+                document.execCommand('copy');
+                showCopied();
+            } catch (e) {
+                // Selection is left in place so the user can still copy manually.
+                // Silently ignored: no execCommand support and no Clipboard API.
+            }
+        });
 
         canvas.addEventListener('wheel', (e) => {
             e.preventDefault();
@@ -867,13 +967,20 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             notifyChange();
         });
 
+        function propagateLayout() {
+            const target = getAddInputTarget();
+            if (target && target.setLayout) {
+                target.setLayout(mode, orientation, lineStyle);
+            }
+        }
+
         function setMode(nextMode, silent) {
             if (mode === nextMode) {
                 return;
             }
             mode = nextMode;
             canvas.classList.toggle('qtype_graph-canvas--tree', mode === 'tree');
-            orientationToggle.hidden = mode !== 'tree';
+            orientationToggle.hidden = hideLayoutControls || mode !== 'tree';
             [...modeToggle.children].forEach((btn) => {
                 btn.classList.toggle('active', btn.dataset.mode === mode);
             });
@@ -884,6 +991,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             }
             if (!silent) {
                 notifyChange();
+                propagateLayout();
             }
         }
 
@@ -898,6 +1006,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             relayoutTree();
             if (!silent) {
                 notifyChange();
+                propagateLayout();
             }
         }
 
@@ -912,7 +1021,26 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             rerouteAllEdges();
             if (!silent) {
                 notifyChange();
+                propagateLayout();
             }
+        }
+
+        /**
+         * Force this editor's mode/orientation/line-style to match another editor's
+         * (the default graph), bypassing its own toggle UI. Used by a sibling editor
+         * that owns the layout controls to keep this one (the result graph, which has
+         * hideLayoutControls set) permanently in sync. Writes through to this editor's
+         * hidden field like any other change, but as a single combined update.
+         *
+         * @param {string} nextMode
+         * @param {string} nextOrientation
+         * @param {string} nextLineStyle
+         */
+        function setLayout(nextMode, nextOrientation, nextLineStyle) {
+            setMode(nextMode || 'graph', true);
+            setOrientation(nextOrientation || 'vertical', true);
+            setLineStyle(nextLineStyle || 'straight', true);
+            notifyChange();
         }
 
         modeToggle.addEventListener('click', (e) => {
@@ -1226,7 +1354,44 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             return true;
         }
 
-        const api = {hydrate, serialize, setNodeText, setEdgeLabel};
+        /**
+         * Draw correct/incorrect feedback markers (a colored outline on a node, a
+         * colored/dashed stroke on an edge) on top of whatever nodes/edges the caller
+         * identifies by id - never anything else, since a plain structural node/edge
+         * has no "answer" to mark right or wrong. Only ever called in attempt mode,
+         * once per feedback render, so any markers from a previous render are cleared
+         * first rather than accumulated.
+         *
+         * @param {Object} [feedback] {nodes: {id: bool}, edges: {id: bool}} - true = correct, false = incorrect.
+         */
+        function markFeedback(feedback) {
+            nodes.forEach((record) => {
+                record.el.classList.remove('qtype_graph-node--feedback-correct', 'qtype_graph-node--feedback-incorrect');
+            });
+            edges.forEach((edge) => {
+                edge.group.classList.remove(
+                        'qtype_graph-edge-group--feedback-correct', 'qtype_graph-edge-group--feedback-incorrect');
+            });
+            if (!feedback) {
+                return;
+            }
+            Object.entries(feedback.nodes || {}).forEach(([id, correct]) => {
+                const record = nodes.get(id);
+                if (record) {
+                    record.el.classList.add(correct ?
+                            'qtype_graph-node--feedback-correct' : 'qtype_graph-node--feedback-incorrect');
+                }
+            });
+            Object.entries(feedback.edges || {}).forEach(([id, correct]) => {
+                const edge = edges.find((e) => e.id === id);
+                if (edge) {
+                    edge.group.classList.add(correct ?
+                            'qtype_graph-edge-group--feedback-correct' : 'qtype_graph-edge-group--feedback-incorrect');
+                }
+            });
+        }
+
+        const api = {hydrate, serialize, setNodeText, setEdgeLabel, setLayout, markFeedback};
         editorRegistry.set(root.id, api);
         return api;
     }
@@ -1465,6 +1630,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      *                 result graph) whose matching node/edge gets cleared to '' whenever a node/edge
      *                 here is marked as a fill-in-the-blank input via the node/edge menu button.
      *                 Passing this also reveals that "Marcar como input" button in this editor's menus.
+     *                 Whenever the mode/orientation/line-style toggles change here, the same values are
+     *                 also pushed onto this sibling (see setLayout()), which is how the result graph
+     *                 stays in lockstep with the default graph despite never exposing its own controls.
      */
     function initEditor(containerId, hiddenFieldId, resetButtonId, sourceHiddenFieldId, addInputTargetContainerId) {
         const root = document.getElementById(containerId);
@@ -1473,11 +1641,18 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             return;
         }
 
+        // A source hidden field is only ever passed for the result graph's own initEditor()
+        // call, which is also our signal that this editor must never choose its own
+        // mode/orientation/line-style - it always mirrors whatever the source (default) graph
+        // currently has (see the override below, and setLayout() for keeping it live afterwards).
+        const hasLayoutSource = !!sourceHiddenFieldId;
+
         const editor = createGraphEditor(root, {
             editable: true,
             mode: 'editor',
             enableAddInput: !!addInputTargetContainerId,
             addInputTargetContainerId: addInputTargetContainerId || null,
+            hideLayoutControls: hasLayoutSource,
             onChange: (data) => {
                 hidden.value = JSON.stringify(data);
             },
@@ -1502,6 +1677,18 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 orientation: 'vertical',
                 lineStyle: 'straight',
             };
+        }
+
+        if (hasLayoutSource) {
+            let sourceGraph = {};
+            try {
+                sourceGraph = JSON.parse(document.getElementById(sourceHiddenFieldId).value || '{}') || {};
+            } catch (e) {
+                sourceGraph = {};
+            }
+            initial.mode = sourceGraph.mode || 'graph';
+            initial.orientation = sourceGraph.orientation || 'vertical';
+            initial.lineStyle = sourceGraph.lineStyle || 'straight';
         }
 
         editor.hydrate(initial);
@@ -1545,8 +1732,15 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * @param {boolean} readOnly true if the question is being displayed read-only (e.g. review).
      * @param {boolean} allowAddNodes true if the student may add new nodes.
      * @param {boolean} allowDeleteNodes true if the student may delete the teacher-authored nodes.
+     * @param {string} [feedbackJson] JSON {nodes: {id: bool}, edges: {id: bool}, newnodes: {id: bool}} -
+     *                 per-item correctness for this response, from classes/grading.php's
+     *                 feedback_breakdown(). Only ever set once the question is auto-graded AND
+     *                 Moodle's display options say to show correctness right now. Scoped to just
+     *                 {{T_INPUT}} blanks (nodes/edges) and anchored new-node creations (newnodes,
+     *                 keyed by the student's own node id) - never plain structural nodes/edges.
      */
-    function initAttempt(containerId, hiddenFieldId, teacherJson, readOnly, allowAddNodes, allowDeleteNodes) {
+    function initAttempt(containerId, hiddenFieldId, teacherJson, readOnly, allowAddNodes, allowDeleteNodes,
+            feedbackJson) {
         const root = document.getElementById(containerId);
         const hidden = document.getElementById(hiddenFieldId);
         if (!root || !hidden) {
@@ -1640,6 +1834,23 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         });
 
         editor.hydrate(merged);
+
+        if (feedbackJson) {
+            let feedback = null;
+            try {
+                feedback = JSON.parse(feedbackJson);
+            } catch (e) {
+                feedback = null;
+            }
+            if (feedback) {
+                // newnodes is keyed by the student's own (teacher-unknown) node id, which
+                // never collides with a teacher blank's id, so it can share the node bucket.
+                editor.markFeedback({
+                    nodes: Object.assign({}, feedback.nodes, feedback.newnodes),
+                    edges: feedback.edges,
+                });
+            }
+        }
 
         if (readOnly) {
             root.classList.add('qtype_graph-container--readonly');

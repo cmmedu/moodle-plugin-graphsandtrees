@@ -104,6 +104,23 @@ class qtype_graph_question extends question_graded_automatically {
     }
 
     /**
+     * Per-item correctness breakdown for the attempt renderer's feedback markers
+     * (see classes/grading.php::feedback_breakdown() and
+     * renderer.php::formulation_and_controls()). Empty when this question is not
+     * auto-graded, same condition as everywhere else in this class.
+     *
+     * @param array $response the student's response.
+     * @return array {nodes: {id: bool}, edges: {id: bool}, newnodes: {id: bool}}, or all-empty.
+     */
+    public function get_feedback_breakdown(array $response) {
+        if (trim((string) $this->resultgraphjson) === '') {
+            return ['nodes' => [], 'edges' => [], 'newnodes' => []];
+        }
+        return \qtype_graph\grading::feedback_breakdown($this->graphjson, $this->resultgraphjson,
+                $response, (bool) $this->allowaddnodes);
+    }
+
+    /**
      * Used by the interactive-with-parts behaviour ("Clear incorrect responses"):
      * empties wrong blanks and drops wrongly added/deleted nodes, so the student
      * retries only the parts they got wrong.

@@ -38,6 +38,10 @@ class qtype_graph_renderer extends qtype_with_combined_feedback_renderer {
     public function formulation_and_controls(question_attempt $qa, question_display_options $options) {
         $question = $qa->get_question();
         $response = $qa->get_last_qt_data();
+        // Feedback markers (below) are always graded against what the student actually
+        // submitted, even when clearwrong is about to blank out the wrong parts for a
+        // retry - otherwise the marker for a part just cleared would vanish along with it.
+        $submittedresponse = $response;
         if ($options->clearwrong) {
             // A hint with "Clear incorrect responses" is showing: the student
             // gets their wrong parts back empty for the next try. Applied to the
@@ -61,6 +65,14 @@ class qtype_graph_renderer extends qtype_with_combined_feedback_renderer {
             'class' => 'qtype_graph-response',
         ]);
 
+        $feedbackjson = null;
+        if ($options->correctness) {
+            $breakdown = $question->get_feedback_breakdown($submittedresponse);
+            if (!empty($breakdown['nodes']) || !empty($breakdown['edges']) || !empty($breakdown['newnodes'])) {
+                $feedbackjson = json_encode($breakdown);
+            }
+        }
+
         $this->page->requires->js_call_amd('qtype_graph/editor', 'initAttempt', [
             $containerid,
             $fieldname,
@@ -68,6 +80,7 @@ class qtype_graph_renderer extends qtype_with_combined_feedback_renderer {
             (bool) $options->readonly,
             (bool) $question->allowaddnodes,
             (bool) $question->allowdeletenodes,
+            $feedbackjson,
         ]);
 
         return $output;

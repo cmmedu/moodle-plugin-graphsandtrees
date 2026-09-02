@@ -56,11 +56,30 @@ class editor_ui {
         <button type="button" data-role="zoom-reset">100%</button>
         <button type="button" data-role="zoom-in" aria-label="+">+</button>
       </div>
+      <button type="button" class="qtype_graph-menubtn qtype_graph-exportbtn" data-role="export-btn" hidden>
+        Exportar JSON
+      </button>
+      <button type="button" class="qtype_graph-menubtn qtype_graph-exportbtn" data-role="import-btn" hidden>
+        Importar JSON
+      </button>
     </div>
   </div>
   <div class="qtype_graph-canvas" data-role="canvas">
     <div class="qtype_graph-content" data-role="content">
       <svg class="qtype_graph-edges" data-role="edges"></svg>
+    </div>
+    <div class="qtype_graph-exportpanel" data-role="json-panel" hidden>
+      <div class="qtype_graph-menulabel">JSON del grafo</div>
+      <textarea class="qtype_graph-exporttextarea" data-role="json-textarea"></textarea>
+      <div class="qtype_graph-jsonstatus" data-role="json-status" hidden></div>
+      <div class="qtype_graph-exportactions">
+        <button type="button" class="qtype_graph-menubtn" data-role="json-build-btn"
+            data-confirm="Esto reemplazará el grafo actual por el contenido del JSON. ¿Continuar?">
+          Construir grafo
+        </button>
+        <button type="button" class="qtype_graph-menubtn" data-role="json-copy-btn">Copiar al portapapeles</button>
+        <button type="button" class="qtype_graph-menubtn" data-role="json-close-btn">Cerrar</button>
+      </div>
     </div>
     <div class="qtype_graph-nodemenu" data-role="node-menu" hidden>
       <div class="qtype_graph-menusection" data-role="node-text-section">

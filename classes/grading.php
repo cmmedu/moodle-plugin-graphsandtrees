@@ -106,6 +106,31 @@ class grading {
     }
 
     /**
+     * Per-item correctness for showing feedback markers on the attempt canvas
+     * (see amd/src/editor.js's initAttempt()/markFeedback()). Deliberately
+     * scoped to just the items that have a visible "answer" to get right -
+     * {{T_INPUT}} blanks and anchored new-node creations - never plain
+     * structural nodes/edges, which have nothing to compare beyond
+     * deleted-or-not (see this plugin's CLAUDE.md, "Automatic grading").
+     *
+     * @param string $graphjson the default (student-visible) graph.
+     * @param string $resultgraphjson the expected/correct result graph.
+     * @param array $response the question's response array (has 'nodesjson').
+     * @param bool $allowaddnodes whether this question allows students to add new nodes.
+     * @return array {nodes: {id: bool}, edges: {id: bool}, newnodes: {id: bool}} - true = correct.
+     *      newnodes is keyed by the student's own added-node id, not a default-graph id.
+     */
+    public static function feedback_breakdown(string $graphjson, string $resultgraphjson, array $response,
+            bool $allowaddnodes = true): array {
+        $report = self::evaluate($graphjson, $resultgraphjson, $response, $allowaddnodes);
+        return [
+            'nodes' => $report['blanknodes'],
+            'edges' => $report['blankedges'],
+            'newnodes' => $report['newnodes'],
+        ];
+    }
+
+    /**
      * Reset the parts of a response the student got wrong, keeping the rest,
      * for the "Clear incorrect responses" hint option. Wrong blank values are
      * emptied, nodes the student deleted but should have kept are restored,
@@ -175,8 +200,10 @@ class grading {
      * @param array $response the question's response array (has 'nodesjson').
      * @param bool $allowaddnodes whether this question allows students to add new nodes.
      * @return array with keys total, correct, wrongblanks (blank key => true),
-     *      wrongremovals (node id => true) and expectedbyanchor
-     *      (default-graph node id => list of accepted texts for new nodes hung off it).
+     *      wrongremovals (node id => true), expectedbyanchor
+     *      (default-graph node id => list of accepted texts for new nodes hung off it),
+     *      blanknodes/blankedges (default-graph id => bool, only for {{T_INPUT}} items)
+     *      and newnodes (student-added node id => bool, only for anchored candidates).
      */
     protected static function evaluate(string $graphjson, string $resultgraphjson, array $response,
             bool $allowaddnodes): array {
@@ -186,6 +213,9 @@ class grading {
             'wrongblanks' => [],
             'wrongremovals' => [],
             'expectedbyanchor' => [],
+            'blanknodes' => [],
+            'blankedges' => [],
+            'newnodes' => [],
         ];
 
         $default = json_decode($graphjson, true);
@@ -216,6 +246,9 @@ class grading {
             $report['total']++;
             $status = self::node_status($node, $resultnodes, $removednodes, $blanks);
             self::record($report, $status, 'node:' . ($node['id'] ?? '') . ':0', $node['id'] ?? null);
+            if (($node['id'] ?? null) !== null && answer_matcher::has_blank($node['text'] ?? '')) {
+                $report['blanknodes'][$node['id']] = ($status === self::ITEM_CORRECT);
+            }
         }
         foreach (($default['edges'] ?? []) as $edge) {
             $report['total']++;
@@ -223,6 +256,9 @@ class grading {
             // An edge is only ever "removed" as a side effect of deleting one of its
             // endpoint nodes, so restoring it is that node's entry to undo, not the edge's.
             self::record($report, $status, 'edge:' . ($edge['id'] ?? '') . ':0', null);
+            if (($edge['id'] ?? null) !== null && answer_matcher::has_blank($edge['label'] ?? '')) {
+                $report['blankedges'][$edge['id']] = ($status === self::ITEM_CORRECT);
+            }
         }
 
         if ($allowaddnodes) {
@@ -242,9 +278,46 @@ class grading {
                     $report['correct']++;
                 }
             }
+            self::mark_new_nodes($report, $studentedges, $studentnodesbyid);
         }
 
         return $report;
+    }
+
+    /**
+     * Identify which of the student's own added nodes are an attempt at one of
+     * the expected new-node items ($report['expectedbyanchor']) and record
+     * whether each one's text actually satisfies it, keyed by the student's
+     * own node id (see feedback_breakdown() above). Run once expectedbyanchor
+     * is fully built, so a candidate is checked against every expected text at
+     * its anchor, not just the one that happened to be evaluated first.
+     *
+     * @param array $report the report being built, modified in place.
+     * @param array $studentedges the response's student-added edges.
+     * @param array $studentnodesbyid the response's student-added nodes, indexed by id.
+     */
+    protected static function mark_new_nodes(array &$report, array $studentedges, array $studentnodesbyid): void {
+        foreach ($studentedges as $edge) {
+            $from = $edge['from'] ?? null;
+            $to = $edge['to'] ?? null;
+            foreach ([[$from, $to], [$to, $from]] as [$anchor, $candidateid]) {
+                if ($anchor === null || $candidateid === null || $anchor === $candidateid) {
+                    continue;
+                }
+                if (!isset($report['expectedbyanchor'][$anchor]) || !array_key_exists($candidateid, $studentnodesbyid)) {
+                    continue;
+                }
+                $text = $studentnodesbyid[$candidateid]['text'] ?? '';
+                $matches = false;
+                foreach ($report['expectedbyanchor'][$anchor] as $expectedtext) {
+                    if (answer_matcher::matches($text, $expectedtext)) {
+                        $matches = true;
+                        break;
+                    }
+                }
+                $report['newnodes'][$candidateid] = $matches;
+            }
+        }
     }
 
     /**

@@ -7,6 +7,8 @@
   --qtype-graph-muted: #8a90a0;
   --qtype-graph-accent: #5b8cff;
   --qtype-graph-accent-soft: rgba(91, 140, 255, 0.15);
+  --qtype-graph-correct: #22c55e;
+  --qtype-graph-incorrect: #ef4444;
 
   box-sizing: border-box;
   display: flex;
@@ -94,6 +96,71 @@
   min-width: 24px;
 }
 
+.qtype_graph-exportbtn {
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.qtype_graph-exportbtn[hidden] {
+  display: none;
+}
+
+.qtype_graph-exportpanel[hidden] {
+  display: none;
+}
+
+.qtype_graph-exportpanel {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  left: 10px;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--qtype-graph-panel);
+  border: 1px solid var(--qtype-graph-border);
+  border-radius: 10px;
+  padding: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.qtype_graph-exporttextarea {
+  background: var(--qtype-graph-bg);
+  border: 1px solid var(--qtype-graph-border);
+  border-radius: 6px;
+  color: var(--qtype-graph-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  padding: 8px;
+  min-height: 160px;
+  resize: vertical;
+  outline: none;
+}
+
+.qtype_graph-exporttextarea:focus {
+  border-color: var(--qtype-graph-accent);
+}
+
+.qtype_graph-jsonstatus[hidden] {
+  display: none;
+}
+
+.qtype_graph-jsonstatus {
+  font-size: 12px;
+  color: var(--qtype-graph-correct);
+}
+
+.qtype_graph-jsonstatus--error {
+  color: var(--qtype-graph-incorrect);
+}
+
+.qtype_graph-exportactions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .qtype_graph-canvas {
   position: relative;
   flex: 1;
@@ -155,6 +222,24 @@
   stroke-width: 2;
 }
 
+/*
+ * Feedback markers: only ever applied (see editor.js applyFeedback()) to a
+ * fill-in-the-blank node/edge or a new node the student was expected to add -
+ * never to a plain structural node/edge, which has no "answer" to be right
+ * or wrong about. The node's own chosen fill color is left untouched; these
+ * are an outline/stroke overlay on top of it.
+ */
+.qtype_graph-edge-group--feedback-correct .qtype_graph-edge-line {
+  stroke: var(--qtype-graph-correct);
+  stroke-width: 2.5;
+}
+
+.qtype_graph-edge-group--feedback-incorrect .qtype_graph-edge-line {
+  stroke: var(--qtype-graph-incorrect);
+  stroke-width: 2.5;
+  stroke-dasharray: 6 4;
+}
+
 .qtype_graph-edge-label {
   fill: var(--qtype-graph-text);
   font-size: 12px;
@@ -192,6 +277,16 @@
 .qtype_graph-node--locked {
   cursor: pointer;
   opacity: 0.92;
+}
+
+.qtype_graph-node--feedback-correct {
+  outline: 3px solid var(--qtype-graph-correct);
+  outline-offset: 2px;
+}
+
+.qtype_graph-node--feedback-incorrect {
+  outline: 3px dashed var(--qtype-graph-incorrect);
+  outline-offset: 2px;
 }
 
 .qtype_graph-node--dragging {
