@@ -53,6 +53,11 @@ class qtype_graph extends question_type {
         if (!$options) {
             $options = new stdClass();
             $options->questionid = $formdata->id;
+            // NOTNULL text columns with no DB-level default - insert_record() needs
+            // something in them; save_combined_feedback_helper() overwrites these below.
+            $options->correctfeedback = '';
+            $options->partiallycorrectfeedback = '';
+            $options->incorrectfeedback = '';
             $options->id = $DB->insert_record('qtype_graph_options', $options);
         }
 
@@ -60,6 +65,7 @@ class qtype_graph extends question_type {
         $options->resultgraphjson = $formdata->resultgraphjson ?? '';
         $options->allowaddnodes = !empty($formdata->allowaddnodes) ? 1 : 0;
         $options->allowdeletenodes = !empty($formdata->allowdeletenodes) ? 1 : 0;
+        $options = $this->save_combined_feedback_helper($options, $formdata, $formdata->context, true);
         $DB->update_record('qtype_graph_options', $options);
 
         // True: this question type's hints carry the "clear incorrect responses"
@@ -85,6 +91,7 @@ class qtype_graph extends question_type {
         $question->resultgraphjson = $questiondata->options->resultgraphjson ?? '';
         $question->allowaddnodes = (bool) $questiondata->options->allowaddnodes;
         $question->allowdeletenodes = (bool) $questiondata->options->allowdeletenodes;
+        $this->initialise_combined_feedback($question, $questiondata, true);
     }
 
     public function delete_question($questionid, $contextid) {
@@ -92,5 +99,17 @@ class qtype_graph extends question_type {
 
         $DB->delete_records('qtype_graph_options', array('questionid' => $questionid));
         parent::delete_question($questionid, $contextid);
+    }
+
+    public function move_files($questionid, $oldcontextid, $newcontextid) {
+        parent::move_files($questionid, $oldcontextid, $newcontextid);
+        $this->move_files_in_combined_feedback($questionid, $oldcontextid, $newcontextid);
+        $this->move_files_in_hints($questionid, $oldcontextid, $newcontextid);
+    }
+
+    protected function delete_files($questionid, $contextid) {
+        parent::delete_files($questionid, $contextid);
+        $this->delete_files_in_combined_feedback($questionid, $contextid);
+        $this->delete_files_in_hints($questionid, $contextid);
     }
 }

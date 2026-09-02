@@ -33,7 +33,7 @@ require_once($CFG->dirroot . '/question/type/rendererbase.php');
  * @copyright  2026 Rutas Digitales
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class qtype_graph_renderer extends qtype_renderer {
+class qtype_graph_renderer extends qtype_with_combined_feedback_renderer {
 
     public function formulation_and_controls(question_attempt $qa, question_display_options $options) {
         $question = $qa->get_question();
@@ -89,7 +89,13 @@ class qtype_graph_renderer extends qtype_renderer {
     }
 
     public function specific_feedback(question_attempt $qa) {
-        return '';
+        // Only ever reached for a question with an answer graph: manualgraded
+        // behaviour (question.php's make_behaviour(), for a question with none)
+        // hides all feedback except general feedback and the manual comment
+        // while active, and again once finished, so combined_feedback() -
+        // which needs grade_response() to be automatic grading, not manual - is
+        // never invoked in that case.
+        return $this->combined_feedback($qa);
     }
 
     public function correct_response(question_attempt $qa) {

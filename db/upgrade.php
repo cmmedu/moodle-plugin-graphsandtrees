@@ -63,5 +63,80 @@ function xmldb_qtype_graph_upgrade(int $oldversion): bool {
         upgrade_plugin_savepoint(true, 2026082700, 'qtype', 'graph');
     }
 
+    if ($oldversion < 2026090102) {
+        $table = new xmldb_table('qtype_graph_options');
+
+        // The three feedback fields are TEXT columns, which Postgres/MySQL cannot
+        // give a DEFAULT - add_field() would refuse to add them NOT NULL on a
+        // table that already has rows. Add nullable, backfill every existing row
+        // below, then tighten to NOT NULL with change_field_notnull().
+        $correctfeedback = new xmldb_field('correctfeedback', XMLDB_TYPE_TEXT, null, null,
+                null, null, null, 'allowdeletenodes');
+        if (!$dbman->field_exists($table, $correctfeedback)) {
+            $dbman->add_field($table, $correctfeedback);
+        }
+
+        $field = new xmldb_field('correctfeedbackformat', XMLDB_TYPE_INTEGER, '2', null,
+                XMLDB_NOTNULL, null, '0', 'correctfeedback');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $partiallycorrectfeedback = new xmldb_field('partiallycorrectfeedback', XMLDB_TYPE_TEXT, null, null,
+                null, null, null, 'correctfeedbackformat');
+        if (!$dbman->field_exists($table, $partiallycorrectfeedback)) {
+            $dbman->add_field($table, $partiallycorrectfeedback);
+        }
+
+        $field = new xmldb_field('partiallycorrectfeedbackformat', XMLDB_TYPE_INTEGER, '2', null,
+                XMLDB_NOTNULL, null, '0', 'partiallycorrectfeedback');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $incorrectfeedback = new xmldb_field('incorrectfeedback', XMLDB_TYPE_TEXT, null, null,
+                null, null, null, 'partiallycorrectfeedbackformat');
+        if (!$dbman->field_exists($table, $incorrectfeedback)) {
+            $dbman->add_field($table, $incorrectfeedback);
+        }
+
+        $field = new xmldb_field('incorrectfeedbackformat', XMLDB_TYPE_INTEGER, '2', null,
+                XMLDB_NOTNULL, null, '0', 'incorrectfeedback');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $field = new xmldb_field('shownumcorrect', XMLDB_TYPE_INTEGER, '2', null,
+                XMLDB_NOTNULL, null, '0', 'incorrectfeedbackformat');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        // Existing questions predate this feature: give them the same feedback
+        // defaults a brand-new question gets (see edit_question_form.php's
+        // add_combined_feedback_fields(), whose editor defaults come from these
+        // same core 'question' strings), rather than leaving them empty.
+        $DB->execute("UPDATE {qtype_graph_options}
+                         SET correctfeedback = ?, correctfeedbackformat = ?,
+                             partiallycorrectfeedback = ?, partiallycorrectfeedbackformat = ?,
+                             incorrectfeedback = ?, incorrectfeedbackformat = ?
+                       WHERE correctfeedback IS NULL", [
+            get_string('correctfeedbackdefault', 'question'), FORMAT_HTML,
+            get_string('partiallycorrectfeedbackdefault', 'question'), FORMAT_HTML,
+            get_string('incorrectfeedbackdefault', 'question'), FORMAT_HTML,
+        ]);
+
+        // Now that every row has a value, the columns can be tightened to NOT NULL
+        // to match install.xml (what a fresh install gets straight away).
+        $correctfeedback->setNotNull(true);
+        $dbman->change_field_notnull($table, $correctfeedback);
+        $partiallycorrectfeedback->setNotNull(true);
+        $dbman->change_field_notnull($table, $partiallycorrectfeedback);
+        $incorrectfeedback->setNotNull(true);
+        $dbman->change_field_notnull($table, $incorrectfeedback);
+
+        upgrade_plugin_savepoint(true, 2026090102, 'qtype', 'graph');
+    }
+
     return true;
 }

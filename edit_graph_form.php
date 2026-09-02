@@ -95,6 +95,14 @@ class qtype_graph_edit_form extends question_edit_form {
         $PAGE->requires->js_call_amd('qtype_graph/editor', 'initValidation',
                 [$validatebuttonid, $validateoutputid, 'id_graphjson', 'id_resultgraphjson', 'id_allowaddnodes']);
 
+        // Correct/partially correct/incorrect feedback, shown via
+        // qtype_with_combined_feedback_renderer::combined_feedback() (renderer.php).
+        // "true" = also offer "show number of correct responses once finished",
+        // which reads get_num_parts_right() the same way the interactive-behaviour
+        // hints below do. Like those, only has any effect once an answer graph is
+        // authored - see get_num_parts_right()'s early return in question.php.
+        $this->add_combined_feedback_fields(true);
+
         // Penalty + hints, which is what gives the student more than one try at
         // the Check button under the interactive behaviour. Both options are on:
         // the question class implements clear_wrong_from_response() and
@@ -112,6 +120,8 @@ class qtype_graph_edit_form extends question_edit_form {
             $question->allowaddnodes = $question->options->allowaddnodes;
             $question->allowdeletenodes = $question->options->allowdeletenodes;
         }
+        $question = $this->data_preprocessing_combined_feedback($question, true);
+        $question = $this->data_preprocessing_hints($question, true, true);
 
         return $question;
     }

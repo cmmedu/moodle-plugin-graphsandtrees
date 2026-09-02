@@ -50,6 +50,20 @@ class qtype_graph_question extends question_graded_automatically {
     /** @var bool whether students may delete the teacher-authored (original) nodes. */
     public $allowdeletenodes = false;
 
+    /** @var string feedback shown for a fully correct response. */
+    public $correctfeedback;
+    /** @var int format of $correctfeedback. */
+    public $correctfeedbackformat;
+    /** @var string feedback shown for a partially correct response. */
+    public $partiallycorrectfeedback;
+    /** @var int format of $partiallycorrectfeedback. */
+    public $partiallycorrectfeedbackformat;
+    /** @var string feedback shown for a fully incorrect response. */
+    public $incorrectfeedback;
+    /** @var int format of $incorrectfeedback. */
+    public $incorrectfeedbackformat;
+    // $shownumcorrect is already declared by question_graded_automatically (questionbase.php).
+
     public function make_behaviour(question_attempt $qa, $preferredbehaviour) {
         if (trim((string) $this->resultgraphjson) === '') {
             // No result graph authored yet - stay fully manually graded,
@@ -103,6 +117,16 @@ class qtype_graph_question extends question_graded_automatically {
         }
         return \qtype_graph\grading::clear_wrong($this->graphjson, $this->resultgraphjson,
                 $response, (bool) $this->allowaddnodes);
+    }
+
+    public function check_file_access($qa, $options, $component, $filearea, $args, $forcedownload) {
+        if ($component == 'question' && in_array($filearea,
+                ['correctfeedback', 'partiallycorrectfeedback', 'incorrectfeedback'])) {
+            return $this->check_combined_feedback_file_access($qa, $options, $filearea, $args);
+        } else if ($component == 'question' && $filearea == 'hint') {
+            return $this->check_hint_file_access($qa, $options, $args);
+        }
+        return parent::check_file_access($qa, $options, $component, $filearea, $args, $forcedownload);
     }
 
     public function get_validation_error(array $response) {
