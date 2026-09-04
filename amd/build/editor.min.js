@@ -85,6 +85,18 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
 
     const BLANK_MARKER = '{{T_INPUT}}';
 
+    // Matches a [[option1,option2,...]] dropdown blank marker - "Marcar como
+    // selector"'s counterpart to BLANK_TOKEN_RE/BLANK_MARKER above. Unlike
+    // {{T_INPUT}}, this marker's content is not secret (it is the list of
+    // choices, not the accepted answer) so blank_token.php never strips it -
+    // must match classes/answer_matcher.php's SELECT_TOKEN_PATTERN.
+    const SELECT_TOKEN_RE = /\[\[([^\]]*)\]\]/g;
+    // Same pattern anchored to the WHOLE string (not global/capturing-in-a-loop) -
+    // used by the node/edge menu to detect "this label IS a select blank" (the
+    // convention "Marcar como selector" always creates), as opposed to
+    // parseLabelSegments() below, which recognizes the marker anywhere in text.
+    const WHOLE_SELECT_RE = /^\[\[([^\]]*)\]\]$/;
+
     // Result-graph answer-field grammar (see CLAUDE.md "Planned answer-field
     // grammar") - these describe what a *result* graph node/edge's text means
     // for a blank, as opposed to BLANK_TOKEN_RE/BLANK_MARKER above, which
@@ -100,38 +112,102 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     const editorRegistry = new Map();
 
     /**
-     * Quick existence check for a fill-in-the-blank marker in a label.
+     * Quick existence check for a fill-in-the-blank marker (free-text or select) in a label.
      *
      * @param {string} text
      * @return {boolean}
      */
     function hasBlankTokens(text) {
-        return typeof text === 'string' && text.indexOf(BLANK_MARKER) !== -1;
+        if (typeof text !== 'string') {
+            return false;
+        }
+        SELECT_TOKEN_RE.lastIndex = 0;
+        return text.indexOf(BLANK_MARKER) !== -1 || SELECT_TOKEN_RE.test(text);
     }
 
     /**
-     * Split a node/edge label into alternating plain-text and blank segments.
+     * Split a comma-separated options string into a trimmed, non-empty option list.
+     *
+     * @param {string} optionsCsv
+     * @return {Array}
+     */
+    function splitOptions(optionsCsv) {
+        return (optionsCsv || '').split(',').map((opt) => opt.trim()).filter((opt) => opt !== '');
+    }
+
+    /**
+     * Does this label consist of exactly one [[option1,option2,...]] marker (the
+     * convention "Marcar como selector" always creates)? Used by the node/edge menu
+     * to decide whether to show the options field instead of the plain text field -
+     * not used by parseLabelSegments() below, which recognizes the marker anywhere
+     * in a label, for parity with how a hand-typed {{T_INPUT}} is handled there.
+     *
+     * @param {string} text
+     * @return {Array|null} the option list, or null if text is not exactly one select marker.
+     */
+    function parseWholeSelectOptions(text) {
+        if (typeof text !== 'string') {
+            return null;
+        }
+        const match = text.trim().match(WHOLE_SELECT_RE);
+        return match ? splitOptions(match[1]) : null;
+    }
+
+    /**
+     * Build a [[option1,option2,...]] marker from a comma-separated options string,
+     * as typed into the node/edge menu's options field.
+     *
+     * @param {string} optionsCsv
+     * @return {string}
+     */
+    function buildSelectMarker(optionsCsv) {
+        return `[[${splitOptions(optionsCsv).join(',')}]]`;
+    }
+
+    /**
+     * Split a node/edge label into alternating plain-text and blank segments - a
+     * blank is either a free-text {{T_INPUT}} marker or a [[option1,option2,...]]
+     * dropdown marker.
      *
      * @param {string} text raw label text.
-     * @return {Array} [{type:'text', value}, {type:'blank', index}, ...]
+     * @return {Array} [{type:'text', value}, {type:'blank', index, kind:'text'|'select', options}, ...]
      */
     function parseLabelSegments(text) {
         const segments = [];
         if (typeof text !== 'string' || text === '') {
             return segments;
         }
+        // BLANK_TOKEN_RE/SELECT_TOKEN_RE both need 'g' to scan repeatedly, but neither
+        // can drive the loop alone since a label may contain either kind - merge their
+        // matches into one combined, position-sorted pass instead of interleaving two
+        // regex objects (which .lastIndex bookkeeping makes easy to get wrong).
+        const matches = [];
+        BLANK_TOKEN_RE.lastIndex = 0;
+        let match;
+        while ((match = BLANK_TOKEN_RE.exec(text)) !== null) {
+            matches.push({index: match.index, length: match[0].length, kind: 'text', options: null});
+        }
+        SELECT_TOKEN_RE.lastIndex = 0;
+        while ((match = SELECT_TOKEN_RE.exec(text)) !== null) {
+            matches.push({index: match.index, length: match[0].length, kind: 'select', options: splitOptions(match[1])});
+        }
+        matches.sort((a, b) => a.index - b.index);
+
         let lastIndex = 0;
         let blankIndex = 0;
-        let match;
-        BLANK_TOKEN_RE.lastIndex = 0;
-        while ((match = BLANK_TOKEN_RE.exec(text)) !== null) {
-            if (match.index > lastIndex) {
-                segments.push({type: 'text', value: text.slice(lastIndex, match.index)});
+        matches.forEach((m) => {
+            if (m.index < lastIndex) {
+                // Overlapping match (shouldn't happen - the two token grammars don't
+                // share any characters - but skip defensively rather than corrupt output).
+                return;
             }
-            segments.push({type: 'blank', index: blankIndex});
+            if (m.index > lastIndex) {
+                segments.push({type: 'text', value: text.slice(lastIndex, m.index)});
+            }
+            segments.push({type: 'blank', index: blankIndex, kind: m.kind, options: m.options});
             blankIndex += 1;
-            lastIndex = match.index + match[0].length;
-        }
+            lastIndex = m.index + m.length;
+        });
         if (lastIndex < text.length) {
             segments.push({type: 'text', value: text.slice(lastIndex)});
         }
@@ -139,8 +215,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     }
 
     /**
-     * Render a label's segments (plain text + fillable inputs) into a container.
-     * Used identically for locked node text and locked edge labels in attempt mode.
+     * Render a label's segments (plain text + fillable inputs/selects) into a
+     * container. Used identically for locked node text and locked edge labels
+     * in attempt mode.
      *
      * @param {Element} container element to fill (its previous content is discarded).
      * @param {string} text raw label text.
@@ -148,7 +225,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * @param {string} ownerId the node/edge's stable id.
      * @param {boolean} editableInputs whether the generated inputs should be editable.
      * @param {Function} [getBlankValue] (blankId) => initial value.
-     * @param {Function} [onBlankChange] (blankId, value) => void, called on input.
+     * @param {Function} [onBlankChange] (blankId, value) => void, called on input/change.
      */
     function renderLabelSegments(container, text, ownerKind, ownerId, editableInputs, getBlankValue, onBlankChange) {
         container.innerHTML = '';
@@ -158,6 +235,33 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 return;
             }
             const blankId = `${ownerKind}:${ownerId}:${seg.index}`;
+            if (seg.kind === 'select') {
+                const select = document.createElement('select');
+                select.className = 'qtype_graph-blank-select';
+                select.dataset.blankId = blankId;
+                select.disabled = !editableInputs;
+                const currentValue = (getBlankValue && getBlankValue(blankId)) || '';
+                const placeholder = document.createElement('option');
+                placeholder.value = '';
+                placeholder.textContent = '—';
+                select.appendChild(placeholder);
+                seg.options.forEach((opt) => {
+                    const optionEl = document.createElement('option');
+                    optionEl.value = opt;
+                    optionEl.textContent = opt;
+                    select.appendChild(optionEl);
+                });
+                select.value = seg.options.includes(currentValue) ? currentValue : '';
+                select.addEventListener('mousedown', (e) => e.stopPropagation());
+                select.addEventListener('click', (e) => e.stopPropagation());
+                select.addEventListener('change', () => {
+                    if (onBlankChange) {
+                        onBlankChange(blankId, select.value);
+                    }
+                });
+                container.appendChild(select);
+                return;
+            }
             const input = document.createElement('input');
             input.type = 'text';
             input.className = 'qtype_graph-blank-input';
@@ -246,26 +350,48 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const attemptMode = opts.mode === 'attempt';
         const enableAddInput = !!opts.enableAddInput;
         const addInputTargetContainerId = opts.addInputTargetContainerId || null;
+        // What a STUDENT's own new node/connection looks like (attempt mode only) -
+        // 'input' (today's free-text box, value used as its placeholder), 'select'
+        // (a dropdown built from value's comma-separated options), or 'text' (fixed,
+        // non-editable content equal to value). See createNode()'s attempt-mode
+        // branch and openEdgeMenu() below. Unrelated to enableAddInput/
+        // addInputTargetContainerId above, which govern the teacher-authoring
+        // {{T_INPUT}}/[[...]] blank markers on the DEFAULT graph, not this.
+        const newNodeContentType = opts.newNodeContentType || 'input';
+        const newNodeContentValue = opts.newNodeContentValue || '';
+        const newEdgeContentType = opts.newEdgeContentType || 'input';
+        const newEdgeContentValue = opts.newEdgeContentValue || '';
 
         const canvas = root.querySelector('[data-role="canvas"]');
         const graphContent = root.querySelector('[data-role="content"]');
         const edgesLayer = root.querySelector('[data-role="edges"]');
         const menu = root.querySelector('[data-role="node-menu"]');
         const nodeTextSection = root.querySelector('[data-role="node-text-section"]');
+        const nodeSelectSection = root.querySelector('[data-role="node-select-section"]');
+        const nodeSelectInput = root.querySelector('[data-role="node-select-input"]');
         const nodeColorSection = root.querySelector('[data-role="node-color-section"]');
         const nodeTextInput = root.querySelector('[data-role="node-text-input"]');
         const colorRow = root.querySelector('[data-role="color-row"]');
         const addConnectedBtn = root.querySelector('[data-role="add-connected-btn"]');
         const addInputBtn = root.querySelector('[data-role="add-input-btn"]');
+        const addSelectBtn = root.querySelector('[data-role="add-select-btn"]');
         const deleteNodeBtn = root.querySelector('[data-role="delete-node-btn"]');
         const edgeMenu = root.querySelector('[data-role="edge-menu"]');
+        const edgeTextSection = root.querySelector('[data-role="edge-text-section"]');
+        const edgeSelectSection = root.querySelector('[data-role="edge-select-section"]');
+        const edgeSelectInput = root.querySelector('[data-role="edge-select-input"]');
+        const edgeValueSection = root.querySelector('[data-role="edge-value-section"]');
+        const edgeValueSelect = root.querySelector('[data-role="edge-value-select"]');
         const addEdgeInputBtn = root.querySelector('[data-role="add-edge-input-btn"]');
+        const addEdgeSelectBtn = root.querySelector('[data-role="add-edge-select-btn"]');
         const deleteEdgeBtn = root.querySelector('[data-role="delete-edge-btn"]');
         const edgeLabelInput = root.querySelector('[data-role="edge-label-input"]');
 
         if (enableAddInput) {
             addInputBtn.hidden = false;
             addEdgeInputBtn.hidden = false;
+            addSelectBtn.hidden = false;
+            addEdgeSelectBtn.hidden = false;
         }
 
         // Sibling editors (by container id) this instance pushes fill-in-the-blank
@@ -792,7 +918,35 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             closeMenus();
             activeEdge = edge;
             edge.group.classList.add('qtype_graph-edge-group--selected');
+            // Same reasoning as openMenu() above: a student's own new connection
+            // (attempt mode) with content type 'text' is read-only, and 'select' is
+            // answered via edgeValueSelect (below) instead of the free-text/marker
+            // fields, which stay authoring-only ([[...]] marker parsing skipped
+            // entirely in attempt mode, for the same reason as openMenu()).
+            const attemptRestricted = attemptMode && !edge.locked && newEdgeContentType !== 'input';
+            const attemptSelect = attemptMode && !edge.locked && newEdgeContentType === 'select';
+            const selectOptions = (!attemptMode && !edge.locked) ? parseWholeSelectOptions(edge.label) : null;
+            edgeTextSection.hidden = attemptRestricted || !!selectOptions;
+            edgeSelectSection.hidden = !selectOptions;
+            edgeValueSection.hidden = !attemptSelect;
             edgeLabelInput.value = edge.label;
+            edgeLabelInput.readOnly = attemptMode && !edge.locked && newEdgeContentType === 'text';
+            edgeSelectInput.value = selectOptions ? selectOptions.join(', ') : '';
+            if (attemptSelect) {
+                const options = splitOptions(newEdgeContentValue);
+                edgeValueSelect.innerHTML = '';
+                const placeholderOpt = document.createElement('option');
+                placeholderOpt.value = '';
+                placeholderOpt.textContent = '—';
+                edgeValueSelect.appendChild(placeholderOpt);
+                options.forEach((opt) => {
+                    const optionEl = document.createElement('option');
+                    optionEl.value = opt;
+                    optionEl.textContent = opt;
+                    edgeValueSelect.appendChild(optionEl);
+                });
+                edgeValueSelect.value = options.includes(edge.label) ? edge.label : '';
+            }
 
             const canvasRect = canvas.getBoundingClientRect();
             let left = clientX - canvasRect.left + 10;
@@ -811,7 +965,13 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             edgeMenu.style.left = `${left}px`;
             edgeMenu.style.top = `${top}px`;
 
-            edgeLabelInput.focus();
+            let focusTarget = edgeLabelInput;
+            if (selectOptions) {
+                focusTarget = edgeSelectInput;
+            } else if (attemptSelect) {
+                focusTarget = edgeValueSelect;
+            }
+            focusTarget.focus();
         }
 
         edgeLabelInput.addEventListener('input', () => {
@@ -830,6 +990,33 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             }
         });
 
+        edgeSelectInput.addEventListener('input', () => {
+            if (!activeEdge) {
+                return;
+            }
+            activeEdge.label = buildSelectMarker(edgeSelectInput.value);
+            activeEdge.textEl.textContent = activeEdge.label;
+            notifyChange();
+        });
+
+        edgeSelectInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                edgeSelectInput.blur();
+            }
+        });
+
+        edgeValueSelect.addEventListener('mousedown', (e) => e.stopPropagation());
+        edgeValueSelect.addEventListener('click', (e) => e.stopPropagation());
+        edgeValueSelect.addEventListener('change', () => {
+            if (!activeEdge) {
+                return;
+            }
+            activeEdge.label = edgeValueSelect.value;
+            activeEdge.textEl.textContent = activeEdge.label;
+            notifyChange();
+        });
+
         deleteEdgeBtn.addEventListener('click', () => {
             if (!activeEdge) {
                 return;
@@ -846,8 +1033,25 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             activeEdge.label = BLANK_MARKER;
             activeEdge.textEl.textContent = BLANK_MARKER;
             edgeLabelInput.value = BLANK_MARKER;
+            edgeTextSection.hidden = false;
+            edgeSelectSection.hidden = true;
             notifyChange();
             getAddInputTargets().forEach((target) => target.setEdgeLabel(activeEdge.id, ''));
+        });
+
+        addEdgeSelectBtn.addEventListener('click', () => {
+            if (!activeEdge) {
+                return;
+            }
+            const defaultOptions = 'Opción 1, Opción 2';
+            activeEdge.label = buildSelectMarker(defaultOptions);
+            activeEdge.textEl.textContent = activeEdge.label;
+            edgeSelectInput.value = defaultOptions;
+            edgeTextSection.hidden = true;
+            edgeSelectSection.hidden = false;
+            notifyChange();
+            getAddInputTargets().forEach((target) => target.setEdgeLabel(activeEdge.id, ''));
+            edgeSelectInput.focus();
         });
 
         deleteNodeBtn.addEventListener('click', () => {
@@ -864,8 +1068,41 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const record = nodes.get(activeNodeId);
             setRecordText(record, BLANK_MARKER);
             nodeTextInput.value = BLANK_MARKER;
+            nodeTextSection.hidden = false;
+            nodeSelectSection.hidden = true;
             notifyChange();
             getAddInputTargets().forEach((target) => target.setNodeText(activeNodeId, ''));
+        });
+
+        addSelectBtn.addEventListener('click', () => {
+            if (!activeNodeId) {
+                return;
+            }
+            const record = nodes.get(activeNodeId);
+            const defaultOptions = 'Opción 1, Opción 2';
+            setRecordText(record, buildSelectMarker(defaultOptions));
+            nodeSelectInput.value = defaultOptions;
+            nodeTextSection.hidden = true;
+            nodeSelectSection.hidden = false;
+            notifyChange();
+            getAddInputTargets().forEach((target) => target.setNodeText(activeNodeId, ''));
+            nodeSelectInput.focus();
+        });
+
+        nodeSelectInput.addEventListener('input', () => {
+            if (!activeNodeId) {
+                return;
+            }
+            const record = nodes.get(activeNodeId);
+            setRecordText(record, buildSelectMarker(nodeSelectInput.value));
+            notifyChange();
+        });
+
+        nodeSelectInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                nodeSelectInput.blur();
+            }
         });
 
         function openMenu(nodeId) {
@@ -876,13 +1113,25 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
 
             const locked = record.locked;
             const canDeleteThisNode = locked ? allowDeleteNodes : true;
-            nodeTextSection.hidden = locked;
+            // A student's own new node (attempt mode) with content type 'select' or 'text'
+            // is edited entirely via its own inline element on the canvas (a <select> or
+            // fixed <span> - see createNode()), never via this menu - the menu's free-text
+            // field would otherwise let the student bypass that constraint. [[...]] marker
+            // parsing (editor-mode authoring only) must never run against a student's own
+            // typed answer either, so it's skipped entirely in attempt mode.
+            const attemptRestricted = attemptMode && !locked && newNodeContentType !== 'input';
+            const selectOptions = (!attemptMode && !locked) ? parseWholeSelectOptions(getRecordText(record)) : null;
+            nodeTextSection.hidden = locked || attemptRestricted || !!selectOptions;
+            nodeSelectSection.hidden = locked || !selectOptions;
             nodeColorSection.hidden = locked;
             addConnectedBtn.hidden = !allowAddNodes;
             deleteNodeBtn.hidden = !canDeleteThisNode;
 
             if (!locked) {
-                nodeTextInput.value = getRecordText(record);
+                if (!attemptRestricted) {
+                    nodeTextInput.value = getRecordText(record);
+                    nodeSelectInput.value = selectOptions ? selectOptions.join(', ') : '';
+                }
 
                 const currentColor = getComputedStyle(record.el).getPropertyValue('--node-color').trim();
                 colorRow.innerHTML = '';
@@ -970,8 +1219,14 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const parent = nodes.get(activeNodeId).el;
             const siblingIndex = edges.filter((edge) => edge.fromId === activeNodeId).length;
             const {left, top} = positionForNewNode(parent, siblingIndex);
-            const newId = createNode(left, top, attemptMode ? '' : 'Nuevo nodo', COLORS[0], false);
-            createEdge(activeNodeId, newId, '', false);
+            // Fixed-content nodes/edges (question-level newNodeContentType/newEdgeContentType)
+            // get their content baked in right at creation - select/input modes start empty,
+            // filled in later by the student via the inline element or the edge's menu.
+            const seedNodeText = (attemptMode && newNodeContentType === 'text') ? newNodeContentValue :
+                    (attemptMode ? '' : 'Nuevo nodo');
+            const newId = createNode(left, top, seedNodeText, COLORS[0], false);
+            const seedEdgeLabel = (attemptMode && newEdgeContentType === 'text') ? newEdgeContentValue : '';
+            createEdge(activeNodeId, newId, seedEdgeLabel, false);
             closeMenus();
             relayoutTree();
             notifyChange();
@@ -1083,11 +1338,13 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         }
 
         function getRecordText(record) {
-            return record.textEl.tagName === 'INPUT' ? record.textEl.value : record.textEl.textContent;
+            const tag = record.textEl.tagName;
+            return (tag === 'INPUT' || tag === 'SELECT') ? record.textEl.value : record.textEl.textContent;
         }
 
         function setRecordText(record, value) {
-            if (record.textEl.tagName === 'INPUT') {
+            const tag = record.textEl.tagName;
+            if (tag === 'INPUT' || tag === 'SELECT') {
                 record.textEl.value = value;
             } else {
                 record.textEl.textContent = value;
@@ -1115,11 +1372,43 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 textEl.className = 'qtype_graph-node-text';
                 textEl.dataset.maxWords = String(DEFAULT_MAX_WORDS);
                 renderLabelSegments(textEl, text, 'node', id, editable, opts.getBlankValue, opts.onBlankChange);
+            } else if (!locked && attemptMode && newNodeContentType === 'text') {
+                // Fixed, non-editable content (question-level "New node content" setting) -
+                // the student cannot type or choose anything for this node; only whether
+                // they add it, and how they connect it, is part of their answer. text is
+                // whatever was seeded at creation (see addConnectedBtn) or previously saved.
+                textEl = document.createElement('span');
+                textEl.className = 'qtype_graph-node-text';
+                textEl.contentEditable = 'false';
+                textEl.textContent = text || newNodeContentValue;
+            } else if (!locked && attemptMode && newNodeContentType === 'select') {
+                textEl = document.createElement('select');
+                textEl.className = 'qtype_graph-node-text qtype_graph-node-text-select';
+                textEl.disabled = !editable;
+                const options = splitOptions(newNodeContentValue);
+                const placeholderOpt = document.createElement('option');
+                placeholderOpt.value = '';
+                placeholderOpt.textContent = '—';
+                textEl.appendChild(placeholderOpt);
+                options.forEach((opt) => {
+                    const optionEl = document.createElement('option');
+                    optionEl.value = opt;
+                    optionEl.textContent = opt;
+                    textEl.appendChild(optionEl);
+                });
+                textEl.value = options.includes(text) ? text : '';
+                textEl.addEventListener('mousedown', (e) => e.stopPropagation());
+                textEl.addEventListener('click', (e) => e.stopPropagation());
+                textEl.addEventListener('change', () => {
+                    notifyChange();
+                });
             } else if (!locked && attemptMode) {
+                // 'input' - today's free-text behaviour; newNodeContentValue (if set)
+                // becomes the placeholder instead of the hardcoded "Nuevo nodo".
                 textEl = document.createElement('input');
                 textEl.type = 'text';
                 textEl.className = 'qtype_graph-node-text qtype_graph-node-text-input';
-                textEl.placeholder = 'Nuevo nodo';
+                textEl.placeholder = newNodeContentValue || 'Nuevo nodo';
                 textEl.dataset.maxWords = String(DEFAULT_MAX_WORDS);
                 textEl.value = text || '';
                 textEl.readOnly = !editable;
@@ -1462,6 +1751,11 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                     message: `${itemDescription} todavía tiene el marcador {{T_INPUT}} sin completar en el grafo de respuesta.`});
             return;
         }
+        if (WHOLE_SELECT_RE.test(trimmed)) {
+            issues.push({severity: 'error', message: `${itemDescription} todavía tiene la lista de opciones ` +
+                    '[[...]] sin reemplazar por la respuesta aceptada en el grafo de respuesta.'});
+            return;
+        }
         if (spec.type === 'exact' && spec.answers.some((a) => a.trim() === '')) {
             issues.push({severity: 'warning',
                     message: `${itemDescription} tiene una respuesta vacía dentro de su lista de respuestas aceptadas.`});
@@ -1510,7 +1804,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const defaultEdgeIds = new Set(defaultData.edges.map((e) => e.id));
 
         defaultData.nodes.forEach((node) => {
-            // A blank node's own text is just the unreadable {{T_INPUT}} marker - show its id instead.
+            // A blank node's own text is just its marker ({{T_INPUT}} or [[opt1,opt2,...]]),
+            // not a human-readable label - show its id instead.
             const label = hasBlankTokens(node.text) ? node.id : (node.text || node.id);
             const resultNode = resultNodes.get(node.id);
             if (!resultNode) {
@@ -1842,6 +2137,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             mode: 'attempt',
             allowAddNodes: opts.allowAddNodes !== false,
             allowDeleteNodes: opts.allowDeleteNodes !== false,
+            newNodeContentType: opts.newNodeContentType,
+            newNodeContentValue: opts.newNodeContentValue,
+            newEdgeContentType: opts.newEdgeContentType,
+            newEdgeContentValue: opts.newEdgeContentValue,
             getBlankValue: (blankId) => blankValues[blankId],
             onBlankChange: (blankId, value) => {
                 blankValues[blankId] = value;
@@ -1874,9 +2173,14 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      *                 Moodle's display options say to show correctness right now. Scoped to just
      *                 {{T_INPUT}} blanks (nodes/edges) and anchored new-node creations (newnodes,
      *                 keyed by the student's own node id) - never plain structural nodes/edges.
+     * @param {string} [newNodeContentType] 'input'|'select'|'text' - what a student's own new
+     *                 node looks like (question-level "New node content" setting).
+     * @param {string} [newNodeContentValue] meaning depends on newNodeContentType.
+     * @param {string} [newEdgeContentType] 'input'|'select'|'text' - same, for a new connection's label.
+     * @param {string} [newEdgeContentValue] meaning depends on newEdgeContentType.
      */
     function initAttempt(containerId, hiddenFieldId, teacherJson, readOnly, allowAddNodes, allowDeleteNodes,
-            feedbackJson) {
+            feedbackJson, newNodeContentType, newNodeContentValue, newEdgeContentType, newEdgeContentValue) {
         const root = document.getElementById(containerId);
         const hidden = document.getElementById(hiddenFieldId);
         if (!root || !hidden) {
@@ -1887,6 +2191,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             readOnly,
             allowAddNodes,
             allowDeleteNodes,
+            newNodeContentType,
+            newNodeContentValue,
+            newEdgeContentType,
+            newEdgeContentValue,
             initialResponseJson: hidden.value,
             onResponseChange: (response) => {
                 hidden.value = JSON.stringify(response);

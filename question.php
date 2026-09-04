@@ -53,6 +53,15 @@ class qtype_graph_question extends question_graded_automatically {
     /** @var bool whether students may delete the teacher-authored (original) nodes. */
     public $allowdeletenodes = false;
 
+    /** @var string what a student's new node looks like: 'input', 'select', or 'text'. */
+    public $newnodecontenttype = 'input';
+    /** @var string meaning depends on $newnodecontenttype - see amd/src/editor.js's createNode(). */
+    public $newnodecontentvalue = '';
+    /** @var string what a student's new connection label looks like: 'input', 'select', or 'text'. */
+    public $newedgecontenttype = 'input';
+    /** @var string meaning depends on $newedgecontenttype - see amd/src/editor.js's openEdgeMenu(). */
+    public $newedgecontentvalue = '';
+
     /** @var string feedback shown for a fully correct response. */
     public $correctfeedback;
     /** @var int format of $correctfeedback. */

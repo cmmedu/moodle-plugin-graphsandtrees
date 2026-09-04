@@ -156,5 +156,35 @@ function xmldb_qtype_graph_upgrade(int $oldversion): bool {
         upgrade_plugin_savepoint(true, 2026090400, 'qtype', 'graph');
     }
 
+    if ($oldversion < 2026090401) {
+        $table = new xmldb_table('qtype_graph_options');
+
+        $field = new xmldb_field('newnodecontenttype', XMLDB_TYPE_CHAR, '20', null,
+                XMLDB_NOTNULL, null, 'input', 'allowdeletenodes');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $field = new xmldb_field('newnodecontentvalue', XMLDB_TYPE_TEXT, null, null,
+                null, null, null, 'newnodecontenttype');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $field = new xmldb_field('newedgecontenttype', XMLDB_TYPE_CHAR, '20', null,
+                XMLDB_NOTNULL, null, 'input', 'newnodecontentvalue');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $field = new xmldb_field('newedgecontentvalue', XMLDB_TYPE_TEXT, null, null,
+                null, null, null, 'newedgecontenttype');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026090401, 'qtype', 'graph');
+    }
+
     return true;
 }

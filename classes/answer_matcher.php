@@ -30,6 +30,15 @@ class answer_matcher {
     /** @var string matches the bare/authored {{T_INPUT...}} blank marker in a default-graph label. */
     const BLANK_TOKEN_PATTERN = '/\{\{T_INPUT\b/';
 
+    /** @var string matches a [[option1,option2,...]] dropdown blank marker in a default-graph label -
+     *  see amd/src/editor.js's "Marcar como selector". Unlike BLANK_TOKEN_PATTERN, this marker's
+     *  content (the option list) is not secret and is never stripped by blank_token.php: it is the
+     *  set of choices, not the accepted answer. The accepted answer(s) still live in the result graph,
+     *  matched against the option TEXT the student picked, using the exact same grammar as a free-text
+     *  {{T_INPUT}} blank (parse_accepted_answers()/matches() below) - a select blank changes only how
+     *  the student answers (a <select> instead of a text box), never how the answer is graded. */
+    const SELECT_TOKEN_PATTERN = '/\[\[[^\]]*\]\]/';
+
     /** @var string matches a whole result-graph field that is a {{"a";"b";...}} answer list. */
     const ANSWER_LIST_PATTERN = '/^\{\{\s*(?:"[^"]*"\s*;?\s*)+\}\}$/';
 
@@ -43,13 +52,18 @@ class answer_matcher {
     const ANY_OR_EMPTY_MARKER = '{{T_ANY_N_EMPTY}}';
 
     /**
-     * Does a default-graph node/edge label contain a fill-in-the-blank marker?
+     * Does a default-graph node/edge label contain a fill-in-the-blank marker -
+     * either a free-text {{T_INPUT}} blank or a [[option1,option2,...]] dropdown blank?
      *
      * @param mixed $text
      * @return bool
      */
     public static function has_blank($text): bool {
-        return is_string($text) && preg_match(self::BLANK_TOKEN_PATTERN, $text) === 1;
+        if (!is_string($text)) {
+            return false;
+        }
+        return preg_match(self::BLANK_TOKEN_PATTERN, $text) === 1
+                || preg_match(self::SELECT_TOKEN_PATTERN, $text) === 1;
     }
 
     /**

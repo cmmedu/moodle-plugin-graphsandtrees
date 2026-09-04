@@ -49,6 +49,30 @@ class qtype_graph_edit_form extends question_edit_form {
         $mform->addElement('advcheckbox', 'allowdeletenodes', get_string('allowdeletenodes', 'qtype_graph'));
         $mform->setDefault('allowdeletenodes', 0);
 
+        $newcontenttypeoptions = [
+            'input' => get_string('contenttype_input', 'qtype_graph'),
+            'select' => get_string('contenttype_select', 'qtype_graph'),
+            'text' => get_string('contenttype_text', 'qtype_graph'),
+        ];
+
+        $mform->addElement('select', 'newnodecontenttype', get_string('newnodecontenttype', 'qtype_graph'),
+                $newcontenttypeoptions);
+        $mform->setDefault('newnodecontenttype', 'input');
+        $mform->addHelpButton('newnodecontenttype', 'newnodecontenttype', 'qtype_graph');
+
+        $mform->addElement('text', 'newnodecontentvalue', get_string('newnodecontentvalue', 'qtype_graph'),
+                ['size' => 50]);
+        $mform->setType('newnodecontentvalue', PARAM_TEXT);
+
+        $mform->addElement('select', 'newedgecontenttype', get_string('newedgecontenttype', 'qtype_graph'),
+                $newcontenttypeoptions);
+        $mform->setDefault('newedgecontenttype', 'input');
+        $mform->addHelpButton('newedgecontenttype', 'newedgecontenttype', 'qtype_graph');
+
+        $mform->addElement('text', 'newedgecontentvalue', get_string('newedgecontentvalue', 'qtype_graph'),
+                ['size' => 50]);
+        $mform->setType('newedgecontentvalue', PARAM_TEXT);
+
         // Generated upfront (before either canvas is rendered) so the default graph's
         // initEditor call below can reference the result graph's container id as its
         // "Marcar como input" sync target, even though that second canvas is only
@@ -149,6 +173,10 @@ class qtype_graph_edit_form extends question_edit_form {
             $question->resultgraphjson = $question->options->resultgraphjson ?? '';
             $question->allowaddnodes = $question->options->allowaddnodes;
             $question->allowdeletenodes = $question->options->allowdeletenodes;
+            $question->newnodecontenttype = $question->options->newnodecontenttype ?? 'input';
+            $question->newnodecontentvalue = $question->options->newnodecontentvalue ?? '';
+            $question->newedgecontenttype = $question->options->newedgecontenttype ?? 'input';
+            $question->newedgecontentvalue = $question->options->newedgecontentvalue ?? '';
             $question->altresultgraphsjson = json_encode(array_map(
                     function($altanswer) {
                         return json_decode($altanswer->graphjson, true) ?: new stdClass();

@@ -67,6 +67,10 @@ class qtype_graph extends question_type {
         $options->resultgraphjson = $formdata->resultgraphjson ?? '';
         $options->allowaddnodes = !empty($formdata->allowaddnodes) ? 1 : 0;
         $options->allowdeletenodes = !empty($formdata->allowdeletenodes) ? 1 : 0;
+        $options->newnodecontenttype = $formdata->newnodecontenttype ?? 'input';
+        $options->newnodecontentvalue = $formdata->newnodecontentvalue ?? '';
+        $options->newedgecontenttype = $formdata->newedgecontenttype ?? 'input';
+        $options->newedgecontentvalue = $formdata->newedgecontentvalue ?? '';
         $options = $this->save_combined_feedback_helper($options, $formdata, $formdata->context, true);
         $DB->update_record('qtype_graph_options', $options);
 
@@ -121,6 +125,10 @@ class qtype_graph extends question_type {
         $question->resultgraphjson = $questiondata->options->resultgraphjson ?? '';
         $question->allowaddnodes = (bool) $questiondata->options->allowaddnodes;
         $question->allowdeletenodes = (bool) $questiondata->options->allowdeletenodes;
+        $question->newnodecontenttype = $questiondata->options->newnodecontenttype ?? 'input';
+        $question->newnodecontentvalue = $questiondata->options->newnodecontentvalue ?? '';
+        $question->newedgecontenttype = $questiondata->options->newedgecontenttype ?? 'input';
+        $question->newedgecontentvalue = $questiondata->options->newedgecontentvalue ?? '';
         $question->altresultgraphs = array_map(function($altanswer) {
             return $altanswer->graphjson;
         }, $questiondata->options->altanswers ?? []);

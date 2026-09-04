@@ -480,6 +480,32 @@
   cursor: default;
 }
 
+.qtype_graph-blank-select {
+  display: inline-block;
+  max-width: 140px;
+  margin: 0 2px;
+  padding: 2px 6px;
+  font-size: 12px;
+  line-height: 1.3;
+  background: var(--qtype-graph-bg);
+  border: 1px solid var(--qtype-graph-accent);
+  border-radius: 4px;
+  color: var(--qtype-graph-text);
+  font-family: inherit;
+  vertical-align: baseline;
+}
+
+.qtype_graph-blank-select:focus {
+  outline: none;
+  border-color: var(--qtype-graph-accent);
+  box-shadow: 0 0 0 2px var(--qtype-graph-accent-soft);
+}
+
+.qtype_graph-blank-select:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
 .qtype_graph-node-text-input {
   width: 100%;
   background: transparent;
@@ -493,6 +519,22 @@
 }
 
 .qtype_graph-node-text-input:focus {
+  border-color: var(--qtype-graph-accent);
+}
+
+.qtype_graph-node-text-select {
+  width: 100%;
+  background: var(--qtype-graph-bg);
+  border: 1px solid var(--qtype-graph-border);
+  border-radius: 6px;
+  color: var(--qtype-graph-text);
+  font: inherit;
+  text-align: center;
+  padding: 2px 4px;
+  outline: none;
+}
+
+.qtype_graph-node-text-select:focus {
   border-color: var(--qtype-graph-accent);
 }
 
@@ -513,7 +555,8 @@
   pointer-events: auto;
 }
 
-.qtype_graph-edge-label-html .qtype_graph-blank-input {
+.qtype_graph-edge-label-html .qtype_graph-blank-input,
+.qtype_graph-edge-label-html .qtype_graph-blank-select {
   pointer-events: auto;
 }
 
