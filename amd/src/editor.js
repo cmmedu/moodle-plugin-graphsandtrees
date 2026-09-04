@@ -187,8 +187,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * {{T_ANY_N_EMPTY}} are the wildcard markers, {{"a";"b"}} is a list of
      * accepted answers, and any other text is a single accepted answer.
      *
-     * Not called anywhere yet - a building block for the future grading pass,
-     * not wired into any comparison logic yet.
+     * Used by checkAnswerField() (authoring-time validation) below.
      *
      * @param {string} text raw result-graph field text.
      * @return {{type: string, answers: Array}} type is one of 'unset', 'any',
@@ -269,14 +268,36 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             addEdgeInputBtn.hidden = false;
         }
 
+        // Sibling editors (by container id) this instance pushes fill-in-the-blank
+        // clears and layout changes into: starts with addInputTargetContainerId (the
+        // primary answer graph, wired up front by initEditor()) and grows via
+        // addSyncTarget() as alternate answer graphs are added later (see
+        // initAltAnswers()) - a node/edge marked as input, or a layout change, must
+        // reach every answer graph, not just the one known when this editor was built.
+        const syncTargetIds = new Set();
+        if (addInputTargetContainerId) {
+            syncTargetIds.add(addInputTargetContainerId);
+        }
+
         /**
-         * Look up the sibling editor (by container id) this instance is configured
-         * to push fill-in-the-blank changes into, if any.
+         * Resolve every registered sync target to its live editor api.
          *
-         * @return {Object|null}
+         * @return {Array}
          */
-        function getAddInputTarget() {
-            return addInputTargetContainerId ? (editorRegistry.get(addInputTargetContainerId) || null) : null;
+        function getAddInputTargets() {
+            return [...syncTargetIds].map((id) => editorRegistry.get(id)).filter(Boolean);
+        }
+
+        /**
+         * Register another editor (by container id) to receive this editor's future
+         * "Marcar como input" clears and layout changes, alongside whatever target(s)
+         * it already has. Used to wire a newly-added alternate answer graph into the
+         * default graph's existing sync mechanism.
+         *
+         * @param {string} containerId
+         */
+        function addSyncTarget(containerId) {
+            syncTargetIds.add(containerId);
         }
         const modeToggle = root.querySelector('[data-role="mode-toggle"]');
         const orientationToggle = root.querySelector('[data-role="orientation-toggle"]');
@@ -284,8 +305,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const zoomInBtn = root.querySelector('[data-role="zoom-in"]');
         const zoomOutBtn = root.querySelector('[data-role="zoom-out"]');
         const zoomResetBtn = root.querySelector('[data-role="zoom-reset"]');
-        const exportBtn = root.querySelector('[data-role="export-btn"]');
-        const importBtn = root.querySelector('[data-role="import-btn"]');
+        const jsonBtn = root.querySelector('[data-role="json-btn"]');
         const jsonPanel = root.querySelector('[data-role="json-panel"]');
         const jsonTextarea = root.querySelector('[data-role="json-textarea"]');
         const jsonStatus = root.querySelector('[data-role="json-status"]');
@@ -383,12 +403,12 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         zoomOutBtn.addEventListener('click', () => setZoom(zoom - ZOOM_STEP));
         zoomResetBtn.addEventListener('click', () => resetView());
 
-        // Export/import are only offered on the teacher authoring canvases (both the
-        // default graph and the result graph use opts.mode = 'editor', see initEditor()),
-        // never on the student attempt canvas (opts.mode = 'attempt').
+        // The JSON panel (export + import combined) is only offered on the teacher
+        // authoring canvases (both the default graph and the result graph use
+        // opts.mode = 'editor', see initEditor()), never on the student attempt
+        // canvas (opts.mode = 'attempt').
         if (opts.mode === 'editor') {
-            exportBtn.hidden = false;
-            importBtn.hidden = false;
+            jsonBtn.hidden = false;
         }
 
         function showJsonStatus(message, isError) {
@@ -402,15 +422,11 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             showJsonStatus('', false);
         }
 
-        exportBtn.addEventListener('click', () => {
+        jsonBtn.addEventListener('click', () => {
             jsonTextarea.value = JSON.stringify(serialize(), null, 2);
             openJsonPanel();
             jsonTextarea.focus();
             jsonTextarea.select();
-        });
-        importBtn.addEventListener('click', () => {
-            openJsonPanel();
-            jsonTextarea.focus();
         });
         jsonCloseBtn.addEventListener('click', () => {
             jsonPanel.hidden = true;
@@ -831,10 +847,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             activeEdge.textEl.textContent = BLANK_MARKER;
             edgeLabelInput.value = BLANK_MARKER;
             notifyChange();
-            const target = getAddInputTarget();
-            if (target) {
-                target.setEdgeLabel(activeEdge.id, '');
-            }
+            getAddInputTargets().forEach((target) => target.setEdgeLabel(activeEdge.id, ''));
         });
 
         deleteNodeBtn.addEventListener('click', () => {
@@ -852,10 +865,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             setRecordText(record, BLANK_MARKER);
             nodeTextInput.value = BLANK_MARKER;
             notifyChange();
-            const target = getAddInputTarget();
-            if (target) {
-                target.setNodeText(activeNodeId, '');
-            }
+            getAddInputTargets().forEach((target) => target.setNodeText(activeNodeId, ''));
         });
 
         function openMenu(nodeId) {
@@ -968,10 +978,11 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         });
 
         function propagateLayout() {
-            const target = getAddInputTarget();
-            if (target && target.setLayout) {
-                target.setLayout(mode, orientation, lineStyle);
-            }
+            getAddInputTargets().forEach((target) => {
+                if (target.setLayout) {
+                    target.setLayout(mode, orientation, lineStyle);
+                }
+            });
         }
 
         function setMode(nextMode, silent) {
@@ -1391,7 +1402,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             });
         }
 
-        const api = {hydrate, serialize, setNodeText, setEdgeLabel, setLayout, markFeedback};
+        const api = {hydrate, serialize, setNodeText, setEdgeLabel, setLayout, markFeedback, addSyncTarget};
         editorRegistry.set(root.id, api);
         return api;
     }
@@ -1724,28 +1735,29 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     }
 
     /**
-     * Attempt-page widget: teacher graph locked, student additions editable.
+     * Build the "teacher graph locked, student additions editable" widget
+     * used by initAttempt() (the quiz attempt page). Merges the locked
+     * teacherData with whatever response the caller seeds it with, and
+     * exposes getResponse() to read back the current response payload (the
+     * same {nodes, edges, removednodes, blanks} shape
+     * classes/grading.php's evaluate() expects) at any time.
      *
-     * @param {string} containerId id of the .qtype_graph-container element.
-     * @param {string} hiddenFieldId id of the response hidden field (nodesjson).
+     * @param {Element} root the .qtype_graph-container element.
      * @param {string} teacherJson the teacher-authored graph, as JSON.
-     * @param {boolean} readOnly true if the question is being displayed read-only (e.g. review).
-     * @param {boolean} allowAddNodes true if the student may add new nodes.
-     * @param {boolean} allowDeleteNodes true if the student may delete the teacher-authored nodes.
-     * @param {string} [feedbackJson] JSON {nodes: {id: bool}, edges: {id: bool}, newnodes: {id: bool}} -
-     *                 per-item correctness for this response, from classes/grading.php's
-     *                 feedback_breakdown(). Only ever set once the question is auto-graded AND
-     *                 Moodle's display options say to show correctness right now. Scoped to just
-     *                 {{T_INPUT}} blanks (nodes/edges) and anchored new-node creations (newnodes,
-     *                 keyed by the student's own node id) - never plain structural nodes/edges.
+     * @param {Object} opts
+     * @param {boolean} [opts.readOnly] true to render non-editable.
+     * @param {boolean} [opts.allowAddNodes] true if new nodes may be added.
+     * @param {boolean} [opts.allowDeleteNodes] true if teacher-authored nodes may be deleted.
+     * @param {string} [opts.initialResponseJson] a previously-saved response to seed from.
+     * @param {Function} [opts.onResponseChange] (response) => void, called whenever the
+     *                    response changes as a result of user interaction (never for the
+     *                    initial render - callers needing the initial value should call
+     *                    getResponse() themselves right after this returns).
+     * @return {{editor: Object, getResponse: Function}}
      */
-    function initAttempt(containerId, hiddenFieldId, teacherJson, readOnly, allowAddNodes, allowDeleteNodes,
-            feedbackJson) {
-        const root = document.getElementById(containerId);
-        const hidden = document.getElementById(hiddenFieldId);
-        if (!root || !hidden) {
-            return;
-        }
+    function createAttemptEditor(root, teacherJson, opts) {
+        opts = opts || {};
+        const onResponseChange = opts.onResponseChange || null;
 
         let teacherData = {nodes: [], edges: []};
         try {
@@ -1759,9 +1771,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const teacherIds = new Set(teacherData.nodes.map((n) => n.id));
 
         let studentData = {nodes: [], edges: []};
-        if (hidden.value) {
+        if (opts.initialResponseJson) {
             try {
-                const parsed = JSON.parse(hidden.value);
+                const parsed = JSON.parse(opts.initialResponseJson);
                 if (parsed && Array.isArray(parsed.nodes)) {
                     studentData = parsed;
                 }
@@ -1797,7 +1809,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         let blankValues = (studentData && studentData.blanks && typeof studentData.blanks === 'object') ?
                 Object.assign({}, studentData.blanks) : {};
 
-        function writeResponse(data) {
+        let lastResponse = null;
+
+        function computeResponse(data) {
             const liveIds = new Set(data.nodes.map((n) => n.id));
             teacherIds.forEach((id) => {
                 if (!liveIds.has(id)) {
@@ -1807,33 +1821,81 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const studentNodes = data.nodes.filter((n) => !teacherIds.has(n.id));
             const studentEdges = data.edges.filter(
                     (e) => !(teacherIds.has(e.from) && teacherIds.has(e.to)));
-            hidden.value = JSON.stringify({
+            return {
                 nodes: studentNodes,
                 edges: studentEdges,
                 removednodes: [...removedTeacherIds],
                 blanks: blankValues,
-            });
-            const form = root.closest('form');
-            if (form) {
-                FormChangeChecker.markFormAsDirty(form);
+            };
+        }
+
+        function updateResponse(data) {
+            lastResponse = computeResponse(data);
+            if (onResponseChange) {
+                onResponseChange(lastResponse);
             }
         }
 
         const editor = createGraphEditor(root, {
-            editable: !readOnly,
+            editable: !opts.readOnly,
             lockLayout: true,
             mode: 'attempt',
-            allowAddNodes: allowAddNodes !== false,
-            allowDeleteNodes: allowDeleteNodes !== false,
+            allowAddNodes: opts.allowAddNodes !== false,
+            allowDeleteNodes: opts.allowDeleteNodes !== false,
             getBlankValue: (blankId) => blankValues[blankId],
             onBlankChange: (blankId, value) => {
                 blankValues[blankId] = value;
-                writeResponse(editor.serialize());
+                updateResponse(editor.serialize());
             },
-            onChange: (data) => writeResponse(data),
+            onChange: (data) => updateResponse(data),
         });
 
         editor.hydrate(merged);
+        // Not routed through updateResponse()/onResponseChange: the initial render is not
+        // a user-driven change, and initAttempt()'s caller relies on the hidden field being
+        // left untouched (and the form not marked dirty) purely from loading the page.
+        lastResponse = computeResponse(editor.serialize());
+
+        return {editor, getResponse: () => lastResponse};
+    }
+
+    /**
+     * Attempt-page widget: teacher graph locked, student additions editable.
+     *
+     * @param {string} containerId id of the .qtype_graph-container element.
+     * @param {string} hiddenFieldId id of the response hidden field (nodesjson).
+     * @param {string} teacherJson the teacher-authored graph, as JSON.
+     * @param {boolean} readOnly true if the question is being displayed read-only (e.g. review).
+     * @param {boolean} allowAddNodes true if the student may add new nodes.
+     * @param {boolean} allowDeleteNodes true if the student may delete the teacher-authored nodes.
+     * @param {string} [feedbackJson] JSON {nodes: {id: bool}, edges: {id: bool}, newnodes: {id: bool}} -
+     *                 per-item correctness for this response, from classes/grading.php's
+     *                 feedback_breakdown(). Only ever set once the question is auto-graded AND
+     *                 Moodle's display options say to show correctness right now. Scoped to just
+     *                 {{T_INPUT}} blanks (nodes/edges) and anchored new-node creations (newnodes,
+     *                 keyed by the student's own node id) - never plain structural nodes/edges.
+     */
+    function initAttempt(containerId, hiddenFieldId, teacherJson, readOnly, allowAddNodes, allowDeleteNodes,
+            feedbackJson) {
+        const root = document.getElementById(containerId);
+        const hidden = document.getElementById(hiddenFieldId);
+        if (!root || !hidden) {
+            return;
+        }
+
+        const attempt = createAttemptEditor(root, teacherJson, {
+            readOnly,
+            allowAddNodes,
+            allowDeleteNodes,
+            initialResponseJson: hidden.value,
+            onResponseChange: (response) => {
+                hidden.value = JSON.stringify(response);
+                const form = root.closest('form');
+                if (form) {
+                    FormChangeChecker.markFormAsDirty(form);
+                }
+            },
+        });
 
         if (feedbackJson) {
             let feedback = null;
@@ -1845,7 +1907,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             if (feedback) {
                 // newnodes is keyed by the student's own (teacher-unknown) node id, which
                 // never collides with a teacher blank's id, so it can share the node bucket.
-                editor.markFeedback({
+                attempt.editor.markFeedback({
                     nodes: Object.assign({}, feedback.nodes, feedback.newnodes),
                     edges: feedback.edges,
                 });
@@ -1857,9 +1919,187 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         }
     }
 
+    /**
+     * Wire up the edit form's "Alternate answer graphs" tool: an "add" button
+     * that spins up extra fully-editable answer-graph canvases alongside the
+     * primary one (id_resultgraphjson), for questions where more than one
+     * final graph should be accepted as correct. Every alternate is stored as
+     * one entry in a single JSON array hidden field (altHiddenFieldId) -
+     * classes/grading.php grades the response against the primary graph and
+     * every alternate, and keeps whichever gives the best score (see this
+     * plugin's CLAUDE.md).
+     *
+     * Each alternate behaves exactly like the primary result graph: its own
+     * mode/orientation/line-style controls are hidden and always mirror the
+     * default graph's (via createGraphEditor's hideLayoutControls + the
+     * default editor's addSyncTarget()), it has no "Marcar como input"
+     * button of its own - only the default graph creates blanks, and doing so
+     * there clears the matching node/edge in the primary graph AND every
+     * alternate, since addSyncTarget() registers each one as a target - and
+     * its own "Reiniciar al grafo por defecto" button overwrites just that
+     * one alternate with a copy of the live default graph (mirroring the
+     * primary result graph's reset button, wired separately in initEditor()).
+     *
+     * @param {string} addButtonId id of the "add alternate answer graph" button.
+     * @param {string} listId id of the container alternate canvases are appended to.
+     * @param {string} templateId id of the <template> holding one editor_ui::render() skeleton.
+     * @param {string} altHiddenFieldId id of the hidden field holding the JSON array of alternates.
+     * @param {string} defaultContainerId id of the default graph's .qtype_graph-container element -
+     *                 looked up in editorRegistry to register each alternate as a sync target.
+     * @param {string} defaultHiddenFieldId id of the default graph's hidden field, read for the
+     *                 live mode/orientation/line-style every new alternate should start mirroring.
+     */
+    function initAltAnswers(addButtonId, listId, templateId, altHiddenFieldId, defaultContainerId,
+            defaultHiddenFieldId) {
+        const addButton = document.getElementById(addButtonId);
+        const list = document.getElementById(listId);
+        const template = document.getElementById(templateId);
+        const altField = document.getElementById(altHiddenFieldId);
+        const defaultField = document.getElementById(defaultHiddenFieldId);
+        if (!addButton || !list || !template || !altField || !defaultField) {
+            return;
+        }
+
+        const entries = [];
+        let counter = 0;
+
+        function writeAltField() {
+            altField.value = JSON.stringify(entries.map((entry) => entry.editor.serialize()));
+            const form = list.closest('form');
+            if (form) {
+                FormChangeChecker.markFormAsDirty(form);
+            }
+        }
+
+        /**
+         * @param {Object|null} initialGraph a previously-saved alternate to hydrate from, or
+         *                       null for a brand new one.
+         * @param {boolean} silent true to skip writeAltField() - used when rendering alternates
+         *                   already present in altField.value on page load, so loading the page
+         *                   does not itself mark the form dirty.
+         */
+        function addAltCanvas(initialGraph, silent) {
+            counter += 1;
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'qtype_graph-altanswer';
+
+            const heading = document.createElement('div');
+            heading.className = 'qtype_graph-altanswer-heading';
+            const title = document.createElement('span');
+            title.className = 'qtype_graph-altanswer-title';
+            title.textContent = `Grafo de respuesta alterna ${counter}`;
+            const resetBtn = document.createElement('button');
+            resetBtn.type = 'button';
+            resetBtn.className = 'btn btn-outline-danger btn-sm';
+            resetBtn.textContent = 'Reiniciar al grafo por defecto';
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'btn btn-outline-danger btn-sm';
+            removeBtn.textContent = 'Quitar';
+            const buttons = document.createElement('div');
+            buttons.className = 'qtype_graph-altanswer-buttons';
+            buttons.appendChild(resetBtn);
+            buttons.appendChild(removeBtn);
+            heading.appendChild(title);
+            heading.appendChild(buttons);
+            wrapper.appendChild(heading);
+
+            const canvasRoot = template.content.firstElementChild.cloneNode(true);
+            canvasRoot.id = `qtype_graph_alt_${Date.now()}_${counter}`;
+            wrapper.appendChild(canvasRoot);
+
+            list.appendChild(wrapper);
+
+            const editor = createGraphEditor(canvasRoot, {
+                editable: true,
+                mode: 'editor',
+                hideLayoutControls: true,
+                onChange: () => writeAltField(),
+            });
+
+            const initial = (initialGraph && Array.isArray(initialGraph.nodes) && initialGraph.nodes.length) ?
+                    initialGraph :
+                    {
+                        nodes: [{id: `node-${Date.now().toString(36)}`, left: 120, top: 220,
+                                text: 'Nuevo nodo', color: COLORS[0], locked: false}],
+                        edges: [],
+                    };
+            let sourceGraph = {};
+            try {
+                sourceGraph = JSON.parse(defaultField.value || '{}') || {};
+            } catch (e) {
+                sourceGraph = {};
+            }
+            initial.mode = sourceGraph.mode || 'graph';
+            initial.orientation = sourceGraph.orientation || 'vertical';
+            initial.lineStyle = sourceGraph.lineStyle || 'straight';
+
+            editor.hydrate(initial);
+
+            const entry = {editor};
+            entries.push(entry);
+
+            const defaultEditor = editorRegistry.get(defaultContainerId);
+            if (defaultEditor) {
+                defaultEditor.addSyncTarget(canvasRoot.id);
+            }
+
+            resetBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                if (!window.confirm('Esto reemplazará este grafo alterno por una copia del grafo por defecto, ' +
+                        'descartando los cambios hechos en él. ¿Continuar?')) {
+                    return;
+                }
+                let data;
+                try {
+                    data = JSON.parse(defaultField.value);
+                } catch (err) {
+                    return;
+                }
+                if (!data || !Array.isArray(data.nodes)) {
+                    return;
+                }
+                editor.hydrate(data);
+                writeAltField();
+            });
+
+            removeBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                wrapper.remove();
+                const idx = entries.indexOf(entry);
+                if (idx !== -1) {
+                    entries.splice(idx, 1);
+                }
+                writeAltField();
+            });
+
+            if (!silent) {
+                writeAltField();
+            }
+        }
+
+        let initialAlts = [];
+        try {
+            const parsed = JSON.parse(altField.value || '[]');
+            if (Array.isArray(parsed)) {
+                initialAlts = parsed;
+            }
+        } catch (e) {
+            initialAlts = [];
+        }
+        initialAlts.forEach((graph) => addAltCanvas(graph, true));
+
+        addButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            addAltCanvas(null, false);
+        });
+    }
+
     return {
         initEditor,
         initAttempt,
         initValidation,
+        initAltAnswers,
     };
 });

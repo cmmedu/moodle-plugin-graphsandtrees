@@ -95,6 +95,36 @@ class qtype_graph_edit_form extends question_edit_form {
         $PAGE->requires->js_call_amd('qtype_graph/editor', 'initValidation',
                 [$validatebuttonid, $validateoutputid, 'id_graphjson', 'id_resultgraphjson', 'id_allowaddnodes']);
 
+        $mform->addElement('header', 'altanswersheader', get_string('altanswersheader', 'qtype_graph'));
+        $mform->setExpanded('altanswersheader', false);
+        $mform->addElement('static', 'altanswershelp', '', get_string('altanswershelp', 'qtype_graph'));
+
+        // Inert skeleton initAltAnswers() clones for every alternate it adds, so the editor
+        // markup (editor_ui::render()) only needs to be authored in one place - the container
+        // id baked into it here is irrelevant, since the JS overwrites it on every clone.
+        $alttemplateid = 'qtype_graph_alttemplate_' . html_writer::random_id('tpl');
+        $mform->addElement('html',
+                '<template id="' . $alttemplateid . '">' .
+                \qtype_graph\editor_ui::render('qtype_graph_alt_tpl') .
+                '</template>');
+
+        $altlistid = 'qtype_graph_altlist_' . html_writer::random_id('list');
+        $mform->addElement('html', html_writer::div('', 'qtype_graph-altlist', ['id' => $altlistid]));
+
+        $mform->addElement('hidden', 'altresultgraphsjson', null, ['id' => 'id_altresultgraphsjson']);
+        $mform->setType('altresultgraphsjson', PARAM_RAW);
+
+        $addaltbuttonid = 'qtype_graph_addalt_' . html_writer::random_id('addalt');
+        $mform->addElement('html', html_writer::tag('button', get_string('addaltanswer', 'qtype_graph'), [
+            'type' => 'button',
+            'id' => $addaltbuttonid,
+            'class' => 'btn btn-outline-secondary mb-2',
+        ]));
+
+        $PAGE->requires->js_call_amd('qtype_graph/editor', 'initAltAnswers',
+                [$addaltbuttonid, $altlistid, $alttemplateid, 'id_altresultgraphsjson', $containerid,
+                        'id_graphjson']);
+
         // Correct/partially correct/incorrect feedback, shown via
         // qtype_with_combined_feedback_renderer::combined_feedback() (renderer.php).
         // "true" = also offer "show number of correct responses once finished",
@@ -119,6 +149,11 @@ class qtype_graph_edit_form extends question_edit_form {
             $question->resultgraphjson = $question->options->resultgraphjson ?? '';
             $question->allowaddnodes = $question->options->allowaddnodes;
             $question->allowdeletenodes = $question->options->allowdeletenodes;
+            $question->altresultgraphsjson = json_encode(array_map(
+                    function($altanswer) {
+                        return json_decode($altanswer->graphjson, true) ?: new stdClass();
+                    },
+                    array_values($question->options->altanswers ?? [])));
         }
         $question = $this->data_preprocessing_combined_feedback($question, true);
         $question = $this->data_preprocessing_hints($question, true, true);

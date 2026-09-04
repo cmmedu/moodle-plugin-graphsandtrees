@@ -43,6 +43,8 @@ class qtype_graph extends question_type {
         global $DB;
         $question->options = $DB->get_record('qtype_graph_options',
                 array('questionid' => $question->id), '*', MUST_EXIST);
+        $question->options->altanswers = array_values($DB->get_records('qtype_graph_altanswers',
+                array('questionid' => $question->id), 'sortorder ASC'));
         parent::get_question_options($question);
     }
 
@@ -68,9 +70,37 @@ class qtype_graph extends question_type {
         $options = $this->save_combined_feedback_helper($options, $formdata, $formdata->context, true);
         $DB->update_record('qtype_graph_options', $options);
 
+        $this->save_alt_answers($formdata);
+
         // True: this question type's hints carry the "clear incorrect responses"
         // and "show number of correct responses" options - see make_hint() below.
         $this->save_hints($formdata, true);
+    }
+
+    /**
+     * Replace this question's qtype_graph_altanswers rows with whatever the
+     * edit form's "Alternate answer graphs" tool (amd/src/editor.js's
+     * initAltAnswers()) submitted, in altresultgraphsjson - a JSON array of
+     * graph objects, one per alternate, in display order.
+     *
+     * @param stdClass $formdata
+     */
+    protected function save_alt_answers(stdClass $formdata): void {
+        global $DB;
+
+        $altgraphs = json_decode($formdata->altresultgraphsjson ?? '[]', true);
+        if (!is_array($altgraphs)) {
+            $altgraphs = [];
+        }
+
+        $DB->delete_records('qtype_graph_altanswers', ['questionid' => $formdata->id]);
+        foreach (array_values($altgraphs) as $index => $altgraph) {
+            $DB->insert_record('qtype_graph_altanswers', (object) [
+                'questionid' => $formdata->id,
+                'graphjson' => json_encode($altgraph),
+                'sortorder' => $index,
+            ]);
+        }
     }
 
     /**
@@ -91,6 +121,9 @@ class qtype_graph extends question_type {
         $question->resultgraphjson = $questiondata->options->resultgraphjson ?? '';
         $question->allowaddnodes = (bool) $questiondata->options->allowaddnodes;
         $question->allowdeletenodes = (bool) $questiondata->options->allowdeletenodes;
+        $question->altresultgraphs = array_map(function($altanswer) {
+            return $altanswer->graphjson;
+        }, $questiondata->options->altanswers ?? []);
         $this->initialise_combined_feedback($question, $questiondata, true);
     }
 
@@ -98,6 +131,7 @@ class qtype_graph extends question_type {
         global $DB;
 
         $DB->delete_records('qtype_graph_options', array('questionid' => $questionid));
+        $DB->delete_records('qtype_graph_altanswers', array('questionid' => $questionid));
         parent::delete_question($questionid, $contextid);
     }
 

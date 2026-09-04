@@ -56,11 +56,8 @@ class editor_ui {
         <button type="button" data-role="zoom-reset">100%</button>
         <button type="button" data-role="zoom-in" aria-label="+">+</button>
       </div>
-      <button type="button" class="qtype_graph-menubtn qtype_graph-exportbtn" data-role="export-btn" hidden>
-        Exportar JSON
-      </button>
-      <button type="button" class="qtype_graph-menubtn qtype_graph-exportbtn" data-role="import-btn" hidden>
-        Importar JSON
+      <button type="button" class="qtype_graph-menubtn qtype_graph-exportbtn" data-role="json-btn" hidden>
+        JSON
       </button>
     </div>
   </div>

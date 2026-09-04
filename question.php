@@ -44,6 +44,9 @@ class qtype_graph_question extends question_graded_automatically {
     /** @var string JSON-encoded expected/correct result graph, used for automatic grading. */
     public $resultgraphjson;
 
+    /** @var string[] JSON-encoded alternate answer graphs, each an alternative accepted final graph. */
+    public $altresultgraphs = [];
+
     /** @var bool whether students may add new nodes. */
     public $allowaddnodes = true;
 
@@ -65,12 +68,30 @@ class qtype_graph_question extends question_graded_automatically {
     // $shownumcorrect is already declared by question_graded_automatically (questionbase.php).
 
     public function make_behaviour(question_attempt $qa, $preferredbehaviour) {
-        if (trim((string) $this->resultgraphjson) === '') {
+        if (!$this->has_answer_graph()) {
             // No result graph authored yet - stay fully manually graded,
             // exactly like every graph question before this feature existed.
             return question_engine::make_behaviour('manualgraded', $qa, $preferredbehaviour);
         }
         return parent::make_behaviour($qa, $preferredbehaviour);
+    }
+
+    /**
+     * Is there at least one answer graph (the primary or any alternate)
+     * authored, i.e. is this question automatically gradable at all?
+     *
+     * @return bool
+     */
+    protected function has_answer_graph(): bool {
+        if (trim((string) $this->resultgraphjson) !== '') {
+            return true;
+        }
+        foreach ($this->altresultgraphs as $altresultgraph) {
+            if (trim((string) $altresultgraph) !== '') {
+                return true;
+            }
+        }
+        return false;
     }
 
     public function get_expected_data() {
@@ -79,7 +100,7 @@ class qtype_graph_question extends question_graded_automatically {
 
     public function grade_response(array $response) {
         $fraction = \qtype_graph\grading::grade($this->graphjson, $this->resultgraphjson, $response,
-                (bool) $this->allowaddnodes);
+                (bool) $this->allowaddnodes, $this->altresultgraphs);
         return array($fraction, question_state::graded_state_for_fraction($fraction));
     }
 
@@ -92,12 +113,12 @@ class qtype_graph_question extends question_graded_automatically {
      * @return array [number of parts right, total number of parts].
      */
     public function get_num_parts_right(array $response) {
-        if (trim((string) $this->resultgraphjson) === '') {
+        if (!$this->has_answer_graph()) {
             // Manually graded: there are no automatically checkable parts to count.
             return [null, null];
         }
         list($correct, $total) = \qtype_graph\grading::count_parts_right($this->graphjson,
-                $this->resultgraphjson, $response, (bool) $this->allowaddnodes);
+                $this->resultgraphjson, $response, (bool) $this->allowaddnodes, $this->altresultgraphs);
         // A null total tells qtype_renderer::num_parts_correct() to say nothing at all,
         // which beats claiming the student got 0 out of 0 parts right.
         return [$correct, $total > 0 ? $total : null];
@@ -113,11 +134,11 @@ class qtype_graph_question extends question_graded_automatically {
      * @return array {nodes: {id: bool}, edges: {id: bool}, newnodes: {id: bool}}, or all-empty.
      */
     public function get_feedback_breakdown(array $response) {
-        if (trim((string) $this->resultgraphjson) === '') {
+        if (!$this->has_answer_graph()) {
             return ['nodes' => [], 'edges' => [], 'newnodes' => []];
         }
         return \qtype_graph\grading::feedback_breakdown($this->graphjson, $this->resultgraphjson,
-                $response, (bool) $this->allowaddnodes);
+                $response, (bool) $this->allowaddnodes, $this->altresultgraphs);
     }
 
     /**
@@ -129,11 +150,11 @@ class qtype_graph_question extends question_graded_automatically {
      * @return array the response with its wrong parts reset.
      */
     public function clear_wrong_from_response(array $response) {
-        if (trim((string) $this->resultgraphjson) === '') {
+        if (!$this->has_answer_graph()) {
             return $response;
         }
         return \qtype_graph\grading::clear_wrong($this->graphjson, $this->resultgraphjson,
-                $response, (bool) $this->allowaddnodes);
+                $response, (bool) $this->allowaddnodes, $this->altresultgraphs);
     }
 
     public function check_file_access($qa, $options, $component, $filearea, $args, $forcedownload) {

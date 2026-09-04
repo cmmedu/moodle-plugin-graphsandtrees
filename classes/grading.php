@@ -58,6 +58,17 @@ namespace qtype_graph;
  * between two already-existing nodes (see editor.js, createEdge is only
  * ever invoked together with a new node, or from hydrate()).
  *
+ * Multiple answer graphs: a question can have more than one answer graph
+ * (the primary $resultgraphjson field, plus any number of alternates stored
+ * in qtype_graph_altanswers - see edit_graph_form.php's "Alternate answer
+ * graphs" section and amd/src/editor.js's initAltAnswers()). Every public
+ * method here accepts the alternates as $altresultgraphjsons and grades the
+ * response against each candidate independently via evaluate(), keeping
+ * whichever gives the best fraction (evaluate_best()) - so a question with
+ * several acceptable final graphs can express each one as its own complete
+ * answer graph, rather than trying to encode every alternative into one set
+ * of accepted answers per blank.
+ *
  * @package    qtype_graph
  * @copyright  2026 Rutas Digitales
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -76,14 +87,16 @@ class grading {
      * Grade a student's response against the teacher's graphs.
      *
      * @param string $graphjson the default (student-visible) graph.
-     * @param string $resultgraphjson the expected/correct result graph.
+     * @param string $resultgraphjson the primary expected/correct result graph.
      * @param array $response the question's response array (has 'nodesjson').
      * @param bool $allowaddnodes whether this question allows students to add new nodes.
+     * @param string[] $altresultgraphjsons extra alternate answer graphs (see evaluate_best()).
      * @return float fraction correct, 0.0 to 1.0.
      */
     public static function grade(string $graphjson, string $resultgraphjson, array $response,
-            bool $allowaddnodes = true): float {
-        list($correct, $total) = self::count_parts_right($graphjson, $resultgraphjson, $response, $allowaddnodes);
+            bool $allowaddnodes = true, array $altresultgraphjsons = []): float {
+        list($correct, $total) = self::count_parts_right($graphjson, $resultgraphjson, $response, $allowaddnodes,
+                $altresultgraphjsons);
         return $total > 0 ? $correct / $total : 0.0;
     }
 
@@ -94,14 +107,15 @@ class grading {
      * expressed as a fraction.
      *
      * @param string $graphjson the default (student-visible) graph.
-     * @param string $resultgraphjson the expected/correct result graph.
+     * @param string $resultgraphjson the primary expected/correct result graph.
      * @param array $response the question's response array (has 'nodesjson').
      * @param bool $allowaddnodes whether this question allows students to add new nodes.
+     * @param string[] $altresultgraphjsons extra alternate answer graphs (see evaluate_best()).
      * @return array [number of items correct, total number of items].
      */
     public static function count_parts_right(string $graphjson, string $resultgraphjson, array $response,
-            bool $allowaddnodes = true): array {
-        $report = self::evaluate($graphjson, $resultgraphjson, $response, $allowaddnodes);
+            bool $allowaddnodes = true, array $altresultgraphjsons = []): array {
+        $report = self::evaluate_best($graphjson, $resultgraphjson, $altresultgraphjsons, $response, $allowaddnodes);
         return [$report['correct'], $report['total']];
     }
 
@@ -114,15 +128,16 @@ class grading {
      * deleted-or-not (see this plugin's CLAUDE.md, "Automatic grading").
      *
      * @param string $graphjson the default (student-visible) graph.
-     * @param string $resultgraphjson the expected/correct result graph.
+     * @param string $resultgraphjson the primary expected/correct result graph.
      * @param array $response the question's response array (has 'nodesjson').
      * @param bool $allowaddnodes whether this question allows students to add new nodes.
+     * @param string[] $altresultgraphjsons extra alternate answer graphs (see evaluate_best()).
      * @return array {nodes: {id: bool}, edges: {id: bool}, newnodes: {id: bool}} - true = correct.
      *      newnodes is keyed by the student's own added-node id, not a default-graph id.
      */
     public static function feedback_breakdown(string $graphjson, string $resultgraphjson, array $response,
-            bool $allowaddnodes = true): array {
-        $report = self::evaluate($graphjson, $resultgraphjson, $response, $allowaddnodes);
+            bool $allowaddnodes = true, array $altresultgraphjsons = []): array {
+        $report = self::evaluate_best($graphjson, $resultgraphjson, $altresultgraphjsons, $response, $allowaddnodes);
         return [
             'nodes' => $report['blanknodes'],
             'edges' => $report['blankedges'],
@@ -141,18 +156,22 @@ class grading {
      * alone: there is nothing in the response to clear.
      *
      * @param string $graphjson the default (student-visible) graph.
-     * @param string $resultgraphjson the expected/correct result graph.
+     * @param string $resultgraphjson the primary expected/correct result graph.
      * @param array $response the question's response array (has 'nodesjson').
      * @param bool $allowaddnodes whether this question allows students to add new nodes.
+     * @param string[] $altresultgraphjsons extra alternate answer graphs (see evaluate_best()).
      * @return array the response with its wrong parts reset.
      */
     public static function clear_wrong(string $graphjson, string $resultgraphjson, array $response,
-            bool $allowaddnodes = true): array {
+            bool $allowaddnodes = true, array $altresultgraphjsons = []): array {
         $data = json_decode($response['nodesjson'] ?? '', true);
         if (!is_array($data)) {
             return $response;
         }
-        $report = self::evaluate($graphjson, $resultgraphjson, $response, $allowaddnodes);
+        // Clear towards whichever answer graph the response is already closest to -
+        // the same one feedback/grading are using (see evaluate_best()) - rather than
+        // always the primary, so alternates behave like a real accepted answer.
+        $report = self::evaluate_best($graphjson, $resultgraphjson, $altresultgraphjsons, $response, $allowaddnodes);
 
         if (is_array($data['blanks'] ?? null)) {
             foreach (array_keys($report['wrongblanks']) as $key) {
@@ -190,10 +209,70 @@ class grading {
     }
 
     /**
+     * Grade a response against the primary answer graph and every alternate,
+     * and return whichever evaluate() report scores highest by fraction
+     * (correct/total) - see this plugin's CLAUDE.md, "Multiple answer graphs".
+     * All four public methods above are built on this, so grading, feedback
+     * markers, and "Clear incorrect responses" all agree on which answer
+     * graph a given response is being judged against.
+     *
+     * A blank/whitespace-only candidate (the common case: no alternates
+     * authored, or the primary itself left empty) is skipped rather than
+     * evaluated - evaluate() would score it 0/0, which must never win over a
+     * real candidate purely because 0/0 is not literally lower than another
+     * candidate's fraction.
+     *
+     * @param string $graphjson the default (student-visible) graph.
+     * @param string $resultgraphjson the primary expected/correct result graph.
+     * @param string[] $altresultgraphjsons extra alternate answer graphs, same shape as $resultgraphjson.
+     * @param array $response the question's response array (has 'nodesjson').
+     * @param bool $allowaddnodes whether this question allows students to add new nodes.
+     * @return array an evaluate() report - see its own docblock for the shape - or empty_report()
+     *      if every candidate was blank.
+     */
+    protected static function evaluate_best(string $graphjson, string $resultgraphjson,
+            array $altresultgraphjsons, array $response, bool $allowaddnodes): array {
+        $best = null;
+        $bestfraction = -1.0;
+        foreach (array_merge([$resultgraphjson], $altresultgraphjsons) as $candidate) {
+            if (trim((string) $candidate) === '') {
+                continue;
+            }
+            $report = self::evaluate($graphjson, (string) $candidate, $response, $allowaddnodes);
+            $fraction = $report['total'] > 0 ? $report['correct'] / $report['total'] : 0.0;
+            if ($fraction > $bestfraction) {
+                $bestfraction = $fraction;
+                $best = $report;
+            }
+        }
+        return $best ?? self::empty_report();
+    }
+
+    /**
+     * The evaluate() report shape for "no answer graph could be evaluated" -
+     * every candidate passed to evaluate_best() was blank.
+     *
+     * @return array
+     */
+    protected static function empty_report(): array {
+        return [
+            'total' => 0,
+            'correct' => 0,
+            'wrongblanks' => [],
+            'wrongremovals' => [],
+            'expectedbyanchor' => [],
+            'blanknodes' => [],
+            'blankedges' => [],
+            'newnodes' => [],
+        ];
+    }
+
+    /**
      * Walk every gradable item once, counting right/wrong and recording enough
      * detail for clear_wrong() to undo the wrong ones. Single source of truth
-     * for what "correct" means; grade(), count_parts_right() and clear_wrong()
-     * are all built on it.
+     * for what "correct" means against ONE candidate answer graph;
+     * evaluate_best() calls this once per candidate (primary + alternates)
+     * and keeps whichever scores highest.
      *
      * @param string $graphjson the default (student-visible) graph.
      * @param string $resultgraphjson the expected/correct result graph.

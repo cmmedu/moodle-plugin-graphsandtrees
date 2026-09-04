@@ -138,5 +138,23 @@ function xmldb_qtype_graph_upgrade(int $oldversion): bool {
         upgrade_plugin_savepoint(true, 2026090102, 'qtype', 'graph');
     }
 
+    if ($oldversion < 2026090400) {
+        $table = new xmldb_table('qtype_graph_altanswers');
+
+        if (!$dbman->table_exists($table)) {
+            $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+            $table->add_field('questionid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+            $table->add_field('graphjson', XMLDB_TYPE_TEXT, null, null, null, null, null);
+            $table->add_field('sortorder', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+
+            $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+            $table->add_key('questionid', XMLDB_KEY_FOREIGN, ['questionid'], 'question', ['id']);
+
+            $dbman->create_table($table);
+        }
+
+        upgrade_plugin_savepoint(true, 2026090400, 'qtype', 'graph');
+    }
+
     return true;
 }

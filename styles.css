@@ -422,6 +422,37 @@
   cursor: default;
 }
 
+.qtype_graph-altlist {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.qtype_graph-altanswer {
+  border: 1px solid var(--qtype-graph-border, #2a2f3a);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.qtype_graph-altanswer-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.qtype_graph-altanswer-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.qtype_graph-altanswer-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .qtype_graph-blank-input {
   display: inline-block;
   width: 70px;
