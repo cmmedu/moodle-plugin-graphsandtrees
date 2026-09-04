@@ -32,11 +32,20 @@ class editor_ui {
      * Render the container markup for one graph editor instance.
      *
      * @param string $id the DOM id to give the outer container.
+     * @param array $dataattrs extra data-* attributes to set on the container element
+     *              (name => value, name without the "data-" prefix) - a way for a caller
+     *              to hand editor.js small settings without bloating a js_call_amd()
+     *              argument list (Moodle warns via debugging() past ~1KB of arguments;
+     *              see renderer.php's use of this for newnodecontenttype and friends).
      * @return string HTML.
      */
-    public static function render(string $id): string {
+    public static function render(string $id, array $dataattrs = []): string {
+        $attrshtml = '';
+        foreach ($dataattrs as $name => $value) {
+            $attrshtml .= ' data-' . $name . '="' . s($value) . '"';
+        }
         return <<<HTML
-<div id="{$id}" class="qtype_graph-container">
+<div id="{$id}" class="qtype_graph-container"{$attrshtml}>
   <div class="qtype_graph-toolbar">
     <div class="qtype_graph-modecontrols">
       <div class="qtype_graph-segmented" data-role="mode-toggle">

@@ -53,8 +53,27 @@ class qtype_graph_renderer extends qtype_with_combined_feedback_renderer {
 
         $output = html_writer::div($question->format_questiontext($qa), 'qtext');
 
+        $feedbackjson = '';
+        if ($options->correctness) {
+            $breakdown = $question->get_feedback_breakdown($submittedresponse);
+            if (!empty($breakdown['nodes']) || !empty($breakdown['edges']) || !empty($breakdown['newnodes'])) {
+                $feedbackjson = json_encode($breakdown);
+            }
+        }
+
         $containerid = $qa->get_outer_question_div_unique_id() . '_graph';
-        $output .= \qtype_graph\editor_ui::render($containerid);
+        // Passed as data attributes, not js_call_amd() arguments below - teacherjson
+        // and feedback can each be large (a whole graph, or a per-item correctness
+        // map), and Moodle's debugging() warns once a js_call_amd() argument payload
+        // passes ~1KB, which a graph of any real size crosses easily.
+        $output .= \qtype_graph\editor_ui::render($containerid, [
+            'teacherjson' => \qtype_graph\blank_token::strip_answers($question->graphjson),
+            'feedback' => $feedbackjson,
+            'newnodecontenttype' => $question->newnodecontenttype,
+            'newnodecontentvalue' => $question->newnodecontentvalue,
+            'newedgecontenttype' => $question->newedgecontenttype,
+            'newedgecontentvalue' => $question->newedgecontentvalue,
+        ]);
 
         $fieldname = $qa->get_qt_field_name('nodesjson');
         $output .= html_writer::empty_tag('input', [
@@ -65,26 +84,12 @@ class qtype_graph_renderer extends qtype_with_combined_feedback_renderer {
             'class' => 'qtype_graph-response',
         ]);
 
-        $feedbackjson = null;
-        if ($options->correctness) {
-            $breakdown = $question->get_feedback_breakdown($submittedresponse);
-            if (!empty($breakdown['nodes']) || !empty($breakdown['edges']) || !empty($breakdown['newnodes'])) {
-                $feedbackjson = json_encode($breakdown);
-            }
-        }
-
         $this->page->requires->js_call_amd('qtype_graph/editor', 'initAttempt', [
             $containerid,
             $fieldname,
-            \qtype_graph\blank_token::strip_answers($question->graphjson),
             (bool) $options->readonly,
             (bool) $question->allowaddnodes,
             (bool) $question->allowdeletenodes,
-            $feedbackjson,
-            $question->newnodecontenttype,
-            $question->newnodecontentvalue,
-            $question->newedgecontenttype,
-            $question->newedgecontentvalue,
         ]);
 
         return $output;

@@ -2161,40 +2161,35 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     /**
      * Attempt-page widget: teacher graph locked, student additions editable.
      *
-     * @param {string} containerId id of the .qtype_graph-container element.
+     * @param {string} containerId id of the .qtype_graph-container element. teacherjson,
+     *                 feedback, and newnodecontenttype/newnodecontentvalue/
+     *                 newedgecontenttype/newedgecontentvalue are all read from this
+     *                 element's data-* attributes (set by renderer.php via
+     *                 editor_ui::render()'s $dataattrs param) rather than taken as
+     *                 arguments here, to keep this call's js_call_amd() payload well
+     *                 under Moodle's ~1KB debugging() warning threshold - a graph of
+     *                 any real size, or a sizeable feedback breakdown, crosses that
+     *                 easily on its own.
      * @param {string} hiddenFieldId id of the response hidden field (nodesjson).
-     * @param {string} teacherJson the teacher-authored graph, as JSON.
      * @param {boolean} readOnly true if the question is being displayed read-only (e.g. review).
      * @param {boolean} allowAddNodes true if the student may add new nodes.
      * @param {boolean} allowDeleteNodes true if the student may delete the teacher-authored nodes.
-     * @param {string} [feedbackJson] JSON {nodes: {id: bool}, edges: {id: bool}, newnodes: {id: bool}} -
-     *                 per-item correctness for this response, from classes/grading.php's
-     *                 feedback_breakdown(). Only ever set once the question is auto-graded AND
-     *                 Moodle's display options say to show correctness right now. Scoped to just
-     *                 {{T_INPUT}} blanks (nodes/edges) and anchored new-node creations (newnodes,
-     *                 keyed by the student's own node id) - never plain structural nodes/edges.
-     * @param {string} [newNodeContentType] 'input'|'select'|'text' - what a student's own new
-     *                 node looks like (question-level "New node content" setting).
-     * @param {string} [newNodeContentValue] meaning depends on newNodeContentType.
-     * @param {string} [newEdgeContentType] 'input'|'select'|'text' - same, for a new connection's label.
-     * @param {string} [newEdgeContentValue] meaning depends on newEdgeContentType.
      */
-    function initAttempt(containerId, hiddenFieldId, teacherJson, readOnly, allowAddNodes, allowDeleteNodes,
-            feedbackJson, newNodeContentType, newNodeContentValue, newEdgeContentType, newEdgeContentValue) {
+    function initAttempt(containerId, hiddenFieldId, readOnly, allowAddNodes, allowDeleteNodes) {
         const root = document.getElementById(containerId);
         const hidden = document.getElementById(hiddenFieldId);
         if (!root || !hidden) {
             return;
         }
 
-        const attempt = createAttemptEditor(root, teacherJson, {
+        const attempt = createAttemptEditor(root, root.dataset.teacherjson, {
             readOnly,
             allowAddNodes,
             allowDeleteNodes,
-            newNodeContentType,
-            newNodeContentValue,
-            newEdgeContentType,
-            newEdgeContentValue,
+            newNodeContentType: root.dataset.newnodecontenttype,
+            newNodeContentValue: root.dataset.newnodecontentvalue,
+            newEdgeContentType: root.dataset.newedgecontenttype,
+            newEdgeContentValue: root.dataset.newedgecontentvalue,
             initialResponseJson: hidden.value,
             onResponseChange: (response) => {
                 hidden.value = JSON.stringify(response);
@@ -2205,10 +2200,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             },
         });
 
-        if (feedbackJson) {
+        if (root.dataset.feedback) {
             let feedback = null;
             try {
-                feedback = JSON.parse(feedbackJson);
+                feedback = JSON.parse(root.dataset.feedback);
             } catch (e) {
                 feedback = null;
             }
