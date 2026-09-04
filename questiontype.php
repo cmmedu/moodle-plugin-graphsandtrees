@@ -154,4 +154,97 @@ class qtype_graph extends question_type {
         $this->delete_files_in_combined_feedback($questionid, $contextid);
         $this->delete_files_in_hints($questionid, $contextid);
     }
+
+    /**
+     * Export this question to Moodle XML ("Export questions to file" in the question
+     * bank). Fully custom rather than relying on question_type::export_to_xml()'s
+     * extra_question_fields()-based default, since that only handles a single flat
+     * options row plus standard question_answers - not the combined-feedback fields
+     * or the qtype_graph_altanswers to-many table this plugin also has.
+     *
+     * Only ever returns the qtype-specific middle of the <question> element -
+     * qformat_xml::writequestion() already writes the generic header (name,
+     * questiontext, generalfeedback, defaultgrade, penalty, hidden, idnumber)
+     * before calling this, and appends hints/tags after, for every qtype.
+     *
+     * @param stdClass $question the question data (options/altanswers already
+     *                 loaded, as get_question_options() populates them).
+     * @param qformat_xml $format
+     * @param mixed $extra unused - part of the interface, always null for XML export.
+     * @return string XML.
+     */
+    public function export_to_xml($question, qformat_xml $format, $extra = null) {
+        $options = $question->options;
+
+        $expout = '';
+        $expout .= '    <graphjson>' . $format->xml_escape($options->graphjson) . "</graphjson>\n";
+        $expout .= '    <resultgraphjson>' . $format->xml_escape($options->resultgraphjson) . "</resultgraphjson>\n";
+        $expout .= "    <allowaddnodes>{$options->allowaddnodes}</allowaddnodes>\n";
+        $expout .= "    <allowdeletenodes>{$options->allowdeletenodes}</allowdeletenodes>\n";
+        $expout .= '    <newnodecontenttype>' . $format->xml_escape($options->newnodecontenttype) .
+                "</newnodecontenttype>\n";
+        $expout .= '    <newnodecontentvalue>' . $format->xml_escape($options->newnodecontentvalue) .
+                "</newnodecontentvalue>\n";
+        $expout .= '    <newedgecontenttype>' . $format->xml_escape($options->newedgecontenttype) .
+                "</newedgecontenttype>\n";
+        $expout .= '    <newedgecontentvalue>' . $format->xml_escape($options->newedgecontentvalue) .
+                "</newedgecontentvalue>\n";
+        $expout .= $format->write_combined_feedback($options, $question->id, $question->contextid);
+
+        $expout .= "    <altanswers>\n";
+        foreach (($options->altanswers ?? []) as $altanswer) {
+            $expout .= "      <altanswer>\n";
+            $expout .= '        <graphjson>' . $format->xml_escape($altanswer->graphjson) . "</graphjson>\n";
+            $expout .= "      </altanswer>\n";
+        }
+        $expout .= "    </altanswers>\n";
+
+        return $expout;
+    }
+
+    /**
+     * Import this question from Moodle XML ("Import questions from file"). Fully
+     * custom, mirroring qtype_multichoice's own import_from_xml() - see
+     * export_to_xml() above for why the shared default isn't used.
+     *
+     * @param array $data the parsed <question> element (expat tree shape).
+     * @param stdClass|null $question unused - always null via qformat_xml's call path.
+     * @param qformat_xml $format
+     * @param mixed $extra unused - part of the interface, always null for XML import.
+     * @return stdClass|bool the question data ready for save_question()/
+     *         save_question_options(), or false if $data is not a graph question
+     *         (qformat_xml tries every installed qtype's import_from_xml in turn).
+     */
+    public function import_from_xml($data, $question, qformat_xml $format, $extra = null) {
+        if (($data['@']['type'] ?? '') !== 'graph') {
+            return false;
+        }
+
+        $qo = $format->import_headers($data);
+        $qo->qtype = 'graph';
+
+        $qo->graphjson = $format->getpath($data, ['#', 'graphjson', 0, '#'], '', true);
+        $qo->resultgraphjson = $format->getpath($data, ['#', 'resultgraphjson', 0, '#'], '', true);
+        $qo->allowaddnodes = $format->getpath($data, ['#', 'allowaddnodes', 0, '#'], 1);
+        $qo->allowdeletenodes = $format->getpath($data, ['#', 'allowdeletenodes', 0, '#'], 0);
+        $qo->newnodecontenttype = $format->getpath($data, ['#', 'newnodecontenttype', 0, '#'], 'input', true);
+        $qo->newnodecontentvalue = $format->getpath($data, ['#', 'newnodecontentvalue', 0, '#'], '', true);
+        $qo->newedgecontenttype = $format->getpath($data, ['#', 'newedgecontenttype', 0, '#'], 'input', true);
+        $qo->newedgecontentvalue = $format->getpath($data, ['#', 'newedgecontentvalue', 0, '#'], '', true);
+
+        $format->import_combined_feedback($qo, $data, true);
+
+        $altanswers = [];
+        $altanswernodes = $format->getpath($data, ['#', 'altanswers', 0, '#', 'altanswer'], []);
+        foreach ($altanswernodes as $altanswerxml) {
+            $graphjson = $format->getpath($altanswerxml, ['#', 'graphjson', 0, '#'], '', true);
+            $decoded = json_decode($graphjson, true);
+            $altanswers[] = is_array($decoded) ? $decoded : new stdClass();
+        }
+        $qo->altresultgraphsjson = json_encode($altanswers);
+
+        $format->import_hints($qo, $data, true, false, $format->get_format($qo->questiontextformat));
+
+        return $qo;
+    }
 }
