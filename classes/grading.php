@@ -21,15 +21,24 @@ namespace qtype_graph;
  * default graph + result graph, matched by shared node/edge id (see this
  * plugin's CLAUDE.md, "Planned: automatic-grading comparison design").
  *
- * Every node/edge id in the default graph is one gradable item:
+ * Not every node/edge id in the default graph is a gradable item - only
+ * those falling into one of three categories are (see evaluate()'s two main
+ * loops): a blank to fill in, something the student is expected to delete,
+ * or (further below) something new the student is expected to add. A node/edge
+ * present in the result graph under the same id with no blank in its text is
+ * purely scaffolding - nothing for the student to get right or wrong beyond
+ * not deleting it - so it is skipped entirely: not counted in $total, not
+ * counted in $correct, and (deliberately) not penalised even if the student
+ * deletes it. This keeps the score reflecting only the parts of the graph the
+ * teacher actually authored an answer for, rather than padding it with a
+ * "free" correct point per scaffolding node - at the cost that, if
+ * $allowdeletenodes is on, deleting scaffolding is not caught as wrong.
+ *
  * - absent from the result graph  => the student was expected to delete it
  *   (checked via the response's removednodes list; for an edge, since a
  *   locked edge can only be removed by deleting one of its endpoint nodes,
  *   "deleted" means either endpoint id is in removednodes - there is
  *   currently no way for a student to delete just a locked edge on its own).
- * - present in the result graph, not a {{T_INPUT}} blank => purely
- *   structural: correct as long as the student didn't delete it (nothing
- *   else to compare, since locked non-blank text can't be edited).
  * - present in the result graph, is a {{T_INPUT}} blank => the result
  *   graph's text for that id is the accepted-answer field (see
  *   answer_matcher::parse_accepted_answers()), compared against the
@@ -322,21 +331,35 @@ class grading {
         $studentnodesbyid = self::index_by_id($studentnodes);
 
         foreach ($default['nodes'] as $node) {
+            $id = $node['id'] ?? null;
+            $hasblank = answer_matcher::has_blank($node['text'] ?? '');
+            $expecteddeleted = $id !== null && !array_key_exists($id, $resultnodes);
+            if ($id !== null && !$expecteddeleted && !$hasblank) {
+                // Present under the same id, no blank: pure scaffolding, not a gradable item.
+                continue;
+            }
             $report['total']++;
             $status = self::node_status($node, $resultnodes, $removednodes, $blanks);
-            self::record($report, $status, 'node:' . ($node['id'] ?? '') . ':0', $node['id'] ?? null);
-            if (($node['id'] ?? null) !== null && answer_matcher::has_blank($node['text'] ?? '')) {
-                $report['blanknodes'][$node['id']] = ($status === self::ITEM_CORRECT);
+            self::record($report, $status, 'node:' . ($id ?? '') . ':0', $id);
+            if ($id !== null && $hasblank) {
+                $report['blanknodes'][$id] = ($status === self::ITEM_CORRECT);
             }
         }
         foreach (($default['edges'] ?? []) as $edge) {
+            $id = $edge['id'] ?? null;
+            $hasblank = answer_matcher::has_blank($edge['label'] ?? '');
+            $expecteddeleted = $id !== null && !array_key_exists($id, $resultedges);
+            if ($id !== null && !$expecteddeleted && !$hasblank) {
+                // Present under the same id, no blank: pure scaffolding, not a gradable item.
+                continue;
+            }
             $report['total']++;
             $status = self::edge_status($edge, $resultedges, $removednodes, $blanks);
             // An edge is only ever "removed" as a side effect of deleting one of its
             // endpoint nodes, so restoring it is that node's entry to undo, not the edge's.
-            self::record($report, $status, 'edge:' . ($edge['id'] ?? '') . ':0', null);
-            if (($edge['id'] ?? null) !== null && answer_matcher::has_blank($edge['label'] ?? '')) {
-                $report['blankedges'][$edge['id']] = ($status === self::ITEM_CORRECT);
+            self::record($report, $status, 'edge:' . ($id ?? '') . ':0', null);
+            if ($id !== null && $hasblank) {
+                $report['blankedges'][$id] = ($status === self::ITEM_CORRECT);
             }
         }
 
