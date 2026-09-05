@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Editor de grafos - Rutas Digitales</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f3f4f6;
+    color: #1f2937;
+  }
+  header.page-header {
+    padding: 20px 24px;
+    background: #111827;
+    color: #fff;
+  }
+  header.page-header h1 {
+    margin: 0 0 4px;
+    font-size: 20px;
+  }
+  header.page-header p {
+    margin: 0;
+    color: #cbd5e1;
+    font-size: 14px;
+  }
+  main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+  section.graph-section {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 24px;
+  }
+  section.graph-section .section-help {
+    font-size: 13px;
+    color: #4b5563;
+    margin-bottom: 12px;
+  }
+  .action-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .btn {
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .btn:hover { background: #f3f4f6; }
+  .export-panel {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 16px;
+  }
+  .export-panel textarea {
+    width: 100%;
+    min-height: 160px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 8px;
+  }
+  .export-status {
+    font-size: 13px;
+    margin: 8px 0;
+    min-height: 18px;
+  }
+</style>
+</head>
+<body>
+
+<header class="page-header">
+  <h1>Editor de grafos</h1>
+  <p>Construye un grafo y exporta su JSON para el script de montaje del curso.</p>
+</header>
+
+<main>
+
+  <section class="graph-section">
+    <p class="section-help">
+      Haz clic en un nodo o conexión para editar su texto/color, añadir nodos
+      conectados o eliminarlo. El botón "JSON" del propio editor permite pegar/copiar
+      el grafo directamente.
+    </p>
+    <div id="qtype_graph_editor"></div>
+    <input type="hidden" id="id_graphjson">
+  </section>
+
+  <section class="export-panel">
+    <h2 style="margin-top:0; font-size:16px;">Exportar</h2>
+    <div class="action-row">
+      <button type="button" id="btn-copy" class="btn">Copiar al portapapeles</button>
+      <button type="button" id="btn-download" class="btn">Guardar como .json</button>
+    </div>
+    <div class="export-status" id="export-status"></div>
+    <textarea id="export-json" readonly></textarea>
+  </section>
+
+</main>
+
+<script src="editor.js"></script>
+<script>
+(function() {
+  // JS port of qtype_graph's classes/editor_ui.php::render() - the exact same
+  // container markup editor.js expects, since there is no PHP to generate it
+  // here. Keep this in sync by hand with that file if the plugin's markup
+  // ever changes.
+  function renderGraphEditorSkeleton(id) {
+    return (
+      '<div id="' + id + '" class="qtype_graph-container">' +
+      '  <div class="qtype_graph-toolbar">' +
+      '    <div class="qtype_graph-modecontrols">' +
+      '      <div class="qtype_graph-segmented" data-role="mode-toggle">' +
+      '        <button type="button" class="active" data-mode="graph">Modo grafo</button>' +
+      '        <button type="button" data-mode="tree">Modo árbol</button>' +
+      '      </div>' +
+      '      <div class="qtype_graph-segmented" data-role="orientation-toggle" hidden>' +
+      '        <button type="button" class="active" data-orientation="vertical">V</button>' +
+      '        <button type="button" data-orientation="horizontal">H</button>' +
+      '      </div>' +
+      '      <div class="qtype_graph-segmented" data-role="linestyle-toggle">' +
+      '        <button type="button" class="active" data-line-style="straight">/</button>' +
+      '        <button type="button" data-line-style="orthogonal">⌐</button>' +
+      '      </div>' +
+      '      <div class="qtype_graph-segmented qtype_graph-zoomcontrols" data-role="zoom-controls">' +
+      '        <button type="button" data-role="zoom-out" aria-label="-">-</button>' +
+      '        <button type="button" data-role="zoom-reset">100%</button>' +
+      '        <button type="button" data-role="zoom-in" aria-label="+">+</button>' +
+      '      </div>' +
+      '      <button type="button" class="qtype_graph-menubtn qtype_graph-exportbtn" data-role="json-btn" hidden>' +
+      '        JSON' +
+      '      </button>' +
+      '    </div>' +
+      '  </div>' +
+      '  <div class="qtype_graph-canvas" data-role="canvas">' +
+      '    <div class="qtype_graph-content" data-role="content">' +
+      '      <svg class="qtype_graph-edges" data-role="edges"></svg>' +
+      '    </div>' +
+      '    <div class="qtype_graph-exportpanel" data-role="json-panel" hidden>' +
+      '      <div class="qtype_graph-menulabel">JSON del grafo</div>' +
+      '      <textarea class="qtype_graph-exporttextarea" data-role="json-textarea"></textarea>' +
+      '      <div class="qtype_graph-jsonstatus" data-role="json-status" hidden></div>' +
+      '      <div class="qtype_graph-exportactions">' +
+      '        <button type="button" class="qtype_graph-menubtn" data-role="json-build-btn"' +
+      '            data-confirm="Esto reemplazará el grafo actual por el contenido del JSON. ¿Continuar?">' +
+      '          Construir grafo' +
+      '        </button>' +
+      '        <button type="button" class="qtype_graph-menubtn" data-role="json-copy-btn">Copiar al portapapeles</button>' +
+      '        <button type="button" class="qtype_graph-menubtn" data-role="json-close-btn">Cerrar</button>' +
+      '      </div>' +
+      '    </div>' +
+      '    <div class="qtype_graph-nodemenu" data-role="node-menu" hidden>' +
+      '      <div class="qtype_graph-menusection" data-role="node-text-section">' +
+      '        <span class="qtype_graph-menulabel">Texto</span>' +
+      '        <input type="text" data-role="node-text-input" class="qtype_graph-textinput">' +
+      '      </div>' +
+      '      <div class="qtype_graph-menusection" data-role="node-select-section" hidden>' +
+      '        <span class="qtype_graph-menulabel">Opciones (separadas por coma)</span>' +
+      '        <input type="text" data-role="node-select-input" class="qtype_graph-textinput">' +
+      '      </div>' +
+      '      <div class="qtype_graph-menusection" data-role="node-color-section">' +
+      '        <span class="qtype_graph-menulabel">Color</span>' +
+      '        <div class="qtype_graph-colorrow" data-role="color-row"></div>' +
+      '      </div>' +
+      '      <button type="button" class="qtype_graph-menubtn" data-role="add-connected-btn">+ Nodo conectado</button>' +
+      '      <button type="button" class="qtype_graph-menubtn" data-role="add-input-btn" hidden>Marcar como input</button>' +
+      '      <button type="button" class="qtype_graph-menubtn" data-role="add-select-btn" hidden>Marcar como selector</button>' +
+      '      <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-node-btn">Eliminar nodo</button>' +
+      '    </div>' +
+      '    <div class="qtype_graph-nodemenu" data-role="edge-menu" hidden>' +
+      '      <div class="qtype_graph-menusection" data-role="edge-text-section">' +
+      '        <span class="qtype_graph-menulabel">Etiqueta</span>' +
+      '        <input type="text" data-role="edge-label-input" class="qtype_graph-textinput" maxlength="40">' +
+      '      </div>' +
+      '      <div class="qtype_graph-menusection" data-role="edge-select-section" hidden>' +
+      '        <span class="qtype_graph-menulabel">Opciones (separadas por coma)</span>' +
+      '        <input type="text" data-role="edge-select-input" class="qtype_graph-textinput">' +
+      '      </div>' +
+      '      <div class="qtype_graph-menusection" data-role="edge-value-section" hidden>' +
+      '        <span class="qtype_graph-menulabel">Respuesta</span>' +
+      '        <select data-role="edge-value-select" class="qtype_graph-textinput"></select>' +
+      '      </div>' +
+      '      <button type="button" class="qtype_graph-menubtn" data-role="add-edge-input-btn" hidden>Marcar como input</button>' +
+      '      <button type="button" class="qtype_graph-menubtn" data-role="add-edge-select-btn" hidden>Marcar como selector</button>' +
+      '      <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-edge-btn">Eliminar conexión</button>' +
+      '    </div>' +
+      '  </div>' +
+      '</div>'
+    );
+  }
+
+  var root = document.getElementById('qtype_graph_editor');
+  root.outerHTML = renderGraphEditorSkeleton('qtype_graph_editor');
+
+  QtypeGraphEditor.initEditor('qtype_graph_editor', 'id_graphjson');
+
+  var exportField = document.getElementById('export-json');
+  var statusField = document.getElementById('export-status');
+
+  function currentJson() {
+    return document.getElementById('id_graphjson').value || '';
+  }
+
+  document.getElementById('btn-copy').addEventListener('click', function() {
+    exportField.value = currentJson();
+    var restore = function() {
+      statusField.textContent = 'Copiado al portapapeles.';
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(exportField.value).then(restore, function() {
+        exportField.focus();
+        exportField.select();
+      });
+      return;
+    }
+    exportField.focus();
+    exportField.select();
+    try {
+      document.execCommand('copy');
+      restore();
+    } catch (e) {
+      statusField.textContent = 'No se pudo copiar automáticamente - selecciona y copia manualmente.';
+    }
+  });
+
+  document.getElementById('btn-download').addEventListener('click', function() {
+    exportField.value = currentJson();
+    var blob = new Blob([exportField.value], {type: 'application/json'});
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'grafo.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    statusField.textContent = 'Descarga iniciada (grafo.json).';
+  });
+})();
+</script>
+
+</body>
+</html>
