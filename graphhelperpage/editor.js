@@ -58,12 +58,12 @@
     // real rendered node sizes so unusually tall/wide content can't overlap the
     // next level or a sibling regardless of how many nodes are on the tree.
     const TREE_LEVEL_MIN_PITCH = {vertical: 170, horizontal: 300};
-    const TREE_LEVEL_GAP = 40;
+    const TREE_LEVEL_GAP = 60;
     // Minimum gap between the edges of two adjacent sibling nodes. Sibling pitch
     // itself is computed per-layout from each node's actual rendered size (see
     // relayoutTree), since a fixed pitch can't accommodate content-driven node
     // widths once several siblings share a parent.
-    const TREE_SIBLING_GAP = 50;
+    const TREE_SIBLING_GAP = 70;
     const TREE_MARGIN = 80;
     const ZOOM_MIN = 0.4;
     const ZOOM_MAX = 2;
@@ -1296,8 +1296,7 @@
                 return;
             }
             const parent = nodes.get(activeNodeId).el;
-            const siblingIndex = edges.filter((edge) => edge.fromId === activeNodeId).length;
-            const {left, top} = positionForNewNode(parent, siblingIndex);
+            const {left, top} = positionForNewNode(parent, activeNodeId);
             // Fixed-content nodes/edges (question-level newNodeContentType/newEdgeContentType)
             // get their content baked in right at creation - select/input modes start empty,
             // filled in later by the student via the inline element or the edge's menu.
@@ -1409,10 +1408,21 @@
             }
         });
 
-        function positionForNewNode(parentEl, siblingIndex) {
+        function positionForNewNode(parentEl, parentId) {
+            // Stack new siblings using the real rendered height of whatever
+            // children the parent already has, not a fixed pitch guess - a
+            // fixed pitch overlaps as soon as a sibling's actual height (e.g.
+            // an input-carrying node wrapping onto more than one line) exceeds
+            // it, which relayoutTree already accounts for in tree mode but
+            // this manual "add connected node" placement did not in graph mode.
+            let top = parentEl.offsetTop + 20;
+            edges.filter((edge) => edge.fromId === parentId).forEach((edge) => {
+                const siblingEl = nodes.get(edge.toId) && nodes.get(edge.toId).el;
+                top += (siblingEl ? siblingEl.offsetHeight : 70) + TREE_SIBLING_GAP;
+            });
             return {
                 left: parentEl.offsetLeft + parentEl.offsetWidth + 60,
-                top: parentEl.offsetTop + 20 + siblingIndex * 70,
+                top,
             };
         }
 
