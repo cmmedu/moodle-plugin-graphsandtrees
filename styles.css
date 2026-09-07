@@ -507,7 +507,14 @@
 }
 
 .qtype_graph-node-text-input {
-  width: 100%;
+  /* Not width:100% - .qtype_graph-node is an absolutely positioned box with no
+     explicit width (it shrink-to-fits between its min/max-width), and a
+     percentage-width child breaks that shrink-to-fit calculation, forcing the
+     node to always render at max-width (240px) no matter how short the text
+     actually is. A fixed width (matching .qtype_graph-blank-input's approach)
+     lets the node size to its real content instead. */
+  width: 140px;
+  max-width: 100%;
   background: transparent;
   border: 1px solid var(--qtype-graph-border);
   border-radius: 6px;
@@ -523,7 +530,8 @@
 }
 
 .qtype_graph-node-text-select {
-  width: 100%;
+  width: 140px;
+  max-width: 100%;
   background: var(--qtype-graph-bg);
   border: 1px solid var(--qtype-graph-border);
   border-radius: 6px;

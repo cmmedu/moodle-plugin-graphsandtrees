@@ -50,11 +50,20 @@
     const COLORS = ['#5b8cff', '#ff6b6b', '#4ade80', '#facc15', '#c084fc', '#38bdf8'];
     const CLICK_THRESHOLD = 4;
     // Nodes can be up to 240px wide (.qtype_graph-node's max-width) and grow tall
-    // with wrapped/multi-blank content, so these need real margin beyond that or
-    // adjacent-level/sibling nodes can end up edge-to-edge with no visible
-    // connecting line between them.
-    const TREE_LEVEL_SPACING = {vertical: 170, horizontal: 300};
-    const TREE_SIBLING_SPACING = 200;
+    // with wrapped/multi-blank content (e.g. a multi-blank label, or the
+    // free-text/select input a student's own node renders), so these need real
+    // margin beyond that or adjacent-level/sibling nodes can end up edge-to-edge
+    // with no visible connecting line between them. TREE_LEVEL_MIN_PITCH is only
+    // a floor - relayoutTree grows the actual per-level/per-sibling pitch from
+    // real rendered node sizes so unusually tall/wide content can't overlap the
+    // next level or a sibling regardless of how many nodes are on the tree.
+    const TREE_LEVEL_MIN_PITCH = {vertical: 170, horizontal: 300};
+    const TREE_LEVEL_GAP = 40;
+    // Minimum gap between the edges of two adjacent sibling nodes. Sibling pitch
+    // itself is computed per-layout from each node's actual rendered size (see
+    // relayoutTree), since a fixed pitch can't accommodate content-driven node
+    // widths once several siblings share a parent.
+    const TREE_SIBLING_GAP = 50;
     const TREE_MARGIN = 80;
     const ZOOM_MIN = 0.4;
     const ZOOM_MAX = 2;
@@ -750,6 +759,7 @@
 
             const depthOf = new Map();
             const breadthOf = new Map();
+            const leafOrder = [];
             let nextLeaf = 0;
 
             const assign = (id, depth) => {
@@ -758,6 +768,7 @@
                 let breadth;
                 if (children.length === 0) {
                     breadth = nextLeaf;
+                    leafOrder.push(id);
                     nextLeaf += 1;
                 } else {
                     const values = children.map((childId) => assign(childId, depth + 1));
@@ -769,25 +780,78 @@
 
             roots.forEach((rootId) => assign(rootId, 0));
 
-            const breadthValues = [...breadthOf.values()];
-            const breadthCenter = (Math.min(...breadthValues) + Math.max(...breadthValues)) / 2;
+            // Leaves are assigned sequential integer slots above. Convert those slots
+            // into pixel positions using each leaf's actual rendered size along the
+            // sibling axis (width when stacking siblings horizontally, height when
+            // stacking them vertically), so the pitch between siblings always fits
+            // their real content instead of a fixed guess that overlaps once nodes
+            // grow wide/tall or several siblings share a parent.
+            const leafExtent = (id) => {
+                const el = nodes.get(id).el;
+                return orientation === 'vertical' ? el.offsetWidth : el.offsetHeight;
+            };
+            const leafPixelPos = [];
+            leafOrder.forEach((id, i) => {
+                if (i === 0) {
+                    leafPixelPos.push(0);
+                } else {
+                    const prevExtent = leafExtent(leafOrder[i - 1]);
+                    const extent = leafExtent(id);
+                    leafPixelPos.push(leafPixelPos[i - 1] + prevExtent / 2 + TREE_SIBLING_GAP + extent / 2);
+                }
+            });
+
+            const breadthToPixel = (breadth) => {
+                const n = leafPixelPos.length;
+                if (n === 0) {
+                    return 0;
+                }
+                const clamped = Math.min(Math.max(breadth, 0), n - 1);
+                const lower = Math.floor(clamped);
+                const upper = Math.min(lower + 1, n - 1);
+                const frac = clamped - lower;
+                return leafPixelPos[lower] + (leafPixelPos[upper] - leafPixelPos[lower]) * frac;
+            };
+
+            const breadthCenter = leafPixelPos.length ?
+                (leafPixelPos[0] + leafPixelPos[leafPixelPos.length - 1]) / 2 : 0;
             const canvasRect = canvas.getBoundingClientRect();
+
+            // All nodes at the same depth share the same top (vertical) / left
+            // (horizontal) edge, so a level's pitch must clear the tallest/widest
+            // node actually rendered at the level above it - a fixed pitch (the old
+            // TREE_LEVEL_SPACING) overlaps as soon as any node's real height/width
+            // exceeds it, which can happen with as few as two nodes (one parent,
+            // one child) once the child renders something taller than plain text.
+            const minPitch = orientation === 'vertical' ? TREE_LEVEL_MIN_PITCH.vertical : TREE_LEVEL_MIN_PITCH.horizontal;
+            const levelExtent = (record) => orientation === 'vertical' ? record.el.offsetHeight : record.el.offsetWidth;
+            const maxExtentByDepth = new Map();
+            nodes.forEach((record, id) => {
+                const depth = depthOf.get(id) ?? 0;
+                maxExtentByDepth.set(depth, Math.max(maxExtentByDepth.get(depth) || 0, levelExtent(record)));
+            });
+            const maxDepth = Math.max(...depthOf.values());
+            const depthPixelPos = [TREE_MARGIN];
+            for (let d = 1; d <= maxDepth; d++) {
+                const pitch = Math.max((maxExtentByDepth.get(d - 1) || 0) + TREE_LEVEL_GAP, minPitch);
+                depthPixelPos.push(depthPixelPos[d - 1] + pitch);
+            }
 
             const finalPos = new Map();
 
             nodes.forEach((record, id) => {
                 const depth = depthOf.get(id) ?? 0;
-                const breadth = (breadthOf.get(id) ?? 0) - breadthCenter;
+                const breadth = breadthToPixel(breadthOf.get(id) ?? 0) - breadthCenter;
                 const w = record.el.offsetWidth;
                 const h = record.el.offsetHeight;
                 let left;
                 let top;
                 if (orientation === 'vertical') {
-                    left = canvasRect.width / 2 + breadth * TREE_SIBLING_SPACING - w / 2;
-                    top = TREE_MARGIN + depth * TREE_LEVEL_SPACING.vertical;
+                    left = canvasRect.width / 2 + breadth - w / 2;
+                    top = depthPixelPos[depth];
                 } else {
-                    left = TREE_MARGIN + depth * TREE_LEVEL_SPACING.horizontal;
-                    top = canvasRect.height / 2 + breadth * TREE_SIBLING_SPACING - h / 2;
+                    left = depthPixelPos[depth];
+                    top = canvasRect.height / 2 + breadth - h / 2;
                 }
                 record.el.style.left = `${left}px`;
                 record.el.style.top = `${top}px`;
