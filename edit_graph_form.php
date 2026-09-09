@@ -132,7 +132,7 @@ class qtype_graph_edit_form extends question_edit_form {
         $canvasstyleattrs = [
             'showgrid' => (!empty($this->question->options) ? (int) $this->question->options->showgrid : 1) ? '1' : '0',
             'bgcolor' => !empty($this->question->options) ? $this->question->options->bgcolor : '#e2e8f0',
-            'gridcolor' => !empty($this->question->options) ? $this->question->options->gridcolor : '#1b1f27',
+            'gridcolor' => !empty($this->question->options) ? $this->question->options->gridcolor : '#cbd5e1',
         ];
 
         $mform->addElement('html', \qtype_graph\editor_ui::render($containerid, $canvasstyleattrs));

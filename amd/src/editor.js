@@ -32,7 +32,26 @@
 define(['core_form/changechecker'], function(FormChangeChecker) {
 
     const SVG_NS = 'http://www.w3.org/2000/svg';
-    const COLORS = ['#5b8cff', '#ff6b6b', '#4ade80', '#facc15', '#c084fc', '#38bdf8'];
+    // Each entry is {bg, border} - border is optional: when omitted, the node
+    // falls back to a CSS-computed darkened shade of bg (see .qtype_graph-node's
+    // border rule in styles.css), which is enough for most colors. A handful
+    // need a deliberately different (not just darker) border, so it's stored
+    // explicitly here instead.
+    const COLORS = [
+        {bg: '#423475'},
+        {bg: '#ff6b6b'},
+        {bg: '#4ade80'},
+        {bg: '#facc15'},
+        {bg: '#c084fc'},
+        {bg: '#38bdf8'},
+        {bg: '#dddddd'},
+        {bg: '#c94f5c', border: '#e68c11'},
+        {bg: '#f0a33a', border: '#af3643'},
+        {bg: '#61b89a'},
+        {bg: '#5b95d1', border: '#2e6fa7'},
+        {bg: '#69bd61', border: '#69bd61'},
+        {bg: '#009ab6', border: '#016a7d'},
+    ];
     const SHAPES = ['rounded', 'circle', 'rectangle', 'oval'];
     const DEFAULT_SHAPE = SHAPES[0];
     const CLICK_THRESHOLD = 4;
@@ -1233,16 +1252,16 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
 
                 const currentColor = getComputedStyle(record.el).getPropertyValue('--node-color').trim();
                 colorRow.innerHTML = '';
-                COLORS.forEach((color) => {
+                COLORS.forEach((entry) => {
                     const swatch = document.createElement('button');
                     swatch.type = 'button';
                     swatch.className = 'qtype_graph-colorswatch';
-                    swatch.style.background = color;
-                    if (color.toLowerCase() === currentColor.toLowerCase()) {
+                    swatch.style.background = entry.bg;
+                    if (entry.bg.toLowerCase() === currentColor.toLowerCase()) {
                         swatch.classList.add('qtype_graph-colorswatch--selected');
                     }
                     swatch.addEventListener('click', () => {
-                        record.el.style.setProperty('--node-color', color);
+                        applyNodeColors(record.el, entry.bg, entry.border);
                         notifyChange();
                         openMenu(nodeId);
                     });
@@ -1337,7 +1356,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             // filled in later by the student via the inline element or the edge's menu.
             const seedNodeText = (attemptMode && newNodeContentType === 'text') ? newNodeContentValue :
                     (attemptMode ? '' : 'Nuevo nodo');
-            const newId = createNode(left, top, seedNodeText, COLORS[0], false);
+            const newId = createNode(left, top, seedNodeText, COLORS[0].bg, false, null, null, COLORS[0].border);
             const seedEdgeLabel = (attemptMode && newEdgeContentType === 'text') ? newEdgeContentValue : '';
             createEdge(activeNodeId, newId, seedEdgeLabel, false);
             closeMenus();
@@ -1482,7 +1501,26 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             el.classList.toggle('qtype_graph-node--shape-oval', el.dataset.shape === 'oval');
         }
 
-        function createNode(left, top, text, color, locked, id, shape) {
+        /**
+         * Sets a node's fill (--node-color) and, if given, an explicit border color
+         * that overrides the CSS default (a darkened shade of the fill - see
+         * .qtype_graph-node's border rule in styles.css) - some COLORS entries pair
+         * a fill with a deliberately different, not just darker, border.
+         *
+         * @param {Element} el the .qtype_graph-node element.
+         * @param {string} bgColor
+         * @param {string} [borderColor]
+         */
+        function applyNodeColors(el, bgColor, borderColor) {
+            el.style.setProperty('--node-color', bgColor || COLORS[0].bg);
+            if (borderColor) {
+                el.style.setProperty('--node-border-color', borderColor);
+            } else {
+                el.style.removeProperty('--node-border-color');
+            }
+        }
+
+        function createNode(left, top, text, color, locked, id, shape, borderColor) {
             if (!id) {
                 nodeCounter += 1;
                 id = `node-${Date.now().toString(36)}-${nodeCounter}`;
@@ -1495,7 +1533,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             }
             el.style.left = `${left}px`;
             el.style.top = `${top}px`;
-            el.style.setProperty('--node-color', color || COLORS[0]);
+            applyNodeColors(el, color, borderColor);
             applyShape(el, shape);
 
             let textEl;
@@ -1713,6 +1751,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                     top: parseFloat(record.el.style.top) || 0,
                     text: getRecordText(record),
                     color: getComputedStyle(record.el).getPropertyValue('--node-color').trim(),
+                    // Read off the inline style (not getComputedStyle) so an unset override
+                    // serializes as '' rather than locking in whatever shade the CSS fallback
+                    // (a darkened --node-color, see styles.css) computed to at save time.
+                    bordercolor: record.el.style.getPropertyValue('--node-border-color').trim(),
                     shape: record.el.dataset.shape || DEFAULT_SHAPE,
                     locked: !!record.locked,
                 })),
@@ -1727,7 +1769,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             clear();
             const nodeList = Array.isArray(data.nodes) ? data.nodes : [];
             nodeList.forEach((n) => {
-                createNode(n.left || 0, n.top || 0, n.text, n.color, !!n.locked, n.id, n.shape);
+                createNode(n.left || 0, n.top || 0, n.text, n.color, !!n.locked, n.id, n.shape, n.bordercolor);
             });
             const edgeList = Array.isArray(data.edges) ? data.edges : [];
             edgeList.forEach((e) => {
@@ -2180,7 +2222,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         }
         if (!initial) {
             initial = {
-                nodes: [{id: 'node-1', left: 120, top: 220, text: 'Nuevo nodo', color: COLORS[0], locked: false}],
+                nodes: [{id: 'node-1', left: 120, top: 220, text: 'Nuevo nodo',
+                        color: COLORS[0].bg, bordercolor: COLORS[0].border || '', locked: false}],
                 edges: [],
                 mode: 'graph',
                 orientation: 'vertical',
@@ -2528,7 +2571,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                     initialGraph :
                     {
                         nodes: [{id: `node-${Date.now().toString(36)}`, left: 120, top: 220,
-                                text: 'Nuevo nodo', color: COLORS[0], locked: false}],
+                                text: 'Nuevo nodo', color: COLORS[0].bg, bordercolor: COLORS[0].border || '',
+                                locked: false}],
                         edges: [],
                     };
             let sourceGraph = {};

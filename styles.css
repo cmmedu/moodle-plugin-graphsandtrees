@@ -9,6 +9,16 @@
   --qtype-graph-accent-soft: rgba(91, 140, 255, 0.15);
   --qtype-graph-correct: #22c55e;
   --qtype-graph-incorrect: #ef4444;
+  /* Toolbar-only palette (not --qtype-graph-panel, which also colors the
+     node/edge menus and JSON panel - the toolbar is meant to stand apart
+     visually as its own colored bar, not the rest of the widget's chrome).
+     Everything below is a shade of the same purple, so the bar reads as one
+     coherent color instead of the old dark bar + mismatched blue accent. */
+  --qtype-graph-toolbar-bg: #423475;
+  --qtype-graph-toolbar-control-bg: color-mix(in srgb, var(--qtype-graph-toolbar-bg) 55%, black);
+  --qtype-graph-toolbar-border: color-mix(in srgb, var(--qtype-graph-toolbar-bg) 40%, black);
+  --qtype-graph-toolbar-active: #7d6bc4;
+  --qtype-graph-toolbar-muted: #c7bfe6;
 
   box-sizing: border-box;
   display: flex;
@@ -36,8 +46,8 @@
   flex-wrap: wrap;
   gap: 12px;
   padding: 10px 14px;
-  background: var(--qtype-graph-panel);
-  border-bottom: 1px solid var(--qtype-graph-border);
+  background: var(--qtype-graph-toolbar-bg);
+  border-bottom: 1px solid var(--qtype-graph-toolbar-border);
   z-index: 10;
 }
 
@@ -50,8 +60,8 @@
 
 .qtype_graph-segmented {
   display: flex;
-  background: var(--qtype-graph-bg);
-  border: 1px solid var(--qtype-graph-border);
+  background: var(--qtype-graph-toolbar-control-bg);
+  border: 1px solid var(--qtype-graph-toolbar-border);
   border-radius: 8px;
   padding: 2px;
   gap: 2px;
@@ -60,7 +70,7 @@
 .qtype_graph-segmented button {
   border: none;
   background: transparent;
-  color: var(--qtype-graph-muted);
+  color: var(--qtype-graph-toolbar-muted);
   font-size: 12px;
   padding: 6px 10px;
   border-radius: 6px;
@@ -69,12 +79,12 @@
 }
 
 .qtype_graph-segmented button:hover {
-  color: var(--qtype-graph-text);
+  color: #ffffff;
 }
 
 .qtype_graph-segmented button.active {
-  background: var(--qtype-graph-accent);
-  color: #0b0e14;
+  background: var(--qtype-graph-toolbar-active);
+  color: #ffffff;
   font-weight: 600;
 }
 
@@ -84,8 +94,8 @@
 }
 
 .qtype_graph-segmented button:disabled.active {
-  background: var(--qtype-graph-accent-soft);
-  color: var(--qtype-graph-text);
+  background: color-mix(in srgb, var(--qtype-graph-toolbar-active) 40%, transparent);
+  color: #ffffff;
 }
 
 .qtype_graph-zoomcontrols {
@@ -103,6 +113,19 @@
 
 .qtype_graph-exportbtn[hidden] {
   display: none;
+}
+
+/* Ancestor-qualified so this reliably beats the shared .qtype_graph-menubtn
+   (blue-accented) rule regardless of source order - this button also carries
+   that class, but needs to match the purple toolbar it lives in instead. */
+.qtype_graph-toolbar .qtype_graph-exportbtn {
+  background: color-mix(in srgb, var(--qtype-graph-toolbar-active) 35%, transparent);
+  border-color: var(--qtype-graph-toolbar-active);
+  color: #ffffff;
+}
+
+.qtype_graph-toolbar .qtype_graph-exportbtn:hover {
+  background: var(--qtype-graph-toolbar-active);
 }
 
 .qtype_graph-exportpanel[hidden] {
@@ -266,10 +289,18 @@
   min-width: 120px;
   max-width: 240px;
   padding: 14px 18px;
-  background: color-mix(in srgb, var(--node-color) 15%, var(--qtype-graph-panel));
-  border: 1.5px solid var(--node-color);
+  /* Solid fill (not a dark-panel-diluted tint) so a node's chosen color reads
+     as that literal color - see COLORS[0] in amd/src/editor.js for the
+     default new-node color this produces. */
+  background: var(--node-color);
+  /* --node-border-color (set inline per node - see applyNodeColors() in
+     amd/src/editor.js) overrides this when a color has its own explicit
+     border (some COLORS entries do); otherwise falls back to a shade darker
+     than the (now solid) fill, since border == background would otherwise
+     render as no visible edge at all. */
+  border: 1.5px solid var(--node-border-color, color-mix(in srgb, var(--node-color) 75%, black));
   border-radius: 10px;
-  color: var(--qtype-graph-text);
+  color: #ffffff;
   font-size: 14px;
   line-height: 1.4;
   text-align: center;
