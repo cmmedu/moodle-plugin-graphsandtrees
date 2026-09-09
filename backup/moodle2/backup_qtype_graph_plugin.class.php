@@ -60,6 +60,7 @@ class backup_qtype_graph_plugin extends backup_qtype_plugin {
             'correctfeedback', 'correctfeedbackformat',
             'partiallycorrectfeedback', 'partiallycorrectfeedbackformat',
             'incorrectfeedback', 'incorrectfeedbackformat', 'shownumcorrect',
+            'showgrid', 'bgcolor', 'gridcolor',
         ]);
         $pluginwrapper->add_child($graph);
         $graph->set_source_table('qtype_graph_options', ['questionid' => backup::VAR_PARENTID]);

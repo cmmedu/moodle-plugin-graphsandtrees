@@ -186,5 +186,35 @@ function xmldb_qtype_graph_upgrade(int $oldversion): bool {
         upgrade_plugin_savepoint(true, 2026090401, 'qtype', 'graph');
     }
 
+    if ($oldversion < 2026090900) {
+        $table = new xmldb_table('qtype_graph_options');
+
+        $field = new xmldb_field('showgrid', XMLDB_TYPE_INTEGER, '1', null,
+                XMLDB_NOTNULL, null, '1', 'shownumcorrect');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $field = new xmldb_field('bgcolor', XMLDB_TYPE_CHAR, '20', null,
+                XMLDB_NOTNULL, null, '#e2e8f0', 'showgrid');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026090900, 'qtype', 'graph');
+    }
+
+    if ($oldversion < 2026091000) {
+        $table = new xmldb_table('qtype_graph_options');
+
+        $field = new xmldb_field('gridcolor', XMLDB_TYPE_CHAR, '20', null,
+                XMLDB_NOTNULL, null, '#1b1f27', 'bgcolor');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026091000, 'qtype', 'graph');
+    }
+
     return true;
 }

@@ -71,6 +71,9 @@ class qtype_graph extends question_type {
         $options->newnodecontentvalue = $formdata->newnodecontentvalue ?? '';
         $options->newedgecontenttype = $formdata->newedgecontenttype ?? 'input';
         $options->newedgecontentvalue = $formdata->newedgecontentvalue ?? '';
+        $options->showgrid = !empty($formdata->showgrid) ? 1 : 0;
+        $options->bgcolor = $formdata->bgcolor ?? '#e2e8f0';
+        $options->gridcolor = $formdata->gridcolor ?? '#1b1f27';
         $options = $this->save_combined_feedback_helper($options, $formdata, $formdata->context, true);
         $DB->update_record('qtype_graph_options', $options);
 
@@ -129,6 +132,9 @@ class qtype_graph extends question_type {
         $question->newnodecontentvalue = $questiondata->options->newnodecontentvalue ?? '';
         $question->newedgecontenttype = $questiondata->options->newedgecontenttype ?? 'input';
         $question->newedgecontentvalue = $questiondata->options->newedgecontentvalue ?? '';
+        $question->showgrid = (bool) ($questiondata->options->showgrid ?? 1);
+        $question->bgcolor = $questiondata->options->bgcolor ?? '#e2e8f0';
+        $question->gridcolor = $questiondata->options->gridcolor ?? '#1b1f27';
         $question->altresultgraphs = array_map(function($altanswer) {
             return $altanswer->graphjson;
         }, $questiondata->options->altanswers ?? []);
@@ -189,6 +195,9 @@ class qtype_graph extends question_type {
                 "</newedgecontenttype>\n";
         $expout .= '    <newedgecontentvalue>' . $format->xml_escape($options->newedgecontentvalue) .
                 "</newedgecontentvalue>\n";
+        $expout .= "    <showgrid>{$options->showgrid}</showgrid>\n";
+        $expout .= '    <bgcolor>' . $format->xml_escape($options->bgcolor) . "</bgcolor>\n";
+        $expout .= '    <gridcolor>' . $format->xml_escape($options->gridcolor) . "</gridcolor>\n";
         $expout .= $format->write_combined_feedback($options, $question->id, $question->contextid);
 
         $expout .= "    <altanswers>\n";
@@ -231,6 +240,9 @@ class qtype_graph extends question_type {
         $qo->newnodecontentvalue = $format->getpath($data, ['#', 'newnodecontentvalue', 0, '#'], '', true);
         $qo->newedgecontenttype = $format->getpath($data, ['#', 'newedgecontenttype', 0, '#'], 'input', true);
         $qo->newedgecontentvalue = $format->getpath($data, ['#', 'newedgecontentvalue', 0, '#'], '', true);
+        $qo->showgrid = $format->getpath($data, ['#', 'showgrid', 0, '#'], 1);
+        $qo->bgcolor = $format->getpath($data, ['#', 'bgcolor', 0, '#'], '#e2e8f0', true);
+        $qo->gridcolor = $format->getpath($data, ['#', 'gridcolor', 0, '#'], '#1b1f27', true);
 
         $format->import_combined_feedback($qo, $data, true);
 

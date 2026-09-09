@@ -75,11 +75,14 @@ class restore_qtype_graph_plugin extends restore_qtype_plugin {
         }
 
         $data->questionid = $this->get_new_parentid('question');
-        // Backups made before these two columns existed on qtype_graph_options
-        // won't have them in the XML at all - fall back to the same defaults
+        // Backups made before these columns existed on qtype_graph_options won't
+        // have them in the XML at all - fall back to the same defaults
         // save_question_options() uses for a freshly-authored question.
         $data->newnodecontenttype = $data->newnodecontenttype ?? 'input';
         $data->newedgecontenttype = $data->newedgecontenttype ?? 'input';
+        $data->showgrid = $data->showgrid ?? 1;
+        $data->bgcolor = $data->bgcolor ?? '#e2e8f0';
+        $data->gridcolor = $data->gridcolor ?? '#1b1f27';
 
         $newitemid = $DB->insert_record('qtype_graph_options', $data);
         $this->set_mapping('qtype_graph_options', $oldid, $newitemid);

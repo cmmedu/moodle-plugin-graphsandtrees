@@ -165,11 +165,20 @@
   position: relative;
   flex: 1;
   overflow: hidden;
+  /* Separate from --qtype-graph-bg (used throughout the toolbar/menus/inputs,
+     styled for a dark background with light text) so a per-question bg color
+     override only ever repaints the drawing surface itself, never the rest
+     of the widget's chrome - see setCanvasStyle() in amd/src/editor.js. */
+  background-color: var(--qtype-graph-canvas-bg, var(--qtype-graph-bg));
   background-image:
     linear-gradient(var(--qtype-graph-grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--qtype-graph-grid) 1px, transparent 1px);
   background-size: 24px 24px;
   cursor: grab;
+}
+
+.qtype_graph-canvas--nogrid {
+  background-image: none;
 }
 
 .qtype_graph-canvas.qtype_graph-canvas--tree .qtype_graph-node {
@@ -675,4 +684,15 @@
 
 .qtype_graph-edge-group--locked .qtype_graph-edge-hit {
   cursor: default;
+}
+
+/* The edit form's bgcolor swatch picker (see edit_graph_form.php), paired next
+   to the plain hex text field it overwrites - not inside .qtype_graph-container,
+   so this rule needs no --qtype-graph-* theme tokens. */
+.qtype_graph-bgcolorpicker {
+  width: 2.5rem;
+  height: calc(1.5em + 0.75rem + 2px);
+  padding: 2px;
+  vertical-align: middle;
+  cursor: pointer;
 }

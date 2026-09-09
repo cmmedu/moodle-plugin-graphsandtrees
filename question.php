@@ -62,6 +62,15 @@ class qtype_graph_question extends question_graded_automatically {
     /** @var string meaning depends on $newedgecontenttype - see amd/src/editor.js's openEdgeMenu(). */
     public $newedgecontentvalue = '';
 
+    /** @var bool whether every canvas for this question shows its background grid. */
+    public $showgrid = true;
+
+    /** @var string background color (CSS hex) of every canvas for this question. */
+    public $bgcolor = '#e2e8f0';
+
+    /** @var string background grid line color (CSS hex) of every canvas for this question. */
+    public $gridcolor = '#1b1f27';
+
     /** @var string feedback shown for a fully correct response. */
     public $correctfeedback;
     /** @var int format of $correctfeedback. */

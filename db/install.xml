@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="question/type/graph/db" VERSION="20260905" COMMENT="XMLDB file for Moodle question/type/graph"
+<XMLDB PATH="question/type/graph/db" VERSION="20260910" COMMENT="XMLDB file for Moodle question/type/graph"
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xsi:noNamespaceSchemaLocation="../../../../lib/xmldb/xmldb.xsd"
 >
@@ -23,6 +23,9 @@
         <FIELD NAME="incorrectfeedback" TYPE="text" NOTNULL="true" SEQUENCE="false" COMMENT="Feedback shown for any incorrect response."/>
         <FIELD NAME="incorrectfeedbackformat" TYPE="int" LENGTH="2" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="shownumcorrect" TYPE="int" LENGTH="2" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="If true, once the question is finished, tell the student how many parts they got correct alongside the combined feedback."/>
+        <FIELD NAME="showgrid" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether every canvas for this question (editor and attempt) shows its background grid."/>
+        <FIELD NAME="bgcolor" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="#e2e8f0" SEQUENCE="false" COMMENT="Background color (CSS hex) of every canvas for this question."/>
+        <FIELD NAME="gridcolor" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="#1b1f27" SEQUENCE="false" COMMENT="Background grid line color (CSS hex) of every canvas for this question."/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>

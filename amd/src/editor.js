@@ -458,6 +458,35 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             });
         }
 
+        /**
+         * Show/hide the canvas's background grid and set its background/grid-line
+         * colors. Read generically off the container's own data-showgrid/data-bgcolor/
+         * data-gridcolor (set by editor_ui::render()'s $dataattrs - see renderer.php and
+         * edit_graph_form.php) rather than threaded through opts, so it applies
+         * uniformly to every canvas this question has (default, result, every
+         * alternate answer, and the student attempt canvas) with no per-entry-point
+         * wiring. Also called live from initCanvasSettings() below whenever the
+         * teacher toggles the grid checkbox or picks a new color in the edit form.
+         *
+         * @param {boolean} showGrid
+         * @param {string} bgColor a CSS color, or '' to fall back to the default theme color.
+         * @param {string} [gridColor] a CSS color, or '' to fall back to the default theme color.
+         */
+        function setCanvasStyle(showGrid, bgColor, gridColor) {
+            canvas.classList.toggle('qtype_graph-canvas--nogrid', !showGrid);
+            if (bgColor) {
+                canvas.style.setProperty('--qtype-graph-canvas-bg', bgColor);
+            } else {
+                canvas.style.removeProperty('--qtype-graph-canvas-bg');
+            }
+            if (gridColor) {
+                canvas.style.setProperty('--qtype-graph-grid', gridColor);
+            } else {
+                canvas.style.removeProperty('--qtype-graph-grid');
+            }
+        }
+        setCanvasStyle(root.dataset.showgrid !== '0', root.dataset.bgcolor || '', root.dataset.gridcolor || '');
+
         // The result graph never chooses its own mode/orientation/line-style: it always
         // mirrors the default graph's (see setLayout() below and initEditor()'s pre-hydrate
         // override), so its copies of these controls are permanently hidden rather than just
@@ -1795,7 +1824,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             });
         }
 
-        const api = {hydrate, serialize, setNodeText, setEdgeLabel, setLayout, markFeedback, addSyncTarget};
+        const api = {
+            hydrate, serialize, setNodeText, setEdgeLabel, setLayout, markFeedback, addSyncTarget, setCanvasStyle,
+        };
         editorRegistry.set(root.id, api);
         return api;
     }
@@ -2026,6 +2057,74 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const issues = validateGraphs(safeParseGraph(defaultField.value), safeParseGraph(resultField.value), allowAddNodes);
             renderValidationIssues(output, issues);
         });
+    }
+
+    /**
+     * Wires the edit form's "Mostrar cuadrícula"/"Color de fondo" controls so
+     * toggling them immediately restyles every canvas belonging to this question
+     * (default graph, result graph, and every alternate answer graph, including
+     * ones added later via initAltAnswers) - not just the one saved to the DB on
+     * next submit. Broadcasts to every editor currently in editorRegistry rather
+     * than tracking specific container ids, since alternates are created and
+     * removed dynamically after this runs.
+     *
+     * The color is a plain mform text field (bgColorFieldId) - the one actually
+     * submitted - so a hex value can still be typed/pasted directly; the native
+     * color-swatch picker (bgColorPickerId) is a separate, non-submitted element
+     * kept in sync with it in both directions: picking a color writes its hex
+     * into the text field, and typing a valid 6-digit hex into the text field
+     * updates the swatch to match.
+     *
+     * @param {string} showGridFieldId id of the "show grid" checkbox.
+     * @param {string} bgColorFieldId id of the background color text field.
+     * @param {string} bgColorPickerId id of the paired <input type="color"> swatch.
+     * @param {string} [gridColorFieldId] id of the grid line color text field.
+     * @param {string} [gridColorPickerId] id of its paired <input type="color"> swatch.
+     */
+    function initCanvasSettings(showGridFieldId, bgColorFieldId, bgColorPickerId, gridColorFieldId, gridColorPickerId) {
+        const showGridField = document.getElementById(showGridFieldId);
+        const bgColorField = document.getElementById(bgColorFieldId);
+        const gridColorField = document.getElementById(gridColorFieldId);
+        if (!showGridField || !bgColorField) {
+            return;
+        }
+
+        function broadcast() {
+            const showGrid = showGridField.checked;
+            const bgColor = bgColorField.value;
+            const gridColor = gridColorField ? gridColorField.value : '';
+            editorRegistry.forEach((editor) => editor.setCanvasStyle(showGrid, bgColor, gridColor));
+        }
+
+        /**
+         * Two-way-syncs a plain hex text field with its paired native color-swatch
+         * picker (see the picker markup in edit_graph_form.php) - typing a valid
+         * 6-digit hex updates the swatch, picking a color overwrites the text
+         * field - and calls broadcast() after either.
+         *
+         * @param {Element} textField
+         * @param {Element|null} picker
+         */
+        function wireColorPair(textField, picker) {
+            textField.addEventListener('input', () => {
+                if (picker && /^#[0-9a-fA-F]{6}$/.test(textField.value)) {
+                    picker.value = textField.value;
+                }
+                broadcast();
+            });
+            if (picker) {
+                picker.addEventListener('input', () => {
+                    textField.value = picker.value;
+                    broadcast();
+                });
+            }
+        }
+
+        showGridField.addEventListener('change', broadcast);
+        wireColorPair(bgColorField, document.getElementById(bgColorPickerId));
+        if (gridColorField) {
+            wireColorPair(gridColorField, document.getElementById(gridColorPickerId));
+        }
     }
 
     /**
@@ -2508,5 +2607,6 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         initAttempt,
         initValidation,
         initAltAnswers,
+        initCanvasSettings,
     };
 });
