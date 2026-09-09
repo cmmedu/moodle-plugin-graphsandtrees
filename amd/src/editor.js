@@ -115,7 +115,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
 
     const BLANK_MARKER = '{{T_INPUT}}';
 
-    // Matches a [[option1,option2,...]] dropdown blank marker - "Marcar como
+    // Matches a [[option1;option2;...]] dropdown blank marker - "Marcar como
     // selector"'s counterpart to BLANK_TOKEN_RE/BLANK_MARKER above. Unlike
     // {{T_INPUT}}, this marker's content is not secret (it is the list of
     // choices, not the accepted answer) so blank_token.php never strips it -
@@ -156,17 +156,24 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     }
 
     /**
-     * Split a comma-separated options string into a trimmed, non-empty option list.
+     * Split a semicolon-separated options string into a trimmed, non-empty option
+     * list. Semicolon (not comma) so an option's own text can itself contain a
+     * comma without being split apart. A string with no semicolon at all is
+     * treated as legacy comma-separated data (from before this was semicolon),
+     * so already-authored newnodecontentvalue/newedgecontentvalue values and
+     * [[...]] select-blank markers keep working without a DB migration.
      *
      * @param {string} optionsCsv
      * @return {Array}
      */
     function splitOptions(optionsCsv) {
-        return (optionsCsv || '').split(',').map((opt) => opt.trim()).filter((opt) => opt !== '');
+        const raw = optionsCsv || '';
+        const delimiter = raw.includes(';') ? ';' : ',';
+        return raw.split(delimiter).map((opt) => opt.trim()).filter((opt) => opt !== '');
     }
 
     /**
-     * Does this label consist of exactly one [[option1,option2,...]] marker (the
+     * Does this label consist of exactly one [[option1;option2;...]] marker (the
      * convention "Marcar como selector" always creates)? Used by the node/edge menu
      * to decide whether to show the options field instead of the plain text field -
      * not used by parseLabelSegments() below, which recognizes the marker anywhere
@@ -184,19 +191,19 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     }
 
     /**
-     * Build a [[option1,option2,...]] marker from a comma-separated options string,
-     * as typed into the node/edge menu's options field.
+     * Build a [[option1;option2;...]] marker from a semicolon-separated options
+     * string, as typed into the node/edge menu's options field.
      *
      * @param {string} optionsCsv
      * @return {string}
      */
     function buildSelectMarker(optionsCsv) {
-        return `[[${splitOptions(optionsCsv).join(',')}]]`;
+        return `[[${splitOptions(optionsCsv).join(';')}]]`;
     }
 
     /**
      * Split a node/edge label into alternating plain-text and blank segments - a
-     * blank is either a free-text {{T_INPUT}} marker or a [[option1,option2,...]]
+     * blank is either a free-text {{T_INPUT}} marker or a [[option1;option2;...]]
      * dropdown marker.
      *
      * @param {string} text raw label text.
@@ -257,6 +264,23 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * @param {Function} [getBlankValue] (blankId) => initial value.
      * @param {Function} [onBlankChange] (blankId, value) => void, called on input/change.
      */
+    /**
+     * Auto-grows a free-text <input>'s width to fit its current value (or its
+     * placeholder, while still empty), in ch units, instead of a one-size-fits-all
+     * fixed width - a short answer no longer sits in a box padded out with empty
+     * space, and a long one isn't clipped either. The input's own CSS class still
+     * sets min-width: 45px as a floor this can never shrink below. Only for the
+     * free-text blank/node inputs (.qtype_graph-blank-input,
+     * .qtype_graph-node-text-input) - a <select> already sizes itself to its
+     * widest option natively, with no help needed.
+     *
+     * @param {Element} input
+     */
+    function autosizeTextInput(input) {
+        const content = input.value || input.placeholder || '';
+        input.style.width = `${content.length + 1}ch`;
+    }
+
     function renderLabelSegments(container, text, ownerKind, ownerId, editableInputs, getBlankValue, onBlankChange) {
         container.innerHTML = '';
         parseLabelSegments(text).forEach((seg) => {
@@ -298,6 +322,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             input.dataset.blankId = blankId;
             input.readOnly = !editableInputs;
             input.value = (getBlankValue && getBlankValue(blankId)) || '';
+            autosizeTextInput(input);
             input.addEventListener('mousedown', (e) => e.stopPropagation());
             input.addEventListener('click', (e) => e.stopPropagation());
             input.addEventListener('keydown', (e) => {
@@ -307,6 +332,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 }
             });
             input.addEventListener('input', () => {
+                autosizeTextInput(input);
                 if (onBlankChange) {
                     onBlankChange(blankId, input.value);
                 }
@@ -382,7 +408,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const addInputTargetContainerId = opts.addInputTargetContainerId || null;
         // What a STUDENT's own new node/connection looks like (attempt mode only) -
         // 'input' (today's free-text box, value used as its placeholder), 'select'
-        // (a dropdown built from value's comma-separated options), or 'text' (fixed,
+        // (a dropdown built from value's semicolon-separated options), or 'text' (fixed,
         // non-editable content equal to value). See createNode()'s attempt-mode
         // branch and openEdgeMenu() below. Unrelated to enableAddInput/
         // addInputTargetContainerId above, which govern the teacher-authoring
@@ -1047,7 +1073,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             edgeValueSection.hidden = !attemptSelect;
             edgeLabelInput.value = edge.label;
             edgeLabelInput.readOnly = attemptMode && !edge.locked && newEdgeContentType === 'text';
-            edgeSelectInput.value = selectOptions ? selectOptions.join(', ') : '';
+            edgeSelectInput.value = selectOptions ? selectOptions.join('; ') : '';
             if (attemptSelect) {
                 const options = splitOptions(newEdgeContentValue);
                 edgeValueSelect.innerHTML = '';
@@ -1247,7 +1273,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             if (!locked) {
                 if (!attemptRestricted) {
                     nodeTextInput.value = getRecordText(record);
-                    nodeSelectInput.value = selectOptions ? selectOptions.join(', ') : '';
+                    nodeSelectInput.value = selectOptions ? selectOptions.join('; ') : '';
                 }
 
                 const currentColor = getComputedStyle(record.el).getPropertyValue('--node-color').trim();
@@ -1582,6 +1608,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 textEl.dataset.maxWords = String(DEFAULT_MAX_WORDS);
                 textEl.value = text || '';
                 textEl.readOnly = !editable;
+                autosizeTextInput(textEl);
                 textEl.addEventListener('mousedown', (e) => e.stopPropagation());
                 textEl.addEventListener('click', (e) => e.stopPropagation());
                 textEl.addEventListener('keydown', (e) => {
@@ -1596,6 +1623,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                     if (limited !== textEl.value) {
                         textEl.value = limited;
                     }
+                    autosizeTextInput(textEl);
                     if (activeNodeId === id) {
                         nodeTextInput.value = textEl.value;
                     }

@@ -600,8 +600,10 @@
 
 .qtype_graph-blank-input {
   display: inline-block;
-  width: 70px;
-  min-width: 48px;
+  /* Width itself comes from autosizeTextInput() in amd/src/editor.js (grows/
+     shrinks to fit the current value, in ch units) - this is just the floor
+     it can never go below. */
+  min-width: 45px;
   margin: 0 2px;
   padding: 2px 6px;
   font-size: 12px;
@@ -656,9 +658,11 @@
      explicit width (it shrink-to-fits between its min/max-width), and a
      percentage-width child breaks that shrink-to-fit calculation, forcing the
      node to always render at max-width (240px) no matter how short the text
-     actually is. A fixed width (matching .qtype_graph-blank-input's approach)
-     lets the node size to its real content instead. */
-  width: 140px;
+     actually is. autosizeTextInput() (amd/src/editor.js) sets an explicit
+     ch-based width instead, which - like the fixed width this replaced - isn't
+     a percentage, so the same shrink-to-fit calculation still works; this is
+     just the floor that width can never go below. */
+  min-width: 45px;
   max-width: 100%;
   background: transparent;
   border: 1px solid var(--qtype-graph-border);
