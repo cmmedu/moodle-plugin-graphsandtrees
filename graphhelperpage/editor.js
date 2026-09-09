@@ -47,7 +47,28 @@
     var FormChangeChecker = {markFormAsDirty: function() {}};
 
     const SVG_NS = 'http://www.w3.org/2000/svg';
-    const COLORS = ['#5b8cff', '#ff6b6b', '#4ade80', '#facc15', '#c084fc', '#38bdf8'];
+    // Each entry is {bg, border} - border is optional: when omitted, the node
+    // falls back to a CSS-computed darkened shade of bg (see .qtype_graph-node's
+    // border rule in styles.css), which is enough for most colors. A handful
+    // need a deliberately different (not just darker) border, so it's stored
+    // explicitly here instead.
+    const COLORS = [
+        {bg: '#423475'},
+        {bg: '#ff6b6b'},
+        {bg: '#4ade80'},
+        {bg: '#facc15'},
+        {bg: '#c084fc'},
+        {bg: '#38bdf8'},
+        {bg: '#dddddd'},
+        {bg: '#c94f5c', border: '#e68c11'},
+        {bg: '#f0a33a', border: '#af3643'},
+        {bg: '#61b89a'},
+        {bg: '#5b95d1', border: '#2e6fa7'},
+        {bg: '#69bd61', border: '#69bd61'},
+        {bg: '#009ab6', border: '#016a7d'},
+    ];
+    const SHAPES = ['rounded', 'circle', 'rectangle', 'oval'];
+    const DEFAULT_SHAPE = SHAPES[0];
     const CLICK_THRESHOLD = 4;
     // Nodes can be up to 240px wide (.qtype_graph-node's max-width) and grow tall
     // with wrapped/multi-blank content (e.g. a multi-blank label, or the
@@ -109,7 +130,7 @@
 
     const BLANK_MARKER = '{{T_INPUT}}';
 
-    // Matches a [[option1,option2,...]] dropdown blank marker - "Marcar como
+    // Matches a [[option1;option2;...]] dropdown blank marker - "Marcar como
     // selector"'s counterpart to BLANK_TOKEN_RE/BLANK_MARKER above. Unlike
     // {{T_INPUT}}, this marker's content is not secret (it is the list of
     // choices, not the accepted answer) so blank_token.php never strips it -
@@ -150,17 +171,24 @@
     }
 
     /**
-     * Split a comma-separated options string into a trimmed, non-empty option list.
+     * Split a semicolon-separated options string into a trimmed, non-empty option
+     * list. Semicolon (not comma) so an option's own text can itself contain a
+     * comma without being split apart. A string with no semicolon at all is
+     * treated as legacy comma-separated data (from before this was semicolon),
+     * so already-authored newnodecontentvalue/newedgecontentvalue values and
+     * [[...]] select-blank markers keep working without a DB migration.
      *
      * @param {string} optionsCsv
      * @return {Array}
      */
     function splitOptions(optionsCsv) {
-        return (optionsCsv || '').split(',').map((opt) => opt.trim()).filter((opt) => opt !== '');
+        const raw = optionsCsv || '';
+        const delimiter = raw.includes(';') ? ';' : ',';
+        return raw.split(delimiter).map((opt) => opt.trim()).filter((opt) => opt !== '');
     }
 
     /**
-     * Does this label consist of exactly one [[option1,option2,...]] marker (the
+     * Does this label consist of exactly one [[option1;option2;...]] marker (the
      * convention "Marcar como selector" always creates)? Used by the node/edge menu
      * to decide whether to show the options field instead of the plain text field -
      * not used by parseLabelSegments() below, which recognizes the marker anywhere
@@ -178,19 +206,19 @@
     }
 
     /**
-     * Build a [[option1,option2,...]] marker from a comma-separated options string,
-     * as typed into the node/edge menu's options field.
+     * Build a [[option1;option2;...]] marker from a semicolon-separated options
+     * string, as typed into the node/edge menu's options field.
      *
      * @param {string} optionsCsv
      * @return {string}
      */
     function buildSelectMarker(optionsCsv) {
-        return `[[${splitOptions(optionsCsv).join(',')}]]`;
+        return `[[${splitOptions(optionsCsv).join(';')}]]`;
     }
 
     /**
      * Split a node/edge label into alternating plain-text and blank segments - a
-     * blank is either a free-text {{T_INPUT}} marker or a [[option1,option2,...]]
+     * blank is either a free-text {{T_INPUT}} marker or a [[option1;option2;...]]
      * dropdown marker.
      *
      * @param {string} text raw label text.
@@ -251,6 +279,23 @@
      * @param {Function} [getBlankValue] (blankId) => initial value.
      * @param {Function} [onBlankChange] (blankId, value) => void, called on input/change.
      */
+    /**
+     * Auto-grows a free-text <input>'s width to fit its current value (or its
+     * placeholder, while still empty), in ch units, instead of a one-size-fits-all
+     * fixed width - a short answer no longer sits in a box padded out with empty
+     * space, and a long one isn't clipped either. The input's own CSS class still
+     * sets min-width: 45px as a floor this can never shrink below. Only for the
+     * free-text blank/node inputs (.qtype_graph-blank-input,
+     * .qtype_graph-node-text-input) - a <select> already sizes itself to its
+     * widest option natively, with no help needed.
+     *
+     * @param {Element} input
+     */
+    function autosizeTextInput(input) {
+        const content = input.value || input.placeholder || '';
+        input.style.width = `${content.length + 1}ch`;
+    }
+
     function renderLabelSegments(container, text, ownerKind, ownerId, editableInputs, getBlankValue, onBlankChange) {
         container.innerHTML = '';
         parseLabelSegments(text).forEach((seg) => {
@@ -292,6 +337,7 @@
             input.dataset.blankId = blankId;
             input.readOnly = !editableInputs;
             input.value = (getBlankValue && getBlankValue(blankId)) || '';
+            autosizeTextInput(input);
             input.addEventListener('mousedown', (e) => e.stopPropagation());
             input.addEventListener('click', (e) => e.stopPropagation());
             input.addEventListener('keydown', (e) => {
@@ -301,6 +347,7 @@
                 }
             });
             input.addEventListener('input', () => {
+                autosizeTextInput(input);
                 if (onBlankChange) {
                     onBlankChange(blankId, input.value);
                 }
@@ -376,7 +423,7 @@
         const addInputTargetContainerId = opts.addInputTargetContainerId || null;
         // What a STUDENT's own new node/connection looks like (attempt mode only) -
         // 'input' (today's free-text box, value used as its placeholder), 'select'
-        // (a dropdown built from value's comma-separated options), or 'text' (fixed,
+        // (a dropdown built from value's semicolon-separated options), or 'text' (fixed,
         // non-editable content equal to value). See createNode()'s attempt-mode
         // branch and openEdgeMenu() below. Unrelated to enableAddInput/
         // addInputTargetContainerId above, which govern the teacher-authoring
@@ -394,8 +441,10 @@
         const nodeSelectSection = root.querySelector('[data-role="node-select-section"]');
         const nodeSelectInput = root.querySelector('[data-role="node-select-input"]');
         const nodeColorSection = root.querySelector('[data-role="node-color-section"]');
+        const nodeShapeSection = root.querySelector('[data-role="node-shape-section"]');
         const nodeTextInput = root.querySelector('[data-role="node-text-input"]');
         const colorRow = root.querySelector('[data-role="color-row"]');
+        const shapeRow = root.querySelector('[data-role="shape-row"]');
         const addConnectedBtn = root.querySelector('[data-role="add-connected-btn"]');
         const addInputBtn = root.querySelector('[data-role="add-input-btn"]');
         const addSelectBtn = root.querySelector('[data-role="add-select-btn"]');
@@ -468,6 +517,35 @@
                 btn.disabled = true;
             });
         }
+
+        /**
+         * Show/hide the canvas's background grid and set its background/grid-line
+         * colors. Read generically off the container's own data-showgrid/data-bgcolor/
+         * data-gridcolor (set by editor_ui::render()'s $dataattrs - see renderer.php and
+         * edit_graph_form.php) rather than threaded through opts, so it applies
+         * uniformly to every canvas this question has (default, result, every
+         * alternate answer, and the student attempt canvas) with no per-entry-point
+         * wiring. Also called live from initCanvasSettings() below whenever the
+         * teacher toggles the grid checkbox or picks a new color in the edit form.
+         *
+         * @param {boolean} showGrid
+         * @param {string} bgColor a CSS color, or '' to fall back to the default theme color.
+         * @param {string} [gridColor] a CSS color, or '' to fall back to the default theme color.
+         */
+        function setCanvasStyle(showGrid, bgColor, gridColor) {
+            canvas.classList.toggle('qtype_graph-canvas--nogrid', !showGrid);
+            if (bgColor) {
+                canvas.style.setProperty('--qtype-graph-canvas-bg', bgColor);
+            } else {
+                canvas.style.removeProperty('--qtype-graph-canvas-bg');
+            }
+            if (gridColor) {
+                canvas.style.setProperty('--qtype-graph-grid', gridColor);
+            } else {
+                canvas.style.removeProperty('--qtype-graph-grid');
+            }
+        }
+        setCanvasStyle(root.dataset.showgrid !== '0', root.dataset.bgcolor || '', root.dataset.gridcolor || '');
 
         // The result graph never chooses its own mode/orientation/line-style: it always
         // mirrors the default graph's (see setLayout() below and initEditor()'s pre-hydrate
@@ -1010,7 +1088,7 @@
             edgeValueSection.hidden = !attemptSelect;
             edgeLabelInput.value = edge.label;
             edgeLabelInput.readOnly = attemptMode && !edge.locked && newEdgeContentType === 'text';
-            edgeSelectInput.value = selectOptions ? selectOptions.join(', ') : '';
+            edgeSelectInput.value = selectOptions ? selectOptions.join('; ') : '';
             if (attemptSelect) {
                 const options = splitOptions(newEdgeContentValue);
                 edgeValueSelect.innerHTML = '';
@@ -1203,31 +1281,37 @@
             nodeTextSection.hidden = locked || attemptRestricted || !!selectOptions;
             nodeSelectSection.hidden = locked || !selectOptions;
             nodeColorSection.hidden = locked;
+            nodeShapeSection.hidden = locked;
             addConnectedBtn.hidden = !allowAddNodes;
             deleteNodeBtn.hidden = !canDeleteThisNode;
 
             if (!locked) {
                 if (!attemptRestricted) {
                     nodeTextInput.value = getRecordText(record);
-                    nodeSelectInput.value = selectOptions ? selectOptions.join(', ') : '';
+                    nodeSelectInput.value = selectOptions ? selectOptions.join('; ') : '';
                 }
 
                 const currentColor = getComputedStyle(record.el).getPropertyValue('--node-color').trim();
                 colorRow.innerHTML = '';
-                COLORS.forEach((color) => {
+                COLORS.forEach((entry) => {
                     const swatch = document.createElement('button');
                     swatch.type = 'button';
                     swatch.className = 'qtype_graph-colorswatch';
-                    swatch.style.background = color;
-                    if (color.toLowerCase() === currentColor.toLowerCase()) {
+                    swatch.style.background = entry.bg;
+                    if (entry.bg.toLowerCase() === currentColor.toLowerCase()) {
                         swatch.classList.add('qtype_graph-colorswatch--selected');
                     }
                     swatch.addEventListener('click', () => {
-                        record.el.style.setProperty('--node-color', color);
+                        applyNodeColors(record.el, entry.bg, entry.border);
                         notifyChange();
                         openMenu(nodeId);
                     });
                     colorRow.appendChild(swatch);
+                });
+
+                const currentShape = record.el.dataset.shape || DEFAULT_SHAPE;
+                [...shapeRow.children].forEach((btn) => {
+                    btn.classList.toggle('qtype_graph-shapebtn--selected', btn.dataset.shape === currentShape);
                 });
             }
 
@@ -1254,6 +1338,17 @@
             menu.style.left = `${left}px`;
             menu.style.top = `${top}px`;
         }
+
+        shapeRow.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-shape]');
+            if (!btn || !activeNodeId) {
+                return;
+            }
+            const record = nodes.get(activeNodeId);
+            applyShape(record.el, btn.dataset.shape);
+            notifyChange();
+            openMenu(activeNodeId);
+        });
 
         nodeTextInput.addEventListener('input', () => {
             if (!activeNodeId) {
@@ -1302,7 +1397,7 @@
             // filled in later by the student via the inline element or the edge's menu.
             const seedNodeText = (attemptMode && newNodeContentType === 'text') ? newNodeContentValue :
                     (attemptMode ? '' : 'Nuevo nodo');
-            const newId = createNode(left, top, seedNodeText, COLORS[0], false);
+            const newId = createNode(left, top, seedNodeText, COLORS[0].bg, false, null, null, COLORS[0].border);
             const seedEdgeLabel = (attemptMode && newEdgeContentType === 'text') ? newEdgeContentValue : '';
             createEdge(activeNodeId, newId, seedEdgeLabel, false);
             closeMenus();
@@ -1440,7 +1535,33 @@
             }
         }
 
-        function createNode(left, top, text, color, locked, id) {
+        function applyShape(el, shape) {
+            el.dataset.shape = SHAPES.includes(shape) ? shape : DEFAULT_SHAPE;
+            el.classList.toggle('qtype_graph-node--shape-circle', el.dataset.shape === 'circle');
+            el.classList.toggle('qtype_graph-node--shape-rectangle', el.dataset.shape === 'rectangle');
+            el.classList.toggle('qtype_graph-node--shape-oval', el.dataset.shape === 'oval');
+        }
+
+        /**
+         * Sets a node's fill (--node-color) and, if given, an explicit border color
+         * that overrides the CSS default (a darkened shade of the fill - see
+         * .qtype_graph-node's border rule in styles.css) - some COLORS entries pair
+         * a fill with a deliberately different, not just darker, border.
+         *
+         * @param {Element} el the .qtype_graph-node element.
+         * @param {string} bgColor
+         * @param {string} [borderColor]
+         */
+        function applyNodeColors(el, bgColor, borderColor) {
+            el.style.setProperty('--node-color', bgColor || COLORS[0].bg);
+            if (borderColor) {
+                el.style.setProperty('--node-border-color', borderColor);
+            } else {
+                el.style.removeProperty('--node-border-color');
+            }
+        }
+
+        function createNode(left, top, text, color, locked, id, shape, borderColor) {
             if (!id) {
                 nodeCounter += 1;
                 id = `node-${Date.now().toString(36)}-${nodeCounter}`;
@@ -1453,7 +1574,8 @@
             }
             el.style.left = `${left}px`;
             el.style.top = `${top}px`;
-            el.style.setProperty('--node-color', color || COLORS[0]);
+            applyNodeColors(el, color, borderColor);
+            applyShape(el, shape);
 
             let textEl;
             if (locked && attemptMode && hasBlankTokens(text)) {
@@ -1501,6 +1623,7 @@
                 textEl.dataset.maxWords = String(DEFAULT_MAX_WORDS);
                 textEl.value = text || '';
                 textEl.readOnly = !editable;
+                autosizeTextInput(textEl);
                 textEl.addEventListener('mousedown', (e) => e.stopPropagation());
                 textEl.addEventListener('click', (e) => e.stopPropagation());
                 textEl.addEventListener('keydown', (e) => {
@@ -1515,6 +1638,7 @@
                     if (limited !== textEl.value) {
                         textEl.value = limited;
                     }
+                    autosizeTextInput(textEl);
                     if (activeNodeId === id) {
                         nodeTextInput.value = textEl.value;
                     }
@@ -1670,6 +1794,11 @@
                     top: parseFloat(record.el.style.top) || 0,
                     text: getRecordText(record),
                     color: getComputedStyle(record.el).getPropertyValue('--node-color').trim(),
+                    // Read off the inline style (not getComputedStyle) so an unset override
+                    // serializes as '' rather than locking in whatever shade the CSS fallback
+                    // (a darkened --node-color, see styles.css) computed to at save time.
+                    bordercolor: record.el.style.getPropertyValue('--node-border-color').trim(),
+                    shape: record.el.dataset.shape || DEFAULT_SHAPE,
                     locked: !!record.locked,
                 })),
                 edges: edges.map((edge) => ({
@@ -1683,7 +1812,7 @@
             clear();
             const nodeList = Array.isArray(data.nodes) ? data.nodes : [];
             nodeList.forEach((n) => {
-                createNode(n.left || 0, n.top || 0, n.text, n.color, !!n.locked, n.id);
+                createNode(n.left || 0, n.top || 0, n.text, n.color, !!n.locked, n.id, n.shape, n.bordercolor);
             });
             const edgeList = Array.isArray(data.edges) ? data.edges : [];
             edgeList.forEach((e) => {
@@ -1780,7 +1909,9 @@
             });
         }
 
-        const api = {hydrate, serialize, setNodeText, setEdgeLabel, setLayout, markFeedback, addSyncTarget};
+        const api = {
+            hydrate, serialize, setNodeText, setEdgeLabel, setLayout, markFeedback, addSyncTarget, setCanvasStyle,
+        };
         editorRegistry.set(root.id, api);
         return api;
     }
@@ -2014,6 +2145,74 @@
     }
 
     /**
+     * Wires the edit form's "Mostrar cuadrícula"/"Color de fondo" controls so
+     * toggling them immediately restyles every canvas belonging to this question
+     * (default graph, result graph, and every alternate answer graph, including
+     * ones added later via initAltAnswers) - not just the one saved to the DB on
+     * next submit. Broadcasts to every editor currently in editorRegistry rather
+     * than tracking specific container ids, since alternates are created and
+     * removed dynamically after this runs.
+     *
+     * The color is a plain mform text field (bgColorFieldId) - the one actually
+     * submitted - so a hex value can still be typed/pasted directly; the native
+     * color-swatch picker (bgColorPickerId) is a separate, non-submitted element
+     * kept in sync with it in both directions: picking a color writes its hex
+     * into the text field, and typing a valid 6-digit hex into the text field
+     * updates the swatch to match.
+     *
+     * @param {string} showGridFieldId id of the "show grid" checkbox.
+     * @param {string} bgColorFieldId id of the background color text field.
+     * @param {string} bgColorPickerId id of the paired <input type="color"> swatch.
+     * @param {string} [gridColorFieldId] id of the grid line color text field.
+     * @param {string} [gridColorPickerId] id of its paired <input type="color"> swatch.
+     */
+    function initCanvasSettings(showGridFieldId, bgColorFieldId, bgColorPickerId, gridColorFieldId, gridColorPickerId) {
+        const showGridField = document.getElementById(showGridFieldId);
+        const bgColorField = document.getElementById(bgColorFieldId);
+        const gridColorField = document.getElementById(gridColorFieldId);
+        if (!showGridField || !bgColorField) {
+            return;
+        }
+
+        function broadcast() {
+            const showGrid = showGridField.checked;
+            const bgColor = bgColorField.value;
+            const gridColor = gridColorField ? gridColorField.value : '';
+            editorRegistry.forEach((editor) => editor.setCanvasStyle(showGrid, bgColor, gridColor));
+        }
+
+        /**
+         * Two-way-syncs a plain hex text field with its paired native color-swatch
+         * picker (see the picker markup in edit_graph_form.php) - typing a valid
+         * 6-digit hex updates the swatch, picking a color overwrites the text
+         * field - and calls broadcast() after either.
+         *
+         * @param {Element} textField
+         * @param {Element|null} picker
+         */
+        function wireColorPair(textField, picker) {
+            textField.addEventListener('input', () => {
+                if (picker && /^#[0-9a-fA-F]{6}$/.test(textField.value)) {
+                    picker.value = textField.value;
+                }
+                broadcast();
+            });
+            if (picker) {
+                picker.addEventListener('input', () => {
+                    textField.value = picker.value;
+                    broadcast();
+                });
+            }
+        }
+
+        showGridField.addEventListener('change', broadcast);
+        wireColorPair(bgColorField, document.getElementById(bgColorPickerId));
+        if (gridColorField) {
+            wireColorPair(gridColorField, document.getElementById(gridColorPickerId));
+        }
+    }
+
+    /**
      * Full editing widget for the question edit form. Nothing is locked.
      *
      * @param {string} containerId id of the .qtype_graph-container element.
@@ -2066,7 +2265,8 @@
         }
         if (!initial) {
             initial = {
-                nodes: [{id: 'node-1', left: 120, top: 220, text: 'Nuevo nodo', color: COLORS[0], locked: false}],
+                nodes: [{id: 'node-1', left: 120, top: 220, text: 'Nuevo nodo',
+                        color: COLORS[0].bg, bordercolor: COLORS[0].border || '', locked: false}],
                 edges: [],
                 mode: 'graph',
                 orientation: 'vertical',
@@ -2414,7 +2614,8 @@
                     initialGraph :
                     {
                         nodes: [{id: `node-${Date.now().toString(36)}`, left: 120, top: 220,
-                                text: 'Nuevo nodo', color: COLORS[0], locked: false}],
+                                text: 'Nuevo nodo', color: COLORS[0].bg, bordercolor: COLORS[0].border || '',
+                                locked: false}],
                         edges: [],
                     };
             let sourceGraph = {};
@@ -2493,5 +2694,6 @@
         initAttempt,
         initValidation,
         initAltAnswers,
+        initCanvasSettings,
     };
 })(window);

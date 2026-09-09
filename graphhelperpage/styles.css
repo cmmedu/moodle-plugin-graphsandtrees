@@ -9,6 +9,16 @@
   --qtype-graph-accent-soft: rgba(91, 140, 255, 0.15);
   --qtype-graph-correct: #22c55e;
   --qtype-graph-incorrect: #ef4444;
+  /* Toolbar-only palette (not --qtype-graph-panel, which also colors the
+     node/edge menus and JSON panel - the toolbar is meant to stand apart
+     visually as its own colored bar, not the rest of the widget's chrome).
+     Everything below is a shade of the same purple, so the bar reads as one
+     coherent color instead of the old dark bar + mismatched blue accent. */
+  --qtype-graph-toolbar-bg: #423475;
+  --qtype-graph-toolbar-control-bg: color-mix(in srgb, var(--qtype-graph-toolbar-bg) 55%, black);
+  --qtype-graph-toolbar-border: color-mix(in srgb, var(--qtype-graph-toolbar-bg) 40%, black);
+  --qtype-graph-toolbar-active: #7d6bc4;
+  --qtype-graph-toolbar-muted: #c7bfe6;
 
   box-sizing: border-box;
   display: flex;
@@ -36,8 +46,8 @@
   flex-wrap: wrap;
   gap: 12px;
   padding: 10px 14px;
-  background: var(--qtype-graph-panel);
-  border-bottom: 1px solid var(--qtype-graph-border);
+  background: var(--qtype-graph-toolbar-bg);
+  border-bottom: 1px solid var(--qtype-graph-toolbar-border);
   z-index: 10;
 }
 
@@ -50,8 +60,8 @@
 
 .qtype_graph-segmented {
   display: flex;
-  background: var(--qtype-graph-bg);
-  border: 1px solid var(--qtype-graph-border);
+  background: var(--qtype-graph-toolbar-control-bg);
+  border: 1px solid var(--qtype-graph-toolbar-border);
   border-radius: 8px;
   padding: 2px;
   gap: 2px;
@@ -60,7 +70,7 @@
 .qtype_graph-segmented button {
   border: none;
   background: transparent;
-  color: var(--qtype-graph-muted);
+  color: var(--qtype-graph-toolbar-muted);
   font-size: 12px;
   padding: 6px 10px;
   border-radius: 6px;
@@ -69,12 +79,12 @@
 }
 
 .qtype_graph-segmented button:hover {
-  color: var(--qtype-graph-text);
+  color: #ffffff;
 }
 
 .qtype_graph-segmented button.active {
-  background: var(--qtype-graph-accent);
-  color: #0b0e14;
+  background: var(--qtype-graph-toolbar-active);
+  color: #ffffff;
   font-weight: 600;
 }
 
@@ -84,8 +94,8 @@
 }
 
 .qtype_graph-segmented button:disabled.active {
-  background: var(--qtype-graph-accent-soft);
-  color: var(--qtype-graph-text);
+  background: color-mix(in srgb, var(--qtype-graph-toolbar-active) 40%, transparent);
+  color: #ffffff;
 }
 
 .qtype_graph-zoomcontrols {
@@ -103,6 +113,19 @@
 
 .qtype_graph-exportbtn[hidden] {
   display: none;
+}
+
+/* Ancestor-qualified so this reliably beats the shared .qtype_graph-menubtn
+   (blue-accented) rule regardless of source order - this button also carries
+   that class, but needs to match the purple toolbar it lives in instead. */
+.qtype_graph-toolbar .qtype_graph-exportbtn {
+  background: color-mix(in srgb, var(--qtype-graph-toolbar-active) 35%, transparent);
+  border-color: var(--qtype-graph-toolbar-active);
+  color: #ffffff;
+}
+
+.qtype_graph-toolbar .qtype_graph-exportbtn:hover {
+  background: var(--qtype-graph-toolbar-active);
 }
 
 .qtype_graph-exportpanel[hidden] {
@@ -165,11 +188,20 @@
   position: relative;
   flex: 1;
   overflow: hidden;
+  /* Separate from --qtype-graph-bg (used throughout the toolbar/menus/inputs,
+     styled for a dark background with light text) so a per-question bg color
+     override only ever repaints the drawing surface itself, never the rest
+     of the widget's chrome - see setCanvasStyle() in amd/src/editor.js. */
+  background-color: var(--qtype-graph-canvas-bg, var(--qtype-graph-bg));
   background-image:
     linear-gradient(var(--qtype-graph-grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--qtype-graph-grid) 1px, transparent 1px);
   background-size: 24px 24px;
   cursor: grab;
+}
+
+.qtype_graph-canvas--nogrid {
+  background-image: none;
 }
 
 .qtype_graph-canvas.qtype_graph-canvas--tree .qtype_graph-node {
@@ -257,10 +289,18 @@
   min-width: 120px;
   max-width: 240px;
   padding: 14px 18px;
-  background: color-mix(in srgb, var(--node-color) 15%, var(--qtype-graph-panel));
-  border: 1.5px solid var(--node-color);
+  /* Solid fill (not a dark-panel-diluted tint) so a node's chosen color reads
+     as that literal color - see COLORS[0] in amd/src/editor.js for the
+     default new-node color this produces. */
+  background: var(--node-color);
+  /* --node-border-color (set inline per node - see applyNodeColors() in
+     amd/src/editor.js) overrides this when a color has its own explicit
+     border (some COLORS entries do); otherwise falls back to a shade darker
+     than the (now solid) fill, since border == background would otherwise
+     render as no visible edge at all. */
+  border: 1.5px solid var(--node-border-color, color-mix(in srgb, var(--node-color) 75%, black));
   border-radius: 10px;
-  color: var(--qtype-graph-text);
+  color: #ffffff;
   font-size: 14px;
   line-height: 1.4;
   text-align: center;
@@ -303,6 +343,36 @@
 
 .qtype_graph-node--menuopen {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-color) 40%, transparent);
+}
+
+.qtype_graph-node--shape-circle {
+  /* Own (smaller) min-width, not the 120px rectangular default: aspect-ratio
+     forces height to match width, so inheriting min-width:120px would make
+     even a one-word circle ~120px tall - tall enough to blow past
+     TREE_LEVEL_MIN_PITCH's floor in relayoutTree() (editor.js) and collapse
+     the visible tree-mode connecting line down to the bare TREE_LEVEL_GAP. */
+  min-width: 64px;
+  padding: 10px;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qtype_graph-node--shape-rectangle {
+  border-radius: 2px;
+}
+
+.qtype_graph-node--shape-oval {
+  /* No aspect-ratio here (unlike circle) - border-radius:50% on the node's
+     normal, content-driven (non-square) box already renders as an ellipse
+     inscribed in that box, so height stays close to a single text line
+     instead of being forced up to min-width like circle's, which is what
+     collapses the tree-mode connecting line (see the circle rule above).
+     Extra horizontal padding keeps corner text clear of the curve. */
+  border-radius: 50%;
+  padding: 14px 34px;
 }
 
 .qtype_graph-node-text {
@@ -367,6 +437,81 @@
 
 .qtype_graph-colorswatch--selected {
   border-color: var(--qtype-graph-text);
+}
+
+.qtype_graph-collapsible {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qtype_graph-collapsible summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.qtype_graph-collapsible summary::-webkit-details-marker {
+  display: none;
+}
+
+.qtype_graph-collapsible summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 4px;
+  transition: transform 0.15s ease;
+}
+
+.qtype_graph-collapsible[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.qtype_graph-shaperow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.qtype_graph-shapebtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--qtype-graph-bg);
+  border: 1px solid var(--qtype-graph-border);
+  border-radius: 6px;
+  color: var(--qtype-graph-text);
+  font-size: 13px;
+  padding: 6px 9px;
+  cursor: pointer;
+}
+
+.qtype_graph-shapebtn--selected {
+  border-color: var(--qtype-graph-accent);
+  background: var(--qtype-graph-accent-soft);
+}
+
+.qtype_graph-shapeicon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 1.5px solid var(--qtype-graph-text);
+}
+
+.qtype_graph-shapeicon--rounded {
+  border-radius: 5px;
+}
+
+.qtype_graph-shapeicon--circle {
+  border-radius: 50%;
+}
+
+.qtype_graph-shapeicon--rectangle {
+  border-radius: 0;
+}
+
+.qtype_graph-shapeicon--oval {
+  width: 22px;
+  height: 14px;
+  border-radius: 50%;
 }
 
 .qtype_graph-textinput {
@@ -455,8 +600,10 @@
 
 .qtype_graph-blank-input {
   display: inline-block;
-  width: 70px;
-  min-width: 48px;
+  /* Width itself comes from autosizeTextInput() in amd/src/editor.js (grows/
+     shrinks to fit the current value, in ch units) - this is just the floor
+     it can never go below. */
+  min-width: 45px;
   margin: 0 2px;
   padding: 2px 6px;
   font-size: 12px;
@@ -511,9 +658,11 @@
      explicit width (it shrink-to-fits between its min/max-width), and a
      percentage-width child breaks that shrink-to-fit calculation, forcing the
      node to always render at max-width (240px) no matter how short the text
-     actually is. A fixed width (matching .qtype_graph-blank-input's approach)
-     lets the node size to its real content instead. */
-  width: 140px;
+     actually is. autosizeTextInput() (amd/src/editor.js) sets an explicit
+     ch-based width instead, which - like the fixed width this replaced - isn't
+     a percentage, so the same shrink-to-fit calculation still works; this is
+     just the floor that width can never go below. */
+  min-width: 45px;
   max-width: 100%;
   background: transparent;
   border: 1px solid var(--qtype-graph-border);
@@ -570,4 +719,15 @@
 
 .qtype_graph-edge-group--locked .qtype_graph-edge-hit {
   cursor: default;
+}
+
+/* The edit form's bgcolor swatch picker (see edit_graph_form.php), paired next
+   to the plain hex text field it overwrites - not inside .qtype_graph-container,
+   so this rule needs no --qtype-graph-* theme tokens. */
+.qtype_graph-bgcolorpicker {
+  width: 2.5rem;
+  height: calc(1.5em + 0.75rem + 2px);
+  padding: 2px;
+  vertical-align: middle;
+  cursor: pointer;
 }
