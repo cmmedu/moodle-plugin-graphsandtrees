@@ -305,6 +305,36 @@
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-color) 40%, transparent);
 }
 
+.qtype_graph-node--shape-circle {
+  /* Own (smaller) min-width, not the 120px rectangular default: aspect-ratio
+     forces height to match width, so inheriting min-width:120px would make
+     even a one-word circle ~120px tall - tall enough to blow past
+     TREE_LEVEL_MIN_PITCH's floor in relayoutTree() (editor.js) and collapse
+     the visible tree-mode connecting line down to the bare TREE_LEVEL_GAP. */
+  min-width: 64px;
+  padding: 10px;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.qtype_graph-node--shape-rectangle {
+  border-radius: 2px;
+}
+
+.qtype_graph-node--shape-oval {
+  /* No aspect-ratio here (unlike circle) - border-radius:50% on the node's
+     normal, content-driven (non-square) box already renders as an ellipse
+     inscribed in that box, so height stays close to a single text line
+     instead of being forced up to min-width like circle's, which is what
+     collapses the tree-mode connecting line (see the circle rule above).
+     Extra horizontal padding keeps corner text clear of the curve. */
+  border-radius: 50%;
+  padding: 14px 34px;
+}
+
 .qtype_graph-node-text {
   outline: none;
   word-break: break-word;
@@ -367,6 +397,81 @@
 
 .qtype_graph-colorswatch--selected {
   border-color: var(--qtype-graph-text);
+}
+
+.qtype_graph-collapsible {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qtype_graph-collapsible summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.qtype_graph-collapsible summary::-webkit-details-marker {
+  display: none;
+}
+
+.qtype_graph-collapsible summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 4px;
+  transition: transform 0.15s ease;
+}
+
+.qtype_graph-collapsible[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.qtype_graph-shaperow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.qtype_graph-shapebtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--qtype-graph-bg);
+  border: 1px solid var(--qtype-graph-border);
+  border-radius: 6px;
+  color: var(--qtype-graph-text);
+  font-size: 13px;
+  padding: 6px 9px;
+  cursor: pointer;
+}
+
+.qtype_graph-shapebtn--selected {
+  border-color: var(--qtype-graph-accent);
+  background: var(--qtype-graph-accent-soft);
+}
+
+.qtype_graph-shapeicon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  border: 1.5px solid var(--qtype-graph-text);
+}
+
+.qtype_graph-shapeicon--rounded {
+  border-radius: 5px;
+}
+
+.qtype_graph-shapeicon--circle {
+  border-radius: 50%;
+}
+
+.qtype_graph-shapeicon--rectangle {
+  border-radius: 0;
+}
+
+.qtype_graph-shapeicon--oval {
+  width: 22px;
+  height: 14px;
+  border-radius: 50%;
 }
 
 .qtype_graph-textinput {

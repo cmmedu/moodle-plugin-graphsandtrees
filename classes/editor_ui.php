@@ -100,6 +100,27 @@ class editor_ui {
         <span class="qtype_graph-menulabel">Color</span>
         <div class="qtype_graph-colorrow" data-role="color-row"></div>
       </div>
+      <details class="qtype_graph-collapsible" data-role="node-shape-section">
+        <summary class="qtype_graph-menulabel">Forma</summary>
+        <div class="qtype_graph-shaperow" data-role="shape-row">
+          <button type="button" class="qtype_graph-shapebtn" data-shape="rounded">
+            <span class="qtype_graph-shapeicon qtype_graph-shapeicon--rounded"></span>
+            Redondeada
+          </button>
+          <button type="button" class="qtype_graph-shapebtn" data-shape="circle">
+            <span class="qtype_graph-shapeicon qtype_graph-shapeicon--circle"></span>
+            Círculo
+          </button>
+          <button type="button" class="qtype_graph-shapebtn" data-shape="rectangle">
+            <span class="qtype_graph-shapeicon qtype_graph-shapeicon--rectangle"></span>
+            Rectángulo
+          </button>
+          <button type="button" class="qtype_graph-shapebtn" data-shape="oval">
+            <span class="qtype_graph-shapeicon qtype_graph-shapeicon--oval"></span>
+            Óvalo
+          </button>
+        </div>
+      </details>
       <button type="button" class="qtype_graph-menubtn" data-role="add-connected-btn">+ Nodo conectado</button>
       <button type="button" class="qtype_graph-menubtn" data-role="add-input-btn" hidden>Marcar como input</button>
       <button type="button" class="qtype_graph-menubtn" data-role="add-select-btn" hidden>Marcar como selector</button>

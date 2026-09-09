@@ -33,6 +33,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
 
     const SVG_NS = 'http://www.w3.org/2000/svg';
     const COLORS = ['#5b8cff', '#ff6b6b', '#4ade80', '#facc15', '#c084fc', '#38bdf8'];
+    const SHAPES = ['rounded', 'circle', 'rectangle', 'oval'];
+    const DEFAULT_SHAPE = SHAPES[0];
     const CLICK_THRESHOLD = 4;
     // Nodes can be up to 240px wide (.qtype_graph-node's max-width) and grow tall
     // with wrapped/multi-blank content (e.g. a multi-blank label, or the
@@ -379,8 +381,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const nodeSelectSection = root.querySelector('[data-role="node-select-section"]');
         const nodeSelectInput = root.querySelector('[data-role="node-select-input"]');
         const nodeColorSection = root.querySelector('[data-role="node-color-section"]');
+        const nodeShapeSection = root.querySelector('[data-role="node-shape-section"]');
         const nodeTextInput = root.querySelector('[data-role="node-text-input"]');
         const colorRow = root.querySelector('[data-role="color-row"]');
+        const shapeRow = root.querySelector('[data-role="shape-row"]');
         const addConnectedBtn = root.querySelector('[data-role="add-connected-btn"]');
         const addInputBtn = root.querySelector('[data-role="add-input-btn"]');
         const addSelectBtn = root.querySelector('[data-role="add-select-btn"]');
@@ -1188,6 +1192,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             nodeTextSection.hidden = locked || attemptRestricted || !!selectOptions;
             nodeSelectSection.hidden = locked || !selectOptions;
             nodeColorSection.hidden = locked;
+            nodeShapeSection.hidden = locked;
             addConnectedBtn.hidden = !allowAddNodes;
             deleteNodeBtn.hidden = !canDeleteThisNode;
 
@@ -1214,6 +1219,11 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                     });
                     colorRow.appendChild(swatch);
                 });
+
+                const currentShape = record.el.dataset.shape || DEFAULT_SHAPE;
+                [...shapeRow.children].forEach((btn) => {
+                    btn.classList.toggle('qtype_graph-shapebtn--selected', btn.dataset.shape === currentShape);
+                });
             }
 
             if (canDeleteThisNode) {
@@ -1239,6 +1249,17 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             menu.style.left = `${left}px`;
             menu.style.top = `${top}px`;
         }
+
+        shapeRow.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-shape]');
+            if (!btn || !activeNodeId) {
+                return;
+            }
+            const record = nodes.get(activeNodeId);
+            applyShape(record.el, btn.dataset.shape);
+            notifyChange();
+            openMenu(activeNodeId);
+        });
 
         nodeTextInput.addEventListener('input', () => {
             if (!activeNodeId) {
@@ -1425,7 +1446,14 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             }
         }
 
-        function createNode(left, top, text, color, locked, id) {
+        function applyShape(el, shape) {
+            el.dataset.shape = SHAPES.includes(shape) ? shape : DEFAULT_SHAPE;
+            el.classList.toggle('qtype_graph-node--shape-circle', el.dataset.shape === 'circle');
+            el.classList.toggle('qtype_graph-node--shape-rectangle', el.dataset.shape === 'rectangle');
+            el.classList.toggle('qtype_graph-node--shape-oval', el.dataset.shape === 'oval');
+        }
+
+        function createNode(left, top, text, color, locked, id, shape) {
             if (!id) {
                 nodeCounter += 1;
                 id = `node-${Date.now().toString(36)}-${nodeCounter}`;
@@ -1439,6 +1467,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             el.style.left = `${left}px`;
             el.style.top = `${top}px`;
             el.style.setProperty('--node-color', color || COLORS[0]);
+            applyShape(el, shape);
 
             let textEl;
             if (locked && attemptMode && hasBlankTokens(text)) {
@@ -1655,6 +1684,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                     top: parseFloat(record.el.style.top) || 0,
                     text: getRecordText(record),
                     color: getComputedStyle(record.el).getPropertyValue('--node-color').trim(),
+                    shape: record.el.dataset.shape || DEFAULT_SHAPE,
                     locked: !!record.locked,
                 })),
                 edges: edges.map((edge) => ({
@@ -1668,7 +1698,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             clear();
             const nodeList = Array.isArray(data.nodes) ? data.nodes : [];
             nodeList.forEach((n) => {
-                createNode(n.left || 0, n.top || 0, n.text, n.color, !!n.locked, n.id);
+                createNode(n.left || 0, n.top || 0, n.text, n.color, !!n.locked, n.id, n.shape);
             });
             const edgeList = Array.isArray(data.edges) ? data.edges : [];
             edgeList.forEach((e) => {
