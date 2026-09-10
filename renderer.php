@@ -93,6 +93,7 @@ class qtype_graph_renderer extends qtype_with_combined_feedback_renderer {
             (bool) $options->readonly,
             (bool) $question->allowaddnodes,
             (bool) $question->allowdeletenodes,
+            (bool) $question->shownodetrail,
         ]);
 
         return $output;

@@ -548,6 +548,12 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const edges = [];
         let activeNodeId = null;
         let activeEdge = null;
+        // "Show node trail" (qtype_graph_options.shownodetrail) - only ever true in
+        // attempt mode (opts.showNodeTrail is not even passed by initEditor()'s editor
+        // canvases). See showTrailFrom()/clearTrail() below.
+        const showTrail = attemptMode && !!opts.showNodeTrail;
+        let trailNodeIds = new Set();
+        let trailEdgeSet = new Set();
         let mode = 'graph';
         let orientation = 'vertical';
         let lineStyle = 'straight';
@@ -1054,6 +1060,69 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         function closeMenus() {
             closeMenu();
             closeEdgeMenu();
+            clearTrail();
+        }
+
+        /**
+         * Clear whatever node-trail highlight showTrailFrom() below currently shows,
+         * without touching menu/selection state - closeMenus() above calls this
+         * alongside closing the node/edge menus (e.g. a click on empty canvas), and
+         * clear() calls it directly since by then every node/edge it references has
+         * already been removed from the DOM.
+         */
+        function clearTrail() {
+            trailNodeIds.forEach((id) => {
+                const record = nodes.get(id);
+                if (record) {
+                    record.el.classList.remove('qtype_graph-node--trail');
+                }
+            });
+            trailEdgeSet.forEach((edge) => edge.group.classList.remove('qtype_graph-edge-group--trail'));
+            trailNodeIds = new Set();
+            trailEdgeSet = new Set();
+            root.classList.remove('qtype_graph-container--trailactive');
+        }
+
+        /**
+         * "Show node trail": highlight every node/edge on the path from the clicked
+         * node back to its origin node(s) - the ancestor(s) reached by repeatedly
+         * following an edge backwards (toId -> fromId) until none remains. This is
+         * the same "root" definition relayoutTree() above uses for tree mode (a node
+         * that never appears as an edge's toId), so "origin" means the same thing
+         * whether the question is laid out as a graph or a tree. A node with more
+         * than one incoming edge highlights every such path at once, since there is
+         * no single unambiguous one to pick.
+         *
+         * @param {string} nodeId the clicked node's id.
+         */
+        function showTrailFrom(nodeId) {
+            clearTrail();
+            if (!nodes.has(nodeId)) {
+                return;
+            }
+            const visited = new Set([nodeId]);
+            const pathEdges = [];
+            const queue = [nodeId];
+            while (queue.length) {
+                const current = queue.shift();
+                for (const edge of edges) {
+                    if (edge.toId === current && !visited.has(edge.fromId)) {
+                        visited.add(edge.fromId);
+                        pathEdges.push(edge);
+                        queue.push(edge.fromId);
+                    }
+                }
+            }
+            trailNodeIds = visited;
+            trailEdgeSet = new Set(pathEdges);
+            trailNodeIds.forEach((id) => {
+                const record = nodes.get(id);
+                if (record) {
+                    record.el.classList.add('qtype_graph-node--trail');
+                }
+            });
+            trailEdgeSet.forEach((edge) => edge.group.classList.add('qtype_graph-edge-group--trail'));
+            root.classList.add('qtype_graph-container--trailactive');
         }
 
         function openEdgeMenu(edge, clientX, clientY) {
@@ -1650,6 +1719,14 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const node = record.el;
 
             if (!editable) {
+                // Read-only (e.g. quiz review): nothing is clickable at all, except
+                // the trail highlight below, which has nothing to do with editing.
+                if (showTrail) {
+                    node.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        showTrailFrom(record.id);
+                    });
+                }
                 return;
             }
 
@@ -1660,6 +1737,15 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                     e.stopPropagation();
                     openMenu(record.id);
                 });
+                // Registered after the listener above so it fires after openMenu()'s own
+                // closeMenus() call - otherwise that call would clear the highlight this
+                // same click just set.
+                if (showTrail) {
+                    node.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        showTrailFrom(record.id);
+                    });
+                }
                 return;
             }
 
@@ -1751,6 +1837,15 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                         nodeTextInput.value = textEl.textContent;
                     }
                     notifyChange();
+                });
+            }
+
+            // Registered last so it fires after the mouseup handler above's own
+            // openMenu()/closeMenus() call - see the locked-node branch's comment above.
+            if (showTrail) {
+                node.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showTrailFrom(record.id);
                 });
             }
         }
@@ -2317,6 +2412,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * @param {boolean} [opts.readOnly] true to render non-editable.
      * @param {boolean} [opts.allowAddNodes] true if new nodes may be added.
      * @param {boolean} [opts.allowDeleteNodes] true if teacher-authored nodes may be deleted.
+     * @param {boolean} [opts.showNodeTrail] true if clicking a node should highlight the
+     *                  path (nodes/edges) back to its origin node - see showTrailFrom() in
+     *                  createGraphEditor().
      * @param {string} [opts.initialResponseJson] a previously-saved response to seed from.
      * @param {Function} [opts.onResponseChange] (response) => void, called whenever the
      *                    response changes as a result of user interaction (never for the
@@ -2411,6 +2509,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             mode: 'attempt',
             allowAddNodes: opts.allowAddNodes !== false,
             allowDeleteNodes: opts.allowDeleteNodes !== false,
+            showNodeTrail: !!opts.showNodeTrail,
             newNodeContentType: opts.newNodeContentType,
             newNodeContentValue: opts.newNodeContentValue,
             newEdgeContentType: opts.newEdgeContentType,
@@ -2448,8 +2547,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * @param {boolean} readOnly true if the question is being displayed read-only (e.g. review).
      * @param {boolean} allowAddNodes true if the student may add new nodes.
      * @param {boolean} allowDeleteNodes true if the student may delete the teacher-authored nodes.
+     * @param {boolean} showNodeTrail true if clicking a node should highlight the path
+     *                  (nodes/edges) back to its origin node.
      */
-    function initAttempt(containerId, hiddenFieldId, readOnly, allowAddNodes, allowDeleteNodes) {
+    function initAttempt(containerId, hiddenFieldId, readOnly, allowAddNodes, allowDeleteNodes, showNodeTrail) {
         const root = document.getElementById(containerId);
         const hidden = document.getElementById(hiddenFieldId);
         if (!root || !hidden) {
@@ -2460,6 +2561,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             readOnly,
             allowAddNodes,
             allowDeleteNodes,
+            showNodeTrail,
             newNodeContentType: root.dataset.newnodecontenttype,
             newNodeContentValue: root.dataset.newnodecontentvalue,
             newEdgeContentType: root.dataset.newedgecontenttype,

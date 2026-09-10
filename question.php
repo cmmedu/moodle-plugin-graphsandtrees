@@ -71,6 +71,9 @@ class qtype_graph_question extends question_graded_automatically {
     /** @var string background grid line color (CSS hex) of every canvas for this question. */
     public $gridcolor = '#1b1f27';
 
+    /** @var bool whether clicking a node during the attempt highlights the path back to its origin node. */
+    public $shownodetrail = false;
+
     /** @var string feedback shown for a fully correct response. */
     public $correctfeedback;
     /** @var int format of $correctfeedback. */

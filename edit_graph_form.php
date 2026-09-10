@@ -49,6 +49,10 @@ class qtype_graph_edit_form extends question_edit_form {
         $mform->addElement('advcheckbox', 'allowdeletenodes', get_string('allowdeletenodes', 'qtype_graph'));
         $mform->setDefault('allowdeletenodes', 0);
 
+        $mform->addElement('advcheckbox', 'shownodetrail', get_string('shownodetrail', 'qtype_graph'));
+        $mform->setDefault('shownodetrail', 0);
+        $mform->addHelpButton('shownodetrail', 'shownodetrail', 'qtype_graph');
+
         $newcontenttypeoptions = [
             'input' => get_string('contenttype_input', 'qtype_graph'),
             'select' => get_string('contenttype_select', 'qtype_graph'),
@@ -238,6 +242,7 @@ class qtype_graph_edit_form extends question_edit_form {
             $question->showgrid = $question->options->showgrid ?? 1;
             $question->bgcolor = $question->options->bgcolor ?? '#e2e8f0';
             $question->gridcolor = $question->options->gridcolor ?? '#1b1f27';
+            $question->shownodetrail = $question->options->shownodetrail ?? 0;
             $question->altresultgraphsjson = json_encode(array_map(
                     function($altanswer) {
                         return json_decode($altanswer->graphjson, true) ?: new stdClass();

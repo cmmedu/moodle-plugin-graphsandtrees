@@ -74,6 +74,7 @@ class qtype_graph extends question_type {
         $options->showgrid = !empty($formdata->showgrid) ? 1 : 0;
         $options->bgcolor = $formdata->bgcolor ?? '#e2e8f0';
         $options->gridcolor = $formdata->gridcolor ?? '#1b1f27';
+        $options->shownodetrail = !empty($formdata->shownodetrail) ? 1 : 0;
         $options = $this->save_combined_feedback_helper($options, $formdata, $formdata->context, true);
         $DB->update_record('qtype_graph_options', $options);
 
@@ -135,6 +136,7 @@ class qtype_graph extends question_type {
         $question->showgrid = (bool) ($questiondata->options->showgrid ?? 1);
         $question->bgcolor = $questiondata->options->bgcolor ?? '#e2e8f0';
         $question->gridcolor = $questiondata->options->gridcolor ?? '#1b1f27';
+        $question->shownodetrail = (bool) ($questiondata->options->shownodetrail ?? 0);
         $question->altresultgraphs = array_map(function($altanswer) {
             return $altanswer->graphjson;
         }, $questiondata->options->altanswers ?? []);
@@ -198,6 +200,7 @@ class qtype_graph extends question_type {
         $expout .= "    <showgrid>{$options->showgrid}</showgrid>\n";
         $expout .= '    <bgcolor>' . $format->xml_escape($options->bgcolor) . "</bgcolor>\n";
         $expout .= '    <gridcolor>' . $format->xml_escape($options->gridcolor) . "</gridcolor>\n";
+        $expout .= "    <shownodetrail>{$options->shownodetrail}</shownodetrail>\n";
         $expout .= $format->write_combined_feedback($options, $question->id, $question->contextid);
 
         $expout .= "    <altanswers>\n";
@@ -243,6 +246,7 @@ class qtype_graph extends question_type {
         $qo->showgrid = $format->getpath($data, ['#', 'showgrid', 0, '#'], 1);
         $qo->bgcolor = $format->getpath($data, ['#', 'bgcolor', 0, '#'], '#e2e8f0', true);
         $qo->gridcolor = $format->getpath($data, ['#', 'gridcolor', 0, '#'], '#1b1f27', true);
+        $qo->shownodetrail = $format->getpath($data, ['#', 'shownodetrail', 0, '#'], 0);
 
         $format->import_combined_feedback($qo, $data, true);
 

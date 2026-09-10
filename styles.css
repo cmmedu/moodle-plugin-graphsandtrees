@@ -9,6 +9,7 @@
   --qtype-graph-accent-soft: rgba(91, 140, 255, 0.15);
   --qtype-graph-correct: #22c55e;
   --qtype-graph-incorrect: #ef4444;
+  --qtype-graph-trail: #f5a524;
   /* Toolbar-only palette (not --qtype-graph-panel, which also colors the
      node/edge menus and JSON panel - the toolbar is meant to stand apart
      visually as its own colored bar, not the rest of the widget's chrome).
@@ -272,6 +273,16 @@
   stroke-dasharray: 6 4;
 }
 
+/* "Show node trail" - see the .qtype_graph-node--trail comment below. */
+.qtype_graph-edge-group--trail .qtype_graph-edge-line {
+  stroke: var(--qtype-graph-trail);
+  stroke-width: 2.5;
+}
+
+.qtype_graph-container--trailactive .qtype_graph-edge-group:not(.qtype_graph-edge-group--trail) .qtype_graph-edge-line {
+  opacity: 0.25;
+}
+
 .qtype_graph-edge-label {
   fill: var(--qtype-graph-text);
   font-size: 12px;
@@ -327,6 +338,22 @@
 .qtype_graph-node--feedback-incorrect {
   outline: 3px dashed var(--qtype-graph-incorrect);
   outline-offset: 2px;
+}
+
+/*
+ * "Show node trail" (qtype_graph_options.shownodetrail): applied by
+ * showTrailFrom() in amd/src/editor.js to the clicked node and every ancestor
+ * on its way back to an origin node, plus the edges connecting them below.
+ * qtype_graph-container--trailactive dims everything else on the canvas so
+ * the path reads clearly even in a busy graph.
+ */
+.qtype_graph-node--trail {
+  outline: 3px solid var(--qtype-graph-trail);
+  outline-offset: 2px;
+}
+
+.qtype_graph-container--trailactive .qtype_graph-node:not(.qtype_graph-node--trail) {
+  opacity: 0.35;
 }
 
 .qtype_graph-node--dragging {
