@@ -77,6 +77,15 @@ class qtype_graph_question extends question_graded_automatically {
     /** @var bool whether every canvas for this question shows tree-mode depth labels ("Nivel 0", "Nivel 1", ...). */
     public $showlevellabels = true;
 
+    /**
+     * @var string JSON array (up to 10 entries, one per tree depth 0-9) of
+     *      {show, title, subtitle} overrides for that depth's level label - see
+     *      edit_graph_form.php's "levellabeloverride" fields and amd/src/editor.js's
+     *      renderLevelLabels(). Empty string/unset means every depth uses the
+     *      default "Nivel <depth>" title, shown, with no subtitle.
+     */
+    public $levellabelsjson = '';
+
     /** @var string feedback shown for a fully correct response. */
     public $correctfeedback;
     /** @var int format of $correctfeedback. */

@@ -245,16 +245,33 @@
 .qtype_graph-levellabel {
   position: absolute;
   transform: translate(-100%, -50%);
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--qtype-graph-muted);
-  white-space: nowrap;
+  text-align: right;
   pointer-events: none;
   user-select: none;
 }
 
 .qtype_graph-levellabel--horizontal {
   transform: translate(-50%, -100%);
+  text-align: center;
+}
+
+/* Default "Nivel <depth>" title, or the edit form's "levellabeltitle_<depth>"
+   override - see renderLevelLabels() in amd/src/editor.js. */
+.qtype_graph-levellabel-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--qtype-graph-muted);
+  white-space: nowrap;
+}
+
+/* The edit form's "levellabelsubtitle_<depth>" override - empty (not rendered
+   at all) by default. */
+.qtype_graph-levellabel-subtitle {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--qtype-graph-muted);
+  opacity: 0.75;
+  white-space: nowrap;
 }
 
 .qtype_graph-edge-hit {

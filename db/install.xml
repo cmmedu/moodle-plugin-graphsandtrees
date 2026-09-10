@@ -28,6 +28,7 @@
         <FIELD NAME="gridcolor" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="#1b1f27" SEQUENCE="false" COMMENT="Background grid line color (CSS hex) of every canvas for this question."/>
         <FIELD NAME="shownodetrail" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether clicking a node during the attempt highlights the path (nodes and edges) back to its origin node."/>
         <FIELD NAME="showlevellabels" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether every canvas for this question (editor and attempt) shows tree-mode depth labels ('Nivel 0', 'Nivel 1', ...)."/>
+        <FIELD NAME="levellabelsjson" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON array (up to 10 entries, one per tree depth 0-9) of {show, title, subtitle} overrides for that depth's level label - see edit_graph_form.php's 'levellabeloverride' fields. A depth beyond the array, or a depth with no show/title/subtitle set, falls back to showing 'Nivel &lt;depth&gt;' with no subtitle."/>
       </FIELDS>
       <KEYS>
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>

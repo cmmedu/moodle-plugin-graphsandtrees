@@ -75,6 +75,13 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     // (vertical orientation) / column (horizontal orientation) - see
     // renderLevelLabels() below.
     const LEVEL_LABEL_GAP = 28;
+    // Number of per-depth level-label override rows the edit form offers (depths
+    // 0 to MAX_LEVEL_LABEL_OVERRIDES - 1) - see initLevelLabelOverrides() below.
+    // Kept in sync by hand with qtype_graph_edit_form::MAX_LEVEL_LABELS
+    // (edit_graph_form.php). A depth at or beyond this always falls back to the
+    // default "Nivel <depth>" title with no subtitle - there is no row to
+    // override it with.
+    const MAX_LEVEL_LABEL_OVERRIDES = 10;
     const ZOOM_MIN = 0.4;
     const ZOOM_MAX = 2;
     const ZOOM_STEP = 0.1;
@@ -529,6 +536,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         // above, this applies uniformly to every canvas (editor and attempt alike),
         // the same way showGrid/bgColor/gridColor do - see setCanvasStyle() below.
         let showLevelLabels = true;
+        // Per-depth {show, title, subtitle} overrides (index = depth), decoded from
+        // qtype_graph_options.levellabelsjson - see setLevelLabelOverrides() below.
+        // Applies uniformly like showLevelLabels above, same reasoning.
+        let levelLabelOverrides = [];
         // Level-label DOM layer ("Nivel 0", "Nivel 1", ...), created lazily on first
         // use since the shared editor_ui.php markup (used by every graph canvas -
         // default, result, every alternate, and the attempt canvas) has no dedicated
@@ -581,6 +592,25 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         }
         setCanvasStyle(root.dataset.showgrid !== '0', root.dataset.bgcolor || '', root.dataset.gridcolor || '',
                 root.dataset.showlevellabels !== '0');
+
+        /**
+         * Set the per-depth level-label overrides (title/subtitle/show, one entry
+         * per tree depth) and re-render them if currently in tree mode. Read
+         * generically off the container's own data-levellabelsjson (same reasoning
+         * as setCanvasStyle() above) at setup, and called live from
+         * initLevelLabelOverrides() below whenever the teacher edits an override row.
+         *
+         * @param {Array} overrides index = depth, each {show, title, subtitle} or absent.
+         */
+        function setLevelLabelOverrides(overrides) {
+            levelLabelOverrides = Array.isArray(overrides) ? overrides : [];
+            if (mode === 'tree') {
+                relayoutTree();
+            } else {
+                clearLevelLabels();
+            }
+        }
+        setLevelLabelOverrides(safeParseLevelLabelOverrides(root.dataset.levellabelsjson));
 
         // The result graph never chooses its own mode/orientation/line-style: it always
         // mirrors the default graph's (see setLayout() below and initEditor()'s pre-hydrate
@@ -866,8 +896,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
          * Render "Nivel 0"/"Nivel 1"/... labels along the tree's depth axis - one
          * per level, positioned above each column in horizontal orientation, or to
          * the left of each row in vertical orientation (the root, depth 0, is
-         * always "Nivel 0"). Only ever called from relayoutTree() below, once every
-         * node's final position for this layout pass is known.
+         * always "Nivel 0" unless overridden - see levelLabelOverrides above). A
+         * depth whose override has show === false is skipped entirely. Only ever
+         * called from relayoutTree() below, once every node's final position for
+         * this layout pass is known.
          *
          * @param {number[]} depthPixelPos depthPixelPos[d] is that depth's shared
          *                    top (vertical orientation) or left (horizontal) pixel
@@ -892,9 +924,22 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 Math.min(...positions.map((p) => p.left)) - LEVEL_LABEL_GAP :
                 Math.min(...positions.map((p) => p.top)) - LEVEL_LABEL_GAP;
             for (let d = 0; d <= maxDepth; d++) {
+                const override = levelLabelOverrides[d];
+                if (override && override.show === false) {
+                    continue;
+                }
                 const label = document.createElement('div');
                 label.className = 'qtype_graph-levellabel';
-                label.textContent = `Nivel ${d}`;
+                const titleEl = document.createElement('div');
+                titleEl.className = 'qtype_graph-levellabel-title';
+                titleEl.textContent = (override && override.title) ? override.title : `Nivel ${d}`;
+                label.appendChild(titleEl);
+                if (override && override.subtitle) {
+                    const subtitleEl = document.createElement('div');
+                    subtitleEl.className = 'qtype_graph-levellabel-subtitle';
+                    subtitleEl.textContent = override.subtitle;
+                    label.appendChild(subtitleEl);
+                }
                 const center = depthPixelPos[d] + (maxExtentByDepth.get(d) || 0) / 2;
                 if (vertical) {
                     label.style.left = `${edge}px`;
@@ -2103,6 +2148,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
 
         const api = {
             hydrate, serialize, setNodeText, setEdgeLabel, setLayout, markFeedback, addSyncTarget, setCanvasStyle,
+            setLevelLabelOverrides,
         };
         editorRegistry.set(root.id, api);
         return api;
@@ -2124,6 +2170,23 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             };
         } catch (e) {
             return {nodes: [], edges: []};
+        }
+    }
+
+    /**
+     * Parse a level-label overrides hidden/data field's raw JSON value into an
+     * array, tolerating malformed/empty JSON (returns [] instead) - see
+     * setLevelLabelOverrides()/renderLevelLabels() in createGraphEditor() above.
+     *
+     * @param {string} value raw JSON value.
+     * @return {Array}
+     */
+    function safeParseLevelLabelOverrides(value) {
+        try {
+            const data = JSON.parse(value || '[]');
+            return Array.isArray(data) ? data : [];
+        } catch (e) {
+            return [];
         }
     }
 
@@ -2409,6 +2472,62 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         if (showLevelLabelsField) {
             showLevelLabelsField.addEventListener('change', broadcast);
         }
+    }
+
+    /**
+     * Wires the edit form's MAX_LEVEL_LABEL_OVERRIDES per-depth override rows
+     * (each a "levellabelshow_$depth"/"levellabeltitle_$depth"/
+     * "levellabelsubtitle_$depth" trio - see the loop in edit_graph_form.php's
+     * definition_inner()) so editing any of them immediately re-renders tree-mode
+     * level labels on every canvas belonging to this question, the same way
+     * initCanvasSettings() above does for the grid/color/showlevellabels
+     * controls - and keeps the single levellabelsjson hidden field (the value
+     * actually submitted - see questiontype.php's save_question_options()) in
+     * sync, mirroring how the graph canvas itself keeps its own hidden field in
+     * sync with on-canvas edits.
+     *
+     * @param {string} hiddenFieldId id of the levellabelsjson hidden field.
+     */
+    function initLevelLabelOverrides(hiddenFieldId) {
+        const hiddenField = document.getElementById(hiddenFieldId);
+        if (!hiddenField) {
+            return;
+        }
+
+        const rows = [];
+        for (let depth = 0; depth < MAX_LEVEL_LABEL_OVERRIDES; depth++) {
+            const showField = document.getElementById(`id_levellabelshow_${depth}`);
+            const titleField = document.getElementById(`id_levellabeltitle_${depth}`);
+            const subtitleField = document.getElementById(`id_levellabelsubtitle_${depth}`);
+            if (showField && titleField && subtitleField) {
+                rows.push({showField, titleField, subtitleField});
+            }
+        }
+        if (!rows.length) {
+            return;
+        }
+
+        /**
+         * Read every row's current values, write them into the hidden field, and
+         * push them to every registered editor (default, result, every alternate,
+         * and the attempt canvas is never present here since this only runs in the
+         * edit form).
+         */
+        function broadcast() {
+            const overrides = rows.map((row) => ({
+                show: row.showField.checked,
+                title: row.titleField.value.trim(),
+                subtitle: row.subtitleField.value.trim(),
+            }));
+            hiddenField.value = JSON.stringify(overrides);
+            editorRegistry.forEach((editor) => editor.setLevelLabelOverrides(overrides));
+        }
+
+        rows.forEach((row) => {
+            row.showField.addEventListener('change', broadcast);
+            row.titleField.addEventListener('input', broadcast);
+            row.subtitleField.addEventListener('input', broadcast);
+        });
     }
 
     /**
@@ -2901,5 +3020,6 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         initValidation,
         initAltAnswers,
         initCanvasSettings,
+        initLevelLabelOverrides,
     };
 });
