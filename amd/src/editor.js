@@ -71,6 +71,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     // widths once several siblings share a parent.
     const TREE_SIBLING_GAP = 70;
     const TREE_MARGIN = 80;
+    // Gap between a level label and the nearest edge of that level's row
+    // (vertical orientation) / column (horizontal orientation) - see
+    // renderLevelLabels() below.
+    const LEVEL_LABEL_GAP = 28;
     const ZOOM_MIN = 0.4;
     const ZOOM_MAX = 2;
     const ZOOM_STEP = 0.1;
@@ -503,6 +507,43 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             });
         }
 
+        // Declared here, ahead of setCanvasStyle() below, since its very first call
+        // (immediately after its own definition) already reads/writes mode and
+        // showLevelLabels, and (via relayoutTree()/clearLevelLabels()) nodes, edges
+        // and levelLabelsLayer too - referencing any of these before their let/const
+        // declaration runs throws a ReferenceError (temporal dead zone) that would
+        // abort createGraphEditor() entirely before a single node gets created.
+        let nodeCounter = 0;
+        let edgeCounter = 0;
+        const nodes = new Map();
+        const edges = [];
+        let activeNodeId = null;
+        let activeEdge = null;
+        // "Show node trail" (qtype_graph_options.shownodetrail) - only ever true in
+        // attempt mode (opts.showNodeTrail is not even passed by initEditor()'s editor
+        // canvases). See showTrailFrom()/clearTrail() below.
+        const showTrail = attemptMode && !!opts.showNodeTrail;
+        let trailNodeIds = new Set();
+        let trailEdgeSet = new Set();
+        // "Show level labels" (qtype_graph_options.showlevellabels) - unlike showTrail
+        // above, this applies uniformly to every canvas (editor and attempt alike),
+        // the same way showGrid/bgColor/gridColor do - see setCanvasStyle() below.
+        let showLevelLabels = true;
+        // Level-label DOM layer ("Nivel 0", "Nivel 1", ...), created lazily on first
+        // use since the shared editor_ui.php markup (used by every graph canvas -
+        // default, result, every alternate, and the attempt canvas) has no dedicated
+        // slot for it, unlike edgesLayer above. Lives inside graphContent so it pans
+        // and zooms together with the nodes/edges it labels - see
+        // ensureLevelLabelsLayer() below.
+        let levelLabelsLayer = null;
+        let mode = 'graph';
+        let orientation = 'vertical';
+        let lineStyle = 'straight';
+        let zoom = 1;
+        let panX = 0;
+        let panY = 0;
+        let suppress = false;
+
         /**
          * Show/hide the canvas's background grid and set its background/grid-line
          * colors. Read generically off the container's own data-showgrid/data-bgcolor/
@@ -516,8 +557,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
          * @param {boolean} showGrid
          * @param {string} bgColor a CSS color, or '' to fall back to the default theme color.
          * @param {string} [gridColor] a CSS color, or '' to fall back to the default theme color.
+         * @param {boolean} [showLevelLabelsFlag] whether tree mode's "Nivel 0"/"Nivel 1"/...
+         *                  depth labels are shown - see renderLevelLabels() below.
          */
-        function setCanvasStyle(showGrid, bgColor, gridColor) {
+        function setCanvasStyle(showGrid, bgColor, gridColor, showLevelLabelsFlag) {
             canvas.classList.toggle('qtype_graph-canvas--nogrid', !showGrid);
             if (bgColor) {
                 canvas.style.setProperty('--qtype-graph-canvas-bg', bgColor);
@@ -529,8 +572,15 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             } else {
                 canvas.style.removeProperty('--qtype-graph-grid');
             }
+            showLevelLabels = !!showLevelLabelsFlag;
+            if (mode === 'tree') {
+                relayoutTree();
+            } else {
+                clearLevelLabels();
+            }
         }
-        setCanvasStyle(root.dataset.showgrid !== '0', root.dataset.bgcolor || '', root.dataset.gridcolor || '');
+        setCanvasStyle(root.dataset.showgrid !== '0', root.dataset.bgcolor || '', root.dataset.gridcolor || '',
+                root.dataset.showlevellabels !== '0');
 
         // The result graph never chooses its own mode/orientation/line-style: it always
         // mirrors the default graph's (see setLayout() below and initEditor()'s pre-hydrate
@@ -541,26 +591,6 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             orientationToggle.hidden = true;
             lineStyleToggle.hidden = true;
         }
-
-        let nodeCounter = 0;
-        let edgeCounter = 0;
-        const nodes = new Map();
-        const edges = [];
-        let activeNodeId = null;
-        let activeEdge = null;
-        // "Show node trail" (qtype_graph_options.shownodetrail) - only ever true in
-        // attempt mode (opts.showNodeTrail is not even passed by initEditor()'s editor
-        // canvases). See showTrailFrom()/clearTrail() below.
-        const showTrail = attemptMode && !!opts.showNodeTrail;
-        let trailNodeIds = new Set();
-        let trailEdgeSet = new Set();
-        let mode = 'graph';
-        let orientation = 'vertical';
-        let lineStyle = 'straight';
-        let zoom = 1;
-        let panX = 0;
-        let panY = 0;
-        let suppress = false;
 
         function notifyChange() {
             if (!suppress) {
@@ -807,8 +837,80 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             edges.forEach(positionEdge);
         }
 
+        /**
+         * Create (once) and return the level-labels layer, appending it to
+         * graphContent on first use.
+         *
+         * @return {Element}
+         */
+        function ensureLevelLabelsLayer() {
+            if (!levelLabelsLayer) {
+                levelLabelsLayer = document.createElement('div');
+                levelLabelsLayer.className = 'qtype_graph-levellabels';
+                graphContent.appendChild(levelLabelsLayer);
+            }
+            return levelLabelsLayer;
+        }
+
+        /**
+         * Remove every level label - called whenever the graph leaves tree mode,
+         * has no nodes, or has no root to lay out from (see relayoutTree() below).
+         */
+        function clearLevelLabels() {
+            if (levelLabelsLayer) {
+                levelLabelsLayer.innerHTML = '';
+            }
+        }
+
+        /**
+         * Render "Nivel 0"/"Nivel 1"/... labels along the tree's depth axis - one
+         * per level, positioned above each column in horizontal orientation, or to
+         * the left of each row in vertical orientation (the root, depth 0, is
+         * always "Nivel 0"). Only ever called from relayoutTree() below, once every
+         * node's final position for this layout pass is known.
+         *
+         * @param {number[]} depthPixelPos depthPixelPos[d] is that depth's shared
+         *                    top (vertical orientation) or left (horizontal) pixel
+         *                    position - same array relayoutTree() positions nodes with.
+         * @param {Map} maxExtentByDepth depth -> tallest/widest rendered node size at
+         *              that depth, used to center each label on its row/column the
+         *              same way relayoutTree() paces levels apart.
+         * @param {number} maxDepth
+         * @param {Map} finalPos node id -> {left, top, w, h} - used to find the edge
+         *              of the tree's overall bounding box the label column/row sits
+         *              just outside of.
+         */
+        function renderLevelLabels(depthPixelPos, maxExtentByDepth, maxDepth, finalPos) {
+            const layer = ensureLevelLabelsLayer();
+            layer.innerHTML = '';
+            const positions = [...finalPos.values()];
+            if (!positions.length) {
+                return;
+            }
+            const vertical = orientation === 'vertical';
+            const edge = vertical ?
+                Math.min(...positions.map((p) => p.left)) - LEVEL_LABEL_GAP :
+                Math.min(...positions.map((p) => p.top)) - LEVEL_LABEL_GAP;
+            for (let d = 0; d <= maxDepth; d++) {
+                const label = document.createElement('div');
+                label.className = 'qtype_graph-levellabel';
+                label.textContent = `Nivel ${d}`;
+                const center = depthPixelPos[d] + (maxExtentByDepth.get(d) || 0) / 2;
+                if (vertical) {
+                    label.style.left = `${edge}px`;
+                    label.style.top = `${center}px`;
+                } else {
+                    label.classList.add('qtype_graph-levellabel--horizontal');
+                    label.style.left = `${center}px`;
+                    label.style.top = `${edge}px`;
+                }
+                layer.appendChild(label);
+            }
+        }
+
         function relayoutTree() {
             if (mode !== 'tree' || nodes.size === 0) {
+                clearLevelLabels();
                 return;
             }
 
@@ -823,6 +925,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             });
             const roots = [...nodes.keys()].filter((id) => !childSet.has(id));
             if (roots.length === 0) {
+                clearLevelLabels();
                 return;
             }
 
@@ -939,6 +1042,12 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 const y2 = to.top + to.h / 2;
                 setEdgeGeometry(edge, x1, y1, x2, y2);
             });
+
+            if (showLevelLabels) {
+                renderLevelLabels(depthPixelPos, maxExtentByDepth, maxDepth, finalPos);
+            } else {
+                clearLevelLabels();
+            }
         }
 
         function createEdge(fromId, toId, label, locked, id) {
@@ -1481,6 +1590,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             if (mode === 'tree') {
                 resetView();
                 relayoutTree();
+            } else {
+                clearLevelLabels();
             }
             if (!silent) {
                 notifyChange();
@@ -1861,6 +1972,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             nodes.clear();
             edges.splice(0, edges.length).forEach((edge) => edge.group.remove());
             closeMenus();
+            clearLevelLabels();
         }
 
         function serialize() {
@@ -2245,11 +2357,14 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * @param {string} bgColorPickerId id of the paired <input type="color"> swatch.
      * @param {string} [gridColorFieldId] id of the grid line color text field.
      * @param {string} [gridColorPickerId] id of its paired <input type="color"> swatch.
+     * @param {string} [showLevelLabelsFieldId] id of the "show level labels" checkbox.
      */
-    function initCanvasSettings(showGridFieldId, bgColorFieldId, bgColorPickerId, gridColorFieldId, gridColorPickerId) {
+    function initCanvasSettings(showGridFieldId, bgColorFieldId, bgColorPickerId, gridColorFieldId, gridColorPickerId,
+            showLevelLabelsFieldId) {
         const showGridField = document.getElementById(showGridFieldId);
         const bgColorField = document.getElementById(bgColorFieldId);
         const gridColorField = document.getElementById(gridColorFieldId);
+        const showLevelLabelsField = document.getElementById(showLevelLabelsFieldId);
         if (!showGridField || !bgColorField) {
             return;
         }
@@ -2258,7 +2373,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const showGrid = showGridField.checked;
             const bgColor = bgColorField.value;
             const gridColor = gridColorField ? gridColorField.value : '';
-            editorRegistry.forEach((editor) => editor.setCanvasStyle(showGrid, bgColor, gridColor));
+            const showLevelLabels = showLevelLabelsField ? showLevelLabelsField.checked : true;
+            editorRegistry.forEach((editor) => editor.setCanvasStyle(showGrid, bgColor, gridColor, showLevelLabels));
         }
 
         /**
@@ -2289,6 +2405,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         wireColorPair(bgColorField, document.getElementById(bgColorPickerId));
         if (gridColorField) {
             wireColorPair(gridColorField, document.getElementById(gridColorPickerId));
+        }
+        if (showLevelLabelsField) {
+            showLevelLabelsField.addEventListener('change', broadcast);
         }
     }
 

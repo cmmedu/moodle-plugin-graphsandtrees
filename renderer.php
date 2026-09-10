@@ -76,6 +76,7 @@ class qtype_graph_renderer extends qtype_with_combined_feedback_renderer {
             'showgrid' => $question->showgrid ? '1' : '0',
             'bgcolor' => $question->bgcolor,
             'gridcolor' => $question->gridcolor,
+            'showlevellabels' => $question->showlevellabels ? '1' : '0',
         ]);
 
         $fieldname = $qa->get_qt_field_name('nodesjson');

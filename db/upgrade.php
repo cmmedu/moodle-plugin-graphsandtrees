@@ -228,5 +228,27 @@ function xmldb_qtype_graph_upgrade(int $oldversion): bool {
         upgrade_plugin_savepoint(true, 2026091001, 'qtype', 'graph');
     }
 
+    if ($oldversion < 2026091002) {
+        $table = new xmldb_table('qtype_graph_options');
+
+        // shownodetrail was added above defaulting to 0 (off) - now defaulting to 1
+        // (on) instead, alongside showlevellabels below, per the same "on by default"
+        // request. Only changes the column default for future rows; existing
+        // questions keep whatever value they already have.
+        $field = new xmldb_field('shownodetrail', XMLDB_TYPE_INTEGER, '1', null,
+                XMLDB_NOTNULL, null, '1', 'gridcolor');
+        if ($dbman->field_exists($table, $field)) {
+            $dbman->change_field_default($table, $field);
+        }
+
+        $field = new xmldb_field('showlevellabels', XMLDB_TYPE_INTEGER, '1', null,
+                XMLDB_NOTNULL, null, '1', 'shownodetrail');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026091002, 'qtype', 'graph');
+    }
+
     return true;
 }

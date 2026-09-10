@@ -50,7 +50,7 @@ class qtype_graph_edit_form extends question_edit_form {
         $mform->setDefault('allowdeletenodes', 0);
 
         $mform->addElement('advcheckbox', 'shownodetrail', get_string('shownodetrail', 'qtype_graph'));
-        $mform->setDefault('shownodetrail', 0);
+        $mform->setDefault('shownodetrail', 1);
         $mform->addHelpButton('shownodetrail', 'shownodetrail', 'qtype_graph');
 
         $newcontenttypeoptions = [
@@ -85,6 +85,11 @@ class qtype_graph_edit_form extends question_edit_form {
         $mform->addElement('advcheckbox', 'showgrid', get_string('showgrid', 'qtype_graph'),
                 null, ['id' => 'id_showgrid']);
         $mform->setDefault('showgrid', 1);
+
+        $mform->addElement('advcheckbox', 'showlevellabels', get_string('showlevellabels', 'qtype_graph'),
+                null, ['id' => 'id_showlevellabels']);
+        $mform->setDefault('showlevellabels', 1);
+        $mform->addHelpButton('showlevellabels', 'showlevellabels', 'qtype_graph');
 
         // A plain text field (so a hex value can be typed/pasted directly), paired on the
         // same row with a native color-swatch picker as a convenience that overwrites it -
@@ -137,6 +142,8 @@ class qtype_graph_edit_form extends question_edit_form {
             'showgrid' => (!empty($this->question->options) ? (int) $this->question->options->showgrid : 1) ? '1' : '0',
             'bgcolor' => !empty($this->question->options) ? $this->question->options->bgcolor : '#e2e8f0',
             'gridcolor' => !empty($this->question->options) ? $this->question->options->gridcolor : '#cbd5e1',
+            'showlevellabels' =>
+                    (!empty($this->question->options) ? (int) $this->question->options->showlevellabels : 1) ? '1' : '0',
         ];
 
         $mform->addElement('html', \qtype_graph\editor_ui::render($containerid, $canvasstyleattrs));
@@ -148,7 +155,8 @@ class qtype_graph_edit_form extends question_edit_form {
                 [$containerid, 'id_graphjson', null, null, $resultcontainerid]);
 
         $PAGE->requires->js_call_amd('qtype_graph/editor', 'initCanvasSettings',
-                ['id_showgrid', 'id_bgcolor', 'id_bgcolor_picker', 'id_gridcolor', 'id_gridcolor_picker']);
+                ['id_showgrid', 'id_bgcolor', 'id_bgcolor_picker', 'id_gridcolor', 'id_gridcolor_picker',
+                        'id_showlevellabels']);
 
         $mform->addElement('header', 'resultgraphheader', get_string('resultgraphjson', 'qtype_graph'));
         $mform->setExpanded('resultgraphheader');
@@ -242,7 +250,8 @@ class qtype_graph_edit_form extends question_edit_form {
             $question->showgrid = $question->options->showgrid ?? 1;
             $question->bgcolor = $question->options->bgcolor ?? '#e2e8f0';
             $question->gridcolor = $question->options->gridcolor ?? '#1b1f27';
-            $question->shownodetrail = $question->options->shownodetrail ?? 0;
+            $question->shownodetrail = $question->options->shownodetrail ?? 1;
+            $question->showlevellabels = $question->options->showlevellabels ?? 1;
             $question->altresultgraphsjson = json_encode(array_map(
                     function($altanswer) {
                         return json_decode($altanswer->graphjson, true) ?: new stdClass();

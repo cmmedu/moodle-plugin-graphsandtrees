@@ -230,6 +230,33 @@
   overflow: visible;
 }
 
+/*
+ * Tree-mode depth labels ("Nivel 0", "Nivel 1", ...) - see renderLevelLabels()
+ * in amd/src/editor.js. The layer itself is a plain positioned div (not SVG,
+ * unlike .qtype_graph-edges) added dynamically by that function since it has
+ * nothing to draw outside tree mode.
+ */
+.qtype_graph-levellabels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.qtype_graph-levellabel {
+  position: absolute;
+  transform: translate(-100%, -50%);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--qtype-graph-muted);
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+
+.qtype_graph-levellabel--horizontal {
+  transform: translate(-50%, -100%);
+}
+
 .qtype_graph-edge-hit {
   fill: none;
   stroke: transparent;

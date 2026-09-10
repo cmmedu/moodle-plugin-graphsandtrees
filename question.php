@@ -72,7 +72,10 @@ class qtype_graph_question extends question_graded_automatically {
     public $gridcolor = '#1b1f27';
 
     /** @var bool whether clicking a node during the attempt highlights the path back to its origin node. */
-    public $shownodetrail = false;
+    public $shownodetrail = true;
+
+    /** @var bool whether every canvas for this question shows tree-mode depth labels ("Nivel 0", "Nivel 1", ...). */
+    public $showlevellabels = true;
 
     /** @var string feedback shown for a fully correct response. */
     public $correctfeedback;
