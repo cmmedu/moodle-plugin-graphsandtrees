@@ -232,6 +232,12 @@
   height: 100%;
   pointer-events: none;
   overflow: visible;
+  /* Explicit, rather than relying on this being the first child appended to
+     .qtype_graph-content (createNode() in amd/src/editor.js appends every node
+     after it) - nodes must always paint over a connecting line, never the
+     other way around, even where a long edge crosses through an unrelated
+     node's box in a dense graph. */
+  z-index: 1;
 }
 
 /*
@@ -352,6 +358,10 @@
 .qtype_graph-node {
   --node-color: var(--qtype-graph-accent);
   position: absolute;
+  /* Above .qtype_graph-edges (z-index: 1) so a connecting line never paints over
+     a node - .qtype_graph-node--dragging (z-index: 100) still rises above other
+     nodes on top of this while actively being dragged. */
+  z-index: 2;
   min-width: 120px;
   max-width: 240px;
   padding: 14px 18px;
