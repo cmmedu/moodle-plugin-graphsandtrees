@@ -17,6 +17,11 @@
     padding: 20px 24px;
     background: #111827;
     color: #fff;
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
   }
   header.page-header h1 {
     margin: 0 0 4px;
@@ -26,6 +31,100 @@
     margin: 0;
     color: #cbd5e1;
     font-size: 14px;
+  }
+  .btn-instructions {
+    flex: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid #374151;
+    background: #1f2937;
+    color: #fff;
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .btn-instructions:hover {
+    background: #374151;
+  }
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 17, 21, 0.6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 1000;
+  }
+  .modal-overlay[hidden] {
+    display: none;
+  }
+  .modal-box {
+    background: #fff;
+    border-radius: 10px;
+    max-width: 720px;
+    width: 100%;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+  }
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .modal-header h2 {
+    margin: 0;
+    font-size: 18px;
+  }
+  .modal-close {
+    border: none;
+    background: transparent;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+    color: #6b7280;
+    padding: 4px 8px;
+    border-radius: 6px;
+  }
+  .modal-close:hover {
+    background: #f3f4f6;
+    color: #111827;
+  }
+  .modal-body {
+    padding: 4px 20px 20px;
+    overflow-y: auto;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .modal-body h3 {
+    font-size: 15px;
+    margin: 20px 0 6px;
+    color: #111827;
+  }
+  .modal-body h3:first-child {
+    margin-top: 16px;
+  }
+  .modal-body p,
+  .modal-body ul {
+    margin: 0 0 10px;
+    color: #374151;
+  }
+  .modal-body ul {
+    padding-left: 20px;
+  }
+  .modal-body li {
+    margin-bottom: 6px;
+  }
+  .modal-body code {
+    background: #f3f4f6;
+    border-radius: 4px;
+    padding: 1px 5px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12.5px;
   }
   main {
     max-width: 1100px;
@@ -84,9 +183,68 @@
 <body>
 
 <header class="page-header">
-  <h1>Editor de grafos</h1>
-  <p>Construye un grafo y exporta su JSON para el script de montaje del curso.</p>
+  <div>
+    <h1>Editor de grafos</h1>
+    <p>Construye un grafo y exporta su JSON para el script de montaje del curso.</p>
+  </div>
+  <button type="button" class="btn-instructions" id="btn-instructions">Instrucciones</button>
 </header>
+
+<div class="modal-overlay" id="instructions-modal" hidden>
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="instructions-title">
+    <div class="modal-header">
+      <h2 id="instructions-title">Instrucciones del editor</h2>
+      <button type="button" class="modal-close" id="instructions-close" aria-label="Cerrar">&times;</button>
+    </div>
+    <div class="modal-body">
+      <h3>Nodos</h3>
+      <ul>
+        <li>Haz clic en un nodo para abrir su menú: texto, color, forma, agregar un nodo conectado, marcar el texto como blanco de respuesta, o eliminarlo.</li>
+        <li>Arrastra un nodo para moverlo (en "Modo árbol" la posición se recalcula automáticamente).</li>
+      </ul>
+
+      <h3>Conexiones</h3>
+      <ul>
+        <li>Al agregar un nodo conectado se crea automáticamente la conexión entre ambos.</li>
+        <li>Haz clic en una conexión para editar su etiqueta o eliminarla.</li>
+      </ul>
+
+      <h3>Modo grafo vs. modo árbol</h3>
+      <ul>
+        <li><strong>Modo grafo</strong>: los nodos se ubican libremente, sin una jerarquía definida.</li>
+        <li><strong>Modo árbol</strong>: los nodos se organizan automáticamente en niveles (padre/hijo), con orientación vertical u horizontal.</li>
+        <li>El estilo de línea (recta / en ángulo recto) y el zoom se controlan desde la barra superior del editor.</li>
+      </ul>
+
+      <h3>Espacios en blanco: "Marcar como input" / "Marcar como selector"</h3>
+      <ul>
+        <li><strong>Marcar como input</strong> convierte el texto de un nodo o conexión en <code>{{T_INPUT}}</code>: el alumno verá una caja de texto para completar.</li>
+        <li><strong>Marcar como selector</strong> lo convierte en <code>[[opción1;opción2]]</code>: el alumno verá una lista desplegable con esas opciones.</li>
+        <li>Puedes escribir texto antes y/o después de los corchetes en el mismo campo (por ejemplo <code>antes [[Sí;No]] después</code>) - ese texto se muestra igual, solo el contenido entre corchetes/llaves se convierte en el espacio en blanco.</li>
+        <li>Este editor solo genera el <strong>grafo por defecto</strong> (lo que ve el alumno). Las respuestas correctas para cada espacio en blanco se configuran aparte, en el grafo de respuesta dentro de Moodle.</li>
+      </ul>
+
+      <h3>Etiquetas flotantes (solo en modo árbol)</h3>
+      <ul>
+        <li>Un nodo <strong>sin hijos</strong> (una rama final) puede tener además una "+ Etiqueta flotante": un texto aparte que se muestra debajo del nodo (orientación vertical) o a su derecha (orientación horizontal) - útil, por ejemplo, para mostrar un porcentaje al final de una rama.</li>
+        <li>Haz clic en la etiqueta ya creada para editar su texto, marcarla como input/selector, o eliminarla.</li>
+        <li>Si el nodo deja de ser una rama final (se le conecta un hijo), la etiqueta se oculta pero su contenido no se pierde - reaparece si vuelve a quedar sin hijos.</li>
+      </ul>
+
+      <h3>Exportar el grafo</h3>
+      <ul>
+        <li>El botón <strong>"JSON"</strong> (en la barra superior del editor) abre un panel para copiar/pegar el JSON del grafo directamente.</li>
+        <li>Más abajo en esta página, <strong>"Copiar al portapapeles"</strong> y <strong>"Guardar como .json"</strong> hacen lo mismo con el grafo completo, listo para el script de montaje del curso.</li>
+      </ul>
+
+      <h3>Qué queda para el montaje en la plataforma</h3>
+      <ul>
+        <li>Los nombres de los niveles del árbol ("Nivel 0", "Nivel 1", ...) no se pueden cambiar en este editor. Basta con indicar en el guión de la clase cómo quieres que se llame cada nivel - quien haga el montaje los renombrará directamente en Moodle.</li>
+        <li>Este editor solo construye el <strong>grafo de entrada</strong> (el grafo por defecto que ve el alumno). El <strong>grafo de revisión</strong> (con las respuestas correctas, usado para la calificación automática) se arma aparte, dentro de Moodle. Indica en el guión de la clase cómo debe quedar tanto el grafo de entrada como el grafo de revisión.</li>
+      </ul>
+    </div>
+  </div>
+</div>
 
 <main>
 
@@ -295,6 +453,26 @@
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     statusField.textContent = 'Descarga iniciada (grafo.json).';
+  });
+
+  var instructionsModal = document.getElementById('instructions-modal');
+  var openInstructions = function() {
+    instructionsModal.hidden = false;
+  };
+  var closeInstructions = function() {
+    instructionsModal.hidden = true;
+  };
+  document.getElementById('btn-instructions').addEventListener('click', openInstructions);
+  document.getElementById('instructions-close').addEventListener('click', closeInstructions);
+  instructionsModal.addEventListener('click', function(e) {
+    if (e.target === instructionsModal) {
+      closeInstructions();
+    }
+  });
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && !instructionsModal.hidden) {
+      closeInstructions();
+    }
   });
 })();
 </script>
