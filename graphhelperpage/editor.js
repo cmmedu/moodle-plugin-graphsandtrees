@@ -86,6 +86,17 @@
     // widths once several siblings share a parent.
     const TREE_SIBLING_GAP = 70;
     const TREE_MARGIN = 80;
+    // Gap between a level label and the nearest edge of that level's row
+    // (vertical orientation) / column (horizontal orientation) - see
+    // renderLevelLabels() below.
+    const LEVEL_LABEL_GAP = 28;
+    // Number of per-depth level-label override rows the edit form offers (depths
+    // 0 to MAX_LEVEL_LABEL_OVERRIDES - 1) - see initLevelLabelOverrides() below.
+    // Kept in sync by hand with qtype_graph_edit_form::MAX_LEVEL_LABELS
+    // (edit_graph_form.php). A depth at or beyond this always falls back to the
+    // default "Nivel <depth>" title with no subtitle - there is no row to
+    // override it with.
+    const MAX_LEVEL_LABEL_OVERRIDES = 10;
     const ZOOM_MIN = 0.4;
     const ZOOM_MAX = 2;
     const ZOOM_STEP = 0.1;
@@ -124,10 +135,6 @@
     // legacy {{T_INPUT;"a";"b"}} embedded-answer form blank_token.php strips
     // server-side. Must match classes/blank_token.php's SANITIZED_MARKER.
     const BLANK_TOKEN_RE = /\{\{T_INPUT\}\}/g;
-    // Extracts each quoted answer out of a result-graph {{"a";"b"}} answer
-    // list - unrelated to BLANK_TOKEN_RE above; see parseAcceptedAnswers().
-    const BLANK_ANSWER_RE = /"([^"]*)"/g;
-
     const BLANK_MARKER = '{{T_INPUT}}';
 
     // Matches a [[option1;option2;...]] dropdown blank marker - "Marcar como
@@ -146,7 +153,12 @@
     // grammar") - these describe what a *result* graph node/edge's text means
     // for a blank, as opposed to BLANK_TOKEN_RE/BLANK_MARKER above, which
     // describe the *default* graph's blank marker.
-    const ANSWER_LIST_RE = /^\{\{\s*(?:"[^"]*"\s*;?\s*)+\}\}$/;
+    // Matches a whole result-graph field that is a {{...}} multi-answer list - either the
+    // original quoted-items form {{"a";"b"}} or the plainer unquoted form {{a;b}} (same
+    // semicolon convention as a [[a;b]] select-options list). Must match
+    // classes/answer_matcher.php's ANSWER_LIST_PATTERN; see splitAnswerList() below for
+    // the actual per-item extraction.
+    const ANSWER_LIST_RE = /^\{\{([\s\S]*)\}\}$/;
     const ANY_ANSWER_MARKER = '{{T_ANY}}';
     const ANY_OR_EMPTY_ANSWER_MARKER = '{{T_ANY_N_EMPTY}}';
 
@@ -214,6 +226,47 @@
      */
     function buildSelectMarker(optionsCsv) {
         return `[[${splitOptions(optionsCsv).join(';')}]]`;
+    }
+
+    // Matches the FULL span of the (only graded, see classes/grading.php's docblock)
+    // index-0 blank marker in a default-graph label - used positionally by
+    // stripDefaultContext() below. Must match classes/answer_matcher.php's
+    // BLANK_SPAN_PATTERN.
+    const BLANK_SPAN_RE = /\{\{T_INPUT\b[^}]*\}\}|\[\[[^\]]*\]\]/;
+
+    /**
+     * JS mirror of classes/answer_matcher.php's strip_default_context() - see its
+     * docblock. Strips the decorative prefix/suffix text around a default-graph
+     * blank marker (e.g. "antes [[opt1;opt2]] despues") off the matching
+     * result-graph field, wherever the result field actually carries that same
+     * prefix/suffix verbatim, before it's parsed/checked as an accepted-answer
+     * expression - the student's typed/picked value for the blank itself never
+     * includes that surrounding text either (renderLabelSegments() only ever
+     * feeds the input/select's own value into the response's `blanks` map).
+     *
+     * @param {string} defaultText the default-graph node/edge's raw text.
+     * @param {string} resultText the matching result-graph node/edge's raw text.
+     * @return {string} resultText with the default label's prefix/suffix stripped
+     *      off, wherever present.
+     */
+    function stripDefaultContext(defaultText, resultText) {
+        if (typeof defaultText !== 'string' || typeof resultText !== 'string') {
+            return typeof resultText === 'string' ? resultText : '';
+        }
+        const match = BLANK_SPAN_RE.exec(defaultText);
+        if (!match) {
+            return resultText;
+        }
+        const prefix = defaultText.slice(0, match.index);
+        const suffix = defaultText.slice(match.index + match[0].length);
+        let stripped = resultText;
+        if (prefix !== '' && stripped.startsWith(prefix)) {
+            stripped = stripped.slice(prefix.length);
+        }
+        if (suffix !== '' && stripped.endsWith(suffix)) {
+            stripped = stripped.slice(0, stripped.length - suffix.length);
+        }
+        return stripped;
     }
 
     /**
@@ -357,10 +410,31 @@
     }
 
     /**
+     * Split a {{...}}-wrapped answer list's inner content into individual accepted
+     * answers, on ';' - each item may optionally be wrapped in double quotes (stripped
+     * here), for backward compatibility with the original {{"a";"b"}} authoring
+     * convention; an item can just as well be left bare, e.g. {{a;b}}. A blank item
+     * (stray/trailing semicolon, or "") is dropped rather than treated as "empty answer
+     * accepted" - {{T_ANY_N_EMPTY}} already exists for that. Must match
+     * classes/answer_matcher.php's split_answer_list().
+     *
+     * @param {string} inner the content between the outer {{ and }}.
+     * @return {Array}
+     */
+    function splitAnswerList(inner) {
+        return inner.split(';')
+                .map((item) => item.trim())
+                .map((item) => (item.length >= 2 && item[0] === '"' && item[item.length - 1] === '"') ?
+                        item.slice(1, -1) : item)
+                .filter((item) => item !== '');
+    }
+
+    /**
      * Parse a result-graph node/edge's text into the answer-field grammar
      * documented in CLAUDE.md: empty means "not authored yet", {{T_ANY}} /
-     * {{T_ANY_N_EMPTY}} are the wildcard markers, {{"a";"b"}} is a list of
-     * accepted answers, and any other text is a single accepted answer.
+     * {{T_ANY_N_EMPTY}} are the wildcard markers, {{a;b}} (items optionally
+     * quoted) is a list of accepted answers, and any other text is a single
+     * accepted answer.
      *
      * Used by checkAnswerField() (authoring-time validation) below.
      *
@@ -379,14 +453,9 @@
         if (trimmed === ANY_OR_EMPTY_ANSWER_MARKER) {
             return {type: 'any_or_empty', answers: []};
         }
-        if (ANSWER_LIST_RE.test(trimmed)) {
-            const answers = [];
-            let match;
-            BLANK_ANSWER_RE.lastIndex = 0;
-            while ((match = BLANK_ANSWER_RE.exec(trimmed)) !== null) {
-                answers.push(match[1]);
-            }
-            return {type: 'exact', answers};
+        const listMatch = trimmed.match(ANSWER_LIST_RE);
+        if (listMatch) {
+            return {type: 'exact', answers: splitAnswerList(listMatch[1])};
         }
         return {type: 'exact', answers: [trimmed]};
     }
@@ -448,7 +517,16 @@
         const addConnectedBtn = root.querySelector('[data-role="add-connected-btn"]');
         const addInputBtn = root.querySelector('[data-role="add-input-btn"]');
         const addSelectBtn = root.querySelector('[data-role="add-select-btn"]');
+        const addFloatingLabelBtn = root.querySelector('[data-role="add-floatinglabel-btn"]');
         const deleteNodeBtn = root.querySelector('[data-role="delete-node-btn"]');
+        const floatingLabelMenu = root.querySelector('[data-role="floatinglabel-menu"]');
+        const floatingLabelTextSection = root.querySelector('[data-role="floatinglabel-text-section"]');
+        const floatingLabelTextInput = root.querySelector('[data-role="floatinglabel-text-input"]');
+        const floatingLabelSelectSection = root.querySelector('[data-role="floatinglabel-select-section"]');
+        const floatingLabelSelectInput = root.querySelector('[data-role="floatinglabel-select-input"]');
+        const addFloatingLabelInputBtn = root.querySelector('[data-role="add-floatinglabel-input-btn"]');
+        const addFloatingLabelSelectBtn = root.querySelector('[data-role="add-floatinglabel-select-btn"]');
+        const deleteFloatingLabelBtn = root.querySelector('[data-role="delete-floatinglabel-btn"]');
         const edgeMenu = root.querySelector('[data-role="edge-menu"]');
         const edgeTextSection = root.querySelector('[data-role="edge-text-section"]');
         const edgeSelectSection = root.querySelector('[data-role="edge-select-section"]');
@@ -465,6 +543,8 @@
             addEdgeInputBtn.hidden = false;
             addSelectBtn.hidden = false;
             addEdgeSelectBtn.hidden = false;
+            addFloatingLabelInputBtn.hidden = false;
+            addFloatingLabelSelectBtn.hidden = false;
         }
 
         // Sibling editors (by container id) this instance pushes fill-in-the-blank
@@ -518,6 +598,51 @@
             });
         }
 
+        // Declared here, ahead of setCanvasStyle() below, since its very first call
+        // (immediately after its own definition) already reads/writes mode and
+        // showLevelLabels, and (via relayoutTree()/clearLevelLabels()) nodes, edges
+        // and levelLabelsLayer too - referencing any of these before their let/const
+        // declaration runs throws a ReferenceError (temporal dead zone) that would
+        // abort createGraphEditor() entirely before a single node gets created.
+        let nodeCounter = 0;
+        let edgeCounter = 0;
+        const nodes = new Map();
+        const edges = [];
+        let activeNodeId = null;
+        let activeEdge = null;
+        // The leaf node whose floating label popup (floatingLabelMenu) is currently open -
+        // separate from activeNodeId (the node-menu's own state) since either menu can be
+        // open independently, and openFloatingLabelMenu() below never touches activeNodeId.
+        let activeFloatingLabelNodeId = null;
+        // "Show node trail" (qtype_graph_options.shownodetrail) - only ever true in
+        // attempt mode (opts.showNodeTrail is not even passed by initEditor()'s editor
+        // canvases). See showTrailFrom()/clearTrail() below.
+        const showTrail = attemptMode && !!opts.showNodeTrail;
+        let trailNodeIds = new Set();
+        let trailEdgeSet = new Set();
+        // "Show level labels" (qtype_graph_options.showlevellabels) - unlike showTrail
+        // above, this applies uniformly to every canvas (editor and attempt alike),
+        // the same way showGrid/bgColor/gridColor do - see setCanvasStyle() below.
+        let showLevelLabels = true;
+        // Per-depth {show, title, subtitle} overrides (index = depth), decoded from
+        // qtype_graph_options.levellabelsjson - see setLevelLabelOverrides() below.
+        // Applies uniformly like showLevelLabels above, same reasoning.
+        let levelLabelOverrides = [];
+        // Level-label DOM layer ("Nivel 0", "Nivel 1", ...), created lazily on first
+        // use since the shared editor_ui.php markup (used by every graph canvas -
+        // default, result, every alternate, and the attempt canvas) has no dedicated
+        // slot for it, unlike edgesLayer above. Lives inside graphContent so it pans
+        // and zooms together with the nodes/edges it labels - see
+        // ensureLevelLabelsLayer() below.
+        let levelLabelsLayer = null;
+        let mode = 'graph';
+        let orientation = 'vertical';
+        let lineStyle = 'straight';
+        let zoom = 1;
+        let panX = 0;
+        let panY = 0;
+        let suppress = false;
+
         /**
          * Show/hide the canvas's background grid and set its background/grid-line
          * colors. Read generically off the container's own data-showgrid/data-bgcolor/
@@ -531,8 +656,13 @@
          * @param {boolean} showGrid
          * @param {string} bgColor a CSS color, or '' to fall back to the default theme color.
          * @param {string} [gridColor] a CSS color, or '' to fall back to the default theme color.
+         * @param {boolean} [showLevelLabelsFlag] whether tree mode's "Nivel 0"/"Nivel 1"/...
+         *                  depth labels are shown - see renderLevelLabels() below.
+         * @param {string} [textColor] a CSS color for node text and connection labels, or ''
+         *                  to fall back to each one's own default (white / dark respectively -
+         *                  see .qtype_graph-node/.qtype_graph-edge-label in styles.css).
          */
-        function setCanvasStyle(showGrid, bgColor, gridColor) {
+        function setCanvasStyle(showGrid, bgColor, gridColor, showLevelLabelsFlag, textColor) {
             canvas.classList.toggle('qtype_graph-canvas--nogrid', !showGrid);
             if (bgColor) {
                 canvas.style.setProperty('--qtype-graph-canvas-bg', bgColor);
@@ -544,8 +674,39 @@
             } else {
                 canvas.style.removeProperty('--qtype-graph-grid');
             }
+            if (textColor) {
+                canvas.style.setProperty('--qtype-graph-canvas-text', textColor);
+            } else {
+                canvas.style.removeProperty('--qtype-graph-canvas-text');
+            }
+            showLevelLabels = !!showLevelLabelsFlag;
+            if (mode === 'tree') {
+                relayoutTree();
+            } else {
+                clearLevelLabels();
+            }
         }
-        setCanvasStyle(root.dataset.showgrid !== '0', root.dataset.bgcolor || '', root.dataset.gridcolor || '');
+        setCanvasStyle(root.dataset.showgrid !== '0', root.dataset.bgcolor || '', root.dataset.gridcolor || '',
+                root.dataset.showlevellabels !== '0', root.dataset.textcolor || '');
+
+        /**
+         * Set the per-depth level-label overrides (title/subtitle/show, one entry
+         * per tree depth) and re-render them if currently in tree mode. Read
+         * generically off the container's own data-levellabelsjson (same reasoning
+         * as setCanvasStyle() above) at setup, and called live from
+         * initLevelLabelOverrides() below whenever the teacher edits an override row.
+         *
+         * @param {Array} overrides index = depth, each {show, title, subtitle} or absent.
+         */
+        function setLevelLabelOverrides(overrides) {
+            levelLabelOverrides = Array.isArray(overrides) ? overrides : [];
+            if (mode === 'tree') {
+                relayoutTree();
+            } else {
+                clearLevelLabels();
+            }
+        }
+        setLevelLabelOverrides(safeParseLevelLabelOverrides(root.dataset.levellabelsjson));
 
         // The result graph never chooses its own mode/orientation/line-style: it always
         // mirrors the default graph's (see setLayout() below and initEditor()'s pre-hydrate
@@ -556,20 +717,6 @@
             orientationToggle.hidden = true;
             lineStyleToggle.hidden = true;
         }
-
-        let nodeCounter = 0;
-        let edgeCounter = 0;
-        const nodes = new Map();
-        const edges = [];
-        let activeNodeId = null;
-        let activeEdge = null;
-        let mode = 'graph';
-        let orientation = 'vertical';
-        let lineStyle = 'straight';
-        let zoom = 1;
-        let panX = 0;
-        let panY = 0;
-        let suppress = false;
 
         function notifyChange() {
             if (!suppress) {
@@ -816,8 +963,134 @@
             edges.forEach(positionEdge);
         }
 
+        /**
+         * Create (once) and return the level-labels layer, appending it to
+         * graphContent on first use.
+         *
+         * @return {Element}
+         */
+        function ensureLevelLabelsLayer() {
+            if (!levelLabelsLayer) {
+                levelLabelsLayer = document.createElement('div');
+                levelLabelsLayer.className = 'qtype_graph-levellabels';
+                graphContent.appendChild(levelLabelsLayer);
+            }
+            return levelLabelsLayer;
+        }
+
+        /**
+         * Remove every level label - called whenever the graph leaves tree mode,
+         * has no nodes, or has no root to lay out from (see relayoutTree() below).
+         */
+        function clearLevelLabels() {
+            if (levelLabelsLayer) {
+                levelLabelsLayer.innerHTML = '';
+            }
+        }
+
+        /**
+         * Render "Nivel 0"/"Nivel 1"/... labels along the tree's depth axis - one
+         * per level, positioned above each column in horizontal orientation, or to
+         * the left of each row in vertical orientation (the root, depth 0, is
+         * always "Nivel 0" unless overridden - see levelLabelOverrides above). A
+         * depth whose override has show === false is skipped entirely. Only ever
+         * called from relayoutTree() below, once every node's final position for
+         * this layout pass is known.
+         *
+         * @param {number[]} depthPixelPos depthPixelPos[d] is that depth's shared
+         *                    top (vertical orientation) or left (horizontal) pixel
+         *                    position - same array relayoutTree() positions nodes with.
+         * @param {Map} maxExtentByDepth depth -> tallest/widest rendered node size at
+         *              that depth, used to center each label on its row/column the
+         *              same way relayoutTree() paces levels apart.
+         * @param {number} maxDepth
+         * @param {Map} finalPos node id -> {left, top, w, h} - used to find the edge
+         *              of the tree's overall bounding box the label column/row sits
+         *              just outside of.
+         */
+        function renderLevelLabels(depthPixelPos, maxExtentByDepth, maxDepth, finalPos) {
+            const layer = ensureLevelLabelsLayer();
+            layer.innerHTML = '';
+            const positions = [...finalPos.values()];
+            if (!positions.length) {
+                return;
+            }
+            const vertical = orientation === 'vertical';
+            const edge = vertical ?
+                Math.min(...positions.map((p) => p.left)) - LEVEL_LABEL_GAP :
+                Math.min(...positions.map((p) => p.top)) - LEVEL_LABEL_GAP;
+            for (let d = 0; d <= maxDepth; d++) {
+                const override = levelLabelOverrides[d];
+                if (override && override.show === false) {
+                    continue;
+                }
+                const label = document.createElement('div');
+                label.className = 'qtype_graph-levellabel';
+                const titleEl = document.createElement('div');
+                titleEl.className = 'qtype_graph-levellabel-title';
+                titleEl.textContent = (override && override.title) ? override.title : `Nivel ${d}`;
+                label.appendChild(titleEl);
+                if (override && override.subtitle) {
+                    const subtitleEl = document.createElement('div');
+                    subtitleEl.className = 'qtype_graph-levellabel-subtitle';
+                    subtitleEl.textContent = override.subtitle;
+                    label.appendChild(subtitleEl);
+                }
+                const center = depthPixelPos[d] + (maxExtentByDepth.get(d) || 0) / 2;
+                if (vertical) {
+                    label.style.left = `${edge}px`;
+                    label.style.top = `${center}px`;
+                } else {
+                    label.classList.add('qtype_graph-levellabel--horizontal');
+                    label.style.left = `${center}px`;
+                    label.style.top = `${edge}px`;
+                }
+                layer.appendChild(label);
+            }
+        }
+
+        /**
+         * A "leaf" for the floating-label feature: a node with no outgoing edge, only
+         * meaningful in tree mode (see CLAUDE.md, "Floating labels on leaf nodes").
+         *
+         * @param {string} id
+         * @return {boolean}
+         */
+        function isLeafNode(id) {
+            return mode === 'tree' && !edges.some((edge) => edge.fromId === id);
+        }
+
+        /**
+         * Show/hide one node's floating label and pick its below/right positioning class,
+         * without touching its content - safe to call on every layout change (edge add/
+         * remove, node add/remove, mode/orientation toggle, hydrate) even mid-attempt,
+         * since it never disturbs a student's in-progress input/select inside the label.
+         * Content is set once at creation (createNode()) or via setRecordFloatingLabelText()
+         * (editor mode only).
+         *
+         * @param {Object} record
+         */
+        function updateFloatingLabelVisibility(record) {
+            const show = isLeafNode(record.id) && (record.floatingLabel || '').trim() !== '';
+            record.floatingLabelWrap.hidden = !show;
+            record.floatingLabelWrap.classList.toggle('qtype_graph-floatinglabel--horizontal',
+                    orientation === 'horizontal');
+        }
+
+        /**
+         * Refresh every node's floating label visibility - called from relayoutTree()
+         * (covers edge/node add/remove, hydrate, orientation change) and from setMode()'s
+         * graph-mode branch (the one path that changes leaf-relevant state - mode - without
+         * calling relayoutTree()).
+         */
+        function refreshAllFloatingLabelVisibility() {
+            nodes.forEach(updateFloatingLabelVisibility);
+        }
+
         function relayoutTree() {
             if (mode !== 'tree' || nodes.size === 0) {
+                refreshAllFloatingLabelVisibility();
+                clearLevelLabels();
                 return;
             }
 
@@ -832,6 +1105,7 @@
             });
             const roots = [...nodes.keys()].filter((id) => !childSet.has(id));
             if (roots.length === 0) {
+                clearLevelLabels();
                 return;
             }
 
@@ -948,6 +1222,14 @@
                 const y2 = to.top + to.h / 2;
                 setEdgeGeometry(edge, x1, y1, x2, y2);
             });
+
+            if (showLevelLabels) {
+                renderLevelLabels(depthPixelPos, maxExtentByDepth, maxDepth, finalPos);
+            } else {
+                clearLevelLabels();
+            }
+
+            refreshAllFloatingLabelVisibility();
         }
 
         function createEdge(fromId, toId, label, locked, id) {
@@ -1066,9 +1348,83 @@
             activeEdge = null;
         }
 
+        /**
+         * Hide the floating-label popup (openFloatingLabelMenu()) and clear its own
+         * active-node tracking - the floating-label counterpart of closeMenu()/
+         * closeEdgeMenu() above.
+         */
+        function closeFloatingLabelMenu() {
+            floatingLabelMenu.hidden = true;
+            activeFloatingLabelNodeId = null;
+        }
+
         function closeMenus() {
             closeMenu();
             closeEdgeMenu();
+            closeFloatingLabelMenu();
+            clearTrail();
+        }
+
+        /**
+         * Clear whatever node-trail highlight showTrailFrom() below currently shows,
+         * without touching menu/selection state - closeMenus() above calls this
+         * alongside closing the node/edge menus (e.g. a click on empty canvas), and
+         * clear() calls it directly since by then every node/edge it references has
+         * already been removed from the DOM.
+         */
+        function clearTrail() {
+            trailNodeIds.forEach((id) => {
+                const record = nodes.get(id);
+                if (record) {
+                    record.el.classList.remove('qtype_graph-node--trail');
+                }
+            });
+            trailEdgeSet.forEach((edge) => edge.group.classList.remove('qtype_graph-edge-group--trail'));
+            trailNodeIds = new Set();
+            trailEdgeSet = new Set();
+            root.classList.remove('qtype_graph-container--trailactive');
+        }
+
+        /**
+         * "Show node trail": highlight every node/edge on the path from the clicked
+         * node back to its origin node(s) - the ancestor(s) reached by repeatedly
+         * following an edge backwards (toId -> fromId) until none remains. This is
+         * the same "root" definition relayoutTree() above uses for tree mode (a node
+         * that never appears as an edge's toId), so "origin" means the same thing
+         * whether the question is laid out as a graph or a tree. A node with more
+         * than one incoming edge highlights every such path at once, since there is
+         * no single unambiguous one to pick.
+         *
+         * @param {string} nodeId the clicked node's id.
+         */
+        function showTrailFrom(nodeId) {
+            clearTrail();
+            if (!nodes.has(nodeId)) {
+                return;
+            }
+            const visited = new Set([nodeId]);
+            const pathEdges = [];
+            const queue = [nodeId];
+            while (queue.length) {
+                const current = queue.shift();
+                for (const edge of edges) {
+                    if (edge.toId === current && !visited.has(edge.fromId)) {
+                        visited.add(edge.fromId);
+                        pathEdges.push(edge);
+                        queue.push(edge.fromId);
+                    }
+                }
+            }
+            trailNodeIds = visited;
+            trailEdgeSet = new Set(pathEdges);
+            trailNodeIds.forEach((id) => {
+                const record = nodes.get(id);
+                if (record) {
+                    record.el.classList.add('qtype_graph-node--trail');
+                }
+            });
+            trailEdgeSet.forEach((edge) => edge.group.classList.add('qtype_graph-edge-group--trail'));
+            root.classList.add('qtype_graph-container--trailactive');
         }
 
         function openEdgeMenu(edge, clientX, clientY) {
@@ -1088,7 +1444,12 @@
             edgeValueSection.hidden = !attemptSelect;
             edgeLabelInput.value = edge.label;
             edgeLabelInput.readOnly = attemptMode && !edge.locked && newEdgeContentType === 'text';
-            edgeSelectInput.value = selectOptions ? selectOptions.join('; ') : '';
+            // Shown WITH its [[...]] brackets (unlike a plain options list) so text typed
+            // immediately before/after them in this same field becomes prefix/suffix text
+            // around the marker (e.g. "text before [[opt1;opt2]] after") - see the plain
+            // assignment in this field's 'input' handler below, which no longer re-wraps
+            // the whole value through buildSelectMarker().
+            edgeSelectInput.value = selectOptions ? edge.label : '';
             if (attemptSelect) {
                 const options = splitOptions(newEdgeContentValue);
                 edgeValueSelect.innerHTML = '';
@@ -1151,7 +1512,10 @@
             if (!activeEdge) {
                 return;
             }
-            activeEdge.label = buildSelectMarker(edgeSelectInput.value);
+            // Raw assignment (like edgeLabelInput above) rather than buildSelectMarker() -
+            // this field now displays the [[...]] marker literally, so re-wrapping it would
+            // double-bracket it and would discard any prefix/suffix text typed around it.
+            activeEdge.label = edgeSelectInput.value;
             activeEdge.textEl.textContent = activeEdge.label;
             notifyChange();
         });
@@ -1203,7 +1567,7 @@
             const defaultOptions = 'Opción 1, Opción 2';
             activeEdge.label = buildSelectMarker(defaultOptions);
             activeEdge.textEl.textContent = activeEdge.label;
-            edgeSelectInput.value = defaultOptions;
+            edgeSelectInput.value = activeEdge.label;
             edgeTextSection.hidden = true;
             edgeSelectSection.hidden = false;
             notifyChange();
@@ -1238,7 +1602,7 @@
             const record = nodes.get(activeNodeId);
             const defaultOptions = 'Opción 1, Opción 2';
             setRecordText(record, buildSelectMarker(defaultOptions));
-            nodeSelectInput.value = defaultOptions;
+            nodeSelectInput.value = getRecordText(record);
             nodeTextSection.hidden = true;
             nodeSelectSection.hidden = false;
             notifyChange();
@@ -1250,8 +1614,11 @@
             if (!activeNodeId) {
                 return;
             }
+            // Raw assignment (like nodeTextInput below) rather than buildSelectMarker() -
+            // this field now displays the [[...]] marker literally, so re-wrapping it would
+            // double-bracket it and would discard any prefix/suffix text typed around it.
             const record = nodes.get(activeNodeId);
-            setRecordText(record, buildSelectMarker(nodeSelectInput.value));
+            setRecordText(record, nodeSelectInput.value);
             notifyChange();
         });
 
@@ -1260,6 +1627,132 @@
                 e.preventDefault();
                 nodeSelectInput.blur();
             }
+        });
+
+        // "+ Etiqueta flotante" only creates one (seeded with a placeholder the teacher
+        // is expected to overwrite) and immediately opens its own popup to edit it - see
+        // openFloatingLabelMenu() below, which is also reachable later by clicking the
+        // label itself on the canvas (setupNode()'s floatingLabelWrap click handler).
+        addFloatingLabelBtn.addEventListener('click', () => {
+            if (!activeNodeId) {
+                return;
+            }
+            const record = nodes.get(activeNodeId);
+            setRecordFloatingLabelText(record, 'Etiqueta');
+            notifyChange();
+            openFloatingLabelMenu(activeNodeId);
+        });
+
+        /**
+         * Open the popup for editing one leaf node's floating label (text/input/selector),
+         * positioned next to the label itself on the canvas - the on-canvas counterpart to
+         * openMenu()/openEdgeMenu() above, kept as its own menu (rather than folded into
+         * the node menu) since it's reached by clicking the label directly, independently
+         * of whether the node's own menu is open.
+         *
+         * @param {string} nodeId
+         */
+        function openFloatingLabelMenu(nodeId) {
+            closeMenus();
+            activeFloatingLabelNodeId = nodeId;
+            const record = nodes.get(nodeId);
+
+            const text = getRecordFloatingLabelText(record);
+            const selectOptions = parseWholeSelectOptions(text);
+            floatingLabelTextSection.hidden = !!selectOptions;
+            floatingLabelSelectSection.hidden = !selectOptions;
+            floatingLabelTextInput.value = text;
+            // Shown WITH its [[...]] brackets (see nodeSelectInput above for why).
+            floatingLabelSelectInput.value = selectOptions ? text : '';
+
+            const wrapRect = record.floatingLabelWrap.getBoundingClientRect();
+            const canvasRect = canvas.getBoundingClientRect();
+            let left = wrapRect.right - canvasRect.left + 12;
+            let top = wrapRect.top - canvasRect.top;
+            floatingLabelMenu.style.left = `${left}px`;
+            floatingLabelMenu.style.top = `${top}px`;
+            floatingLabelMenu.hidden = false;
+
+            const menuRect = floatingLabelMenu.getBoundingClientRect();
+            if (menuRect.right > canvasRect.right) {
+                left = wrapRect.left - canvasRect.left - menuRect.width - 12;
+            }
+            if (menuRect.bottom > canvasRect.bottom) {
+                top = Math.max(0, canvasRect.height - menuRect.height - 8);
+            }
+            floatingLabelMenu.style.left = `${left}px`;
+            floatingLabelMenu.style.top = `${top}px`;
+        }
+
+        addFloatingLabelInputBtn.addEventListener('click', () => {
+            if (!activeFloatingLabelNodeId) {
+                return;
+            }
+            const record = nodes.get(activeFloatingLabelNodeId);
+            setRecordFloatingLabelText(record, BLANK_MARKER);
+            floatingLabelTextInput.value = BLANK_MARKER;
+            floatingLabelTextSection.hidden = false;
+            floatingLabelSelectSection.hidden = true;
+            notifyChange();
+            getAddInputTargets().forEach((target) => target.setFloatingLabel(activeFloatingLabelNodeId, ''));
+        });
+
+        addFloatingLabelSelectBtn.addEventListener('click', () => {
+            if (!activeFloatingLabelNodeId) {
+                return;
+            }
+            const record = nodes.get(activeFloatingLabelNodeId);
+            const defaultOptions = 'Opción 1, Opción 2';
+            setRecordFloatingLabelText(record, buildSelectMarker(defaultOptions));
+            floatingLabelSelectInput.value = getRecordFloatingLabelText(record);
+            floatingLabelTextSection.hidden = true;
+            floatingLabelSelectSection.hidden = false;
+            notifyChange();
+            getAddInputTargets().forEach((target) => target.setFloatingLabel(activeFloatingLabelNodeId, ''));
+            floatingLabelSelectInput.focus();
+        });
+
+        floatingLabelSelectInput.addEventListener('input', () => {
+            if (!activeFloatingLabelNodeId) {
+                return;
+            }
+            // Raw assignment, same reasoning as nodeSelectInput above.
+            const record = nodes.get(activeFloatingLabelNodeId);
+            setRecordFloatingLabelText(record, floatingLabelSelectInput.value);
+            notifyChange();
+        });
+
+        floatingLabelSelectInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                floatingLabelSelectInput.blur();
+            }
+        });
+
+        floatingLabelTextInput.addEventListener('input', () => {
+            if (!activeFloatingLabelNodeId) {
+                return;
+            }
+            const record = nodes.get(activeFloatingLabelNodeId);
+            setRecordFloatingLabelText(record, floatingLabelTextInput.value);
+            notifyChange();
+        });
+
+        floatingLabelTextInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                floatingLabelTextInput.blur();
+            }
+        });
+
+        deleteFloatingLabelBtn.addEventListener('click', () => {
+            if (!activeFloatingLabelNodeId) {
+                return;
+            }
+            const record = nodes.get(activeFloatingLabelNodeId);
+            setRecordFloatingLabelText(record, '');
+            notifyChange();
+            closeMenus();
         });
 
         function openMenu(nodeId) {
@@ -1283,12 +1776,21 @@
             nodeColorSection.hidden = locked;
             nodeShapeSection.hidden = locked;
             addConnectedBtn.hidden = !allowAddNodes;
+
+            // "+ Etiqueta flotante": only offered on a leaf node (no outgoing edge) in tree
+            // mode - see isLeafNode()/CLAUDE.md - and only while it doesn't have one yet;
+            // once created, it's edited via its own popup (openFloatingLabelMenu()),
+            // opened by clicking the label itself on the canvas, not from here.
+            const isLeaf = isLeafNode(nodeId);
+            const hasFloatingLabel = isLeaf && getRecordFloatingLabelText(record).trim() !== '';
+            addFloatingLabelBtn.hidden = attemptMode || locked || !isLeaf || hasFloatingLabel;
             deleteNodeBtn.hidden = !canDeleteThisNode;
 
             if (!locked) {
                 if (!attemptRestricted) {
                     nodeTextInput.value = getRecordText(record);
-                    nodeSelectInput.value = selectOptions ? selectOptions.join('; ') : '';
+                    // Shown WITH its [[...]] brackets (see edgeSelectInput above for why).
+                    nodeSelectInput.value = selectOptions ? getRecordText(record) : '';
                 }
 
                 const currentColor = getComputedStyle(record.el).getPropertyValue('--node-color').trim();
@@ -1427,6 +1929,9 @@
             if (mode === 'tree') {
                 resetView();
                 relayoutTree();
+            } else {
+                clearLevelLabels();
+                refreshAllFloatingLabelVisibility();
             }
             if (!silent) {
                 notifyChange();
@@ -1535,6 +2040,35 @@
             }
         }
 
+        /**
+         * Read a node's floating label raw text - always just `record.floatingLabel`
+         * (unlike getRecordText() above, a floating label's DOM element is never a live
+         * INPUT/SELECT the canonical value must be read back from: in editor mode it's a
+         * plain span kept in sync by setRecordFloatingLabelText() below, and in attempt
+         * mode the student's own typed/picked value lives in the response's `blanks` map,
+         * never written back into this field).
+         *
+         * @param {Object} record
+         * @return {string}
+         */
+        function getRecordFloatingLabelText(record) {
+            return record.floatingLabel || '';
+        }
+
+        /**
+         * Set a node's floating label raw text (editor mode only - see
+         * getRecordFloatingLabelText() above) and refresh its on-canvas visibility, since
+         * an edit here can be exactly what makes an empty label start (or stop) showing.
+         *
+         * @param {Object} record
+         * @param {string} value
+         */
+        function setRecordFloatingLabelText(record, value) {
+            record.floatingLabel = value;
+            record.floatingLabelEl.textContent = value;
+            updateFloatingLabelVisibility(record);
+        }
+
         function applyShape(el, shape) {
             el.dataset.shape = SHAPES.includes(shape) ? shape : DEFAULT_SHAPE;
             el.classList.toggle('qtype_graph-node--shape-circle', el.dataset.shape === 'circle');
@@ -1561,7 +2095,7 @@
             }
         }
 
-        function createNode(left, top, text, color, locked, id, shape, borderColor) {
+        function createNode(left, top, text, color, locked, id, shape, borderColor, floatingLabel) {
             if (!id) {
                 nodeCounter += 1;
                 id = `node-${Date.now().toString(36)}-${nodeCounter}`;
@@ -1653,11 +2187,49 @@
             }
 
             el.appendChild(textEl);
+
+            // "Floating label": an optional extra piece of content next to a leaf node
+            // (no outgoing edge) in tree mode - see isLeafNode()/updateFloatingLabelVisibility()
+            // below. Appended as a CHILD of `el` (position: absolute in styles.css) rather than
+            // a separate canvas-level overlay like .qtype_graph-levellabel uses, so it tracks
+            // this node's position/drag/relayout automatically via plain CSS, no relayout math
+            // needed. Follows the exact same {{T_INPUT}}/[[opt1;opt2]] blank grammar as node
+            // text - see CLAUDE.md.
+            const floatingLabelText = floatingLabel || '';
+            const floatingLabelWrap = document.createElement('div');
+            floatingLabelWrap.className = 'qtype_graph-floatinglabel';
+            const floatingLabelEl = document.createElement('span');
+            floatingLabelEl.className = 'qtype_graph-floatinglabel-text';
+            if (attemptMode && hasBlankTokens(floatingLabelText)) {
+                renderLabelSegments(floatingLabelEl, floatingLabelText, 'floatingLabel', id,
+                        editable, opts.getBlankValue, opts.onBlankChange);
+            } else {
+                floatingLabelEl.textContent = floatingLabelText;
+            }
+            floatingLabelWrap.appendChild(floatingLabelEl);
+            if (!attemptMode) {
+                // Editor mode only - opens openFloatingLabelMenu() (see its own click-vs-
+                // node-drag stopPropagation reasoning below). In attempt mode the wrap either
+                // holds plain read-only text or blank inputs/selects that already
+                // stopPropagation themselves (renderLabelSegments()), so no listener here.
+                floatingLabelWrap.classList.add('qtype_graph-floatinglabel--clickable');
+                floatingLabelWrap.addEventListener('mousedown', (e) => e.stopPropagation());
+                floatingLabelWrap.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openFloatingLabelMenu(id);
+                });
+            }
+            el.appendChild(floatingLabelWrap);
+
             graphContent.appendChild(el);
 
-            const record = {id, el, textEl, edges: new Set(), locked: !!locked};
+            const record = {
+                id, el, textEl, edges: new Set(), locked: !!locked,
+                floatingLabel: floatingLabelText, floatingLabelWrap, floatingLabelEl,
+            };
             nodes.set(id, record);
             setupNode(record);
+            updateFloatingLabelVisibility(record);
             return id;
         }
 
@@ -1665,6 +2237,14 @@
             const node = record.el;
 
             if (!editable) {
+                // Read-only (e.g. quiz review): nothing is clickable at all, except
+                // the trail highlight below, which has nothing to do with editing.
+                if (showTrail) {
+                    node.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        showTrailFrom(record.id);
+                    });
+                }
                 return;
             }
 
@@ -1675,6 +2255,15 @@
                     e.stopPropagation();
                     openMenu(record.id);
                 });
+                // Registered after the listener above so it fires after openMenu()'s own
+                // closeMenus() call - otherwise that call would clear the highlight this
+                // same click just set.
+                if (showTrail) {
+                    node.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        showTrailFrom(record.id);
+                    });
+                }
                 return;
             }
 
@@ -1768,6 +2357,15 @@
                     notifyChange();
                 });
             }
+
+            // Registered last so it fires after the mouseup handler above's own
+            // openMenu()/closeMenus() call - see the locked-node branch's comment above.
+            if (showTrail) {
+                node.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showTrailFrom(record.id);
+                });
+            }
         }
 
         document.addEventListener('keydown', (e) => {
@@ -1781,6 +2379,7 @@
             nodes.clear();
             edges.splice(0, edges.length).forEach((edge) => edge.group.remove());
             closeMenus();
+            clearLevelLabels();
         }
 
         function serialize() {
@@ -1800,6 +2399,7 @@
                     bordercolor: record.el.style.getPropertyValue('--node-border-color').trim(),
                     shape: record.el.dataset.shape || DEFAULT_SHAPE,
                     locked: !!record.locked,
+                    floatingLabel: record.floatingLabel || '',
                 })),
                 edges: edges.map((edge) => ({
                     id: edge.id, from: edge.fromId, to: edge.toId, label: edge.label, locked: !!edge.locked,
@@ -1812,7 +2412,8 @@
             clear();
             const nodeList = Array.isArray(data.nodes) ? data.nodes : [];
             nodeList.forEach((n) => {
-                createNode(n.left || 0, n.top || 0, n.text, n.color, !!n.locked, n.id, n.shape, n.bordercolor);
+                createNode(n.left || 0, n.top || 0, n.text, n.color, !!n.locked, n.id, n.shape, n.bordercolor,
+                        n.floatingLabel);
             });
             const edgeList = Array.isArray(data.edges) ? data.edges : [];
             edgeList.forEach((e) => {
@@ -1873,18 +2474,40 @@
         }
 
         /**
-         * Draw correct/incorrect feedback markers (a colored outline on a node, a
-         * colored/dashed stroke on an edge) on top of whatever nodes/edges the caller
-         * identifies by id - never anything else, since a plain structural node/edge
-         * has no "answer" to mark right or wrong. Only ever called in attempt mode,
-         * once per feedback render, so any markers from a previous render are cleared
-         * first rather than accumulated.
+         * Directly set one node's floating label by id, without a full hydrate. Same
+         * purpose/caller as setNodeText/setEdgeLabel above ("Marcar como input/selector"
+         * sync, see addSyncTarget()), for the floating-label menu's own pair of buttons.
          *
-         * @param {Object} [feedback] {nodes: {id: bool}, edges: {id: bool}} - true = correct, false = incorrect.
+         * @param {string} id
+         * @param {string} text
+         * @return {boolean} whether a matching node was found and updated.
+         */
+        function setFloatingLabel(id, text) {
+            const record = nodes.get(id);
+            if (!record) {
+                return false;
+            }
+            setRecordFloatingLabelText(record, text);
+            notifyChange();
+            return true;
+        }
+
+        /**
+         * Draw correct/incorrect feedback markers (a colored outline on a node, a
+         * colored/dashed stroke on an edge, or on a leaf node's floating label) on top of
+         * whatever nodes/edges/labels the caller identifies by id - never anything else,
+         * since a plain structural node/edge has no "answer" to mark right or wrong. Only
+         * ever called in attempt mode, once per feedback render, so any markers from a
+         * previous render are cleared first rather than accumulated.
+         *
+         * @param {Object} [feedback] {nodes: {id: bool}, edges: {id: bool}, floatingLabels: {id: bool}} -
+         *      true = correct, false = incorrect.
          */
         function markFeedback(feedback) {
             nodes.forEach((record) => {
                 record.el.classList.remove('qtype_graph-node--feedback-correct', 'qtype_graph-node--feedback-incorrect');
+                record.floatingLabelWrap.classList.remove(
+                        'qtype_graph-floatinglabel--feedback-correct', 'qtype_graph-floatinglabel--feedback-incorrect');
             });
             edges.forEach((edge) => {
                 edge.group.classList.remove(
@@ -1907,10 +2530,18 @@
                             'qtype_graph-edge-group--feedback-correct' : 'qtype_graph-edge-group--feedback-incorrect');
                 }
             });
+            Object.entries(feedback.floatingLabels || {}).forEach(([id, correct]) => {
+                const record = nodes.get(id);
+                if (record) {
+                    record.floatingLabelWrap.classList.add(correct ?
+                            'qtype_graph-floatinglabel--feedback-correct' : 'qtype_graph-floatinglabel--feedback-incorrect');
+                }
+            });
         }
 
         const api = {
-            hydrate, serialize, setNodeText, setEdgeLabel, setLayout, markFeedback, addSyncTarget, setCanvasStyle,
+            hydrate, serialize, setNodeText, setEdgeLabel, setFloatingLabel, setLayout, markFeedback, addSyncTarget,
+            setCanvasStyle, setLevelLabelOverrides,
         };
         editorRegistry.set(root.id, api);
         return api;
@@ -1929,9 +2560,27 @@
             return {
                 nodes: Array.isArray(data.nodes) ? data.nodes : [],
                 edges: Array.isArray(data.edges) ? data.edges : [],
+                mode: data.mode || 'graph',
             };
         } catch (e) {
-            return {nodes: [], edges: []};
+            return {nodes: [], edges: [], mode: 'graph'};
+        }
+    }
+
+    /**
+     * Parse a level-label overrides hidden/data field's raw JSON value into an
+     * array, tolerating malformed/empty JSON (returns [] instead) - see
+     * setLevelLabelOverrides()/renderLevelLabels() in createGraphEditor() above.
+     *
+     * @param {string} value raw JSON value.
+     * @return {Array}
+     */
+    function safeParseLevelLabelOverrides(value) {
+        try {
+            const data = JSON.parse(value || '[]');
+            return Array.isArray(data) ? data : [];
+        } catch (e) {
+            return [];
         }
     }
 
@@ -1976,9 +2625,10 @@
                     '[[...]] sin reemplazar por la respuesta aceptada en el grafo de respuesta.'});
             return;
         }
-        if (spec.type === 'exact' && spec.answers.some((a) => a.trim() === '')) {
+        if (spec.type === 'exact' && ANSWER_LIST_RE.test(trimmed) && spec.answers.length === 0) {
             issues.push({severity: 'warning',
-                    message: `${itemDescription} tiene una respuesta vacía dentro de su lista de respuestas aceptadas.`});
+                    message: `${itemDescription} tiene una lista de respuestas aceptadas {{...}} sin ningún ` +
+                            'valor dentro.'});
         }
     }
 
@@ -2022,6 +2672,9 @@
         const resultEdges = indexById(resultData.edges);
         const defaultNodeIds = new Set(defaultData.nodes.map((n) => n.id));
         const defaultEdgeIds = new Set(defaultData.edges.map((e) => e.id));
+        // Leaf = no outgoing edge - see isLeafNode() in createGraphEditor() above; a
+        // floating label only ever applies to one, and only in tree mode.
+        const parentIds = new Set(defaultData.edges.map((e) => e.from));
 
         defaultData.nodes.forEach((node) => {
             // A blank node's own text is just its marker ({{T_INPUT}} or [[opt1,opt2,...]]),
@@ -2034,7 +2687,12 @@
                 return;
             }
             if (hasBlankTokens(node.text)) {
-                checkAnswerField(`El input del nodo "${label}"`, resultNode.text, issues);
+                checkAnswerField(`El input del nodo "${label}"`, stripDefaultContext(node.text, resultNode.text), issues);
+            }
+            const isLeaf = defaultData.mode === 'tree' && !parentIds.has(node.id);
+            if (isLeaf && hasBlankTokens(node.floatingLabel)) {
+                checkAnswerField(`La etiqueta flotante del nodo "${label}"`,
+                        stripDefaultContext(node.floatingLabel, resultNode.floatingLabel), issues);
             }
         });
 
@@ -2047,7 +2705,8 @@
                 return;
             }
             if (hasBlankTokens(edge.label)) {
-                checkAnswerField(`El input de la conexión "${label}"`, resultEdge.label, issues);
+                checkAnswerField(`El input de la conexión "${label}"`,
+                        stripDefaultContext(edge.label, resultEdge.label), issues);
             }
         });
 
@@ -2165,11 +2824,17 @@
      * @param {string} bgColorPickerId id of the paired <input type="color"> swatch.
      * @param {string} [gridColorFieldId] id of the grid line color text field.
      * @param {string} [gridColorPickerId] id of its paired <input type="color"> swatch.
+     * @param {string} [showLevelLabelsFieldId] id of the "show level labels" checkbox.
+     * @param {string} [textColorFieldId] id of the node/connection text color text field.
+     * @param {string} [textColorPickerId] id of its paired <input type="color"> swatch.
      */
-    function initCanvasSettings(showGridFieldId, bgColorFieldId, bgColorPickerId, gridColorFieldId, gridColorPickerId) {
+    function initCanvasSettings(showGridFieldId, bgColorFieldId, bgColorPickerId, gridColorFieldId, gridColorPickerId,
+            showLevelLabelsFieldId, textColorFieldId, textColorPickerId) {
         const showGridField = document.getElementById(showGridFieldId);
         const bgColorField = document.getElementById(bgColorFieldId);
         const gridColorField = document.getElementById(gridColorFieldId);
+        const showLevelLabelsField = document.getElementById(showLevelLabelsFieldId);
+        const textColorField = document.getElementById(textColorFieldId);
         if (!showGridField || !bgColorField) {
             return;
         }
@@ -2178,7 +2843,10 @@
             const showGrid = showGridField.checked;
             const bgColor = bgColorField.value;
             const gridColor = gridColorField ? gridColorField.value : '';
-            editorRegistry.forEach((editor) => editor.setCanvasStyle(showGrid, bgColor, gridColor));
+            const showLevelLabels = showLevelLabelsField ? showLevelLabelsField.checked : true;
+            const textColor = textColorField ? textColorField.value : '';
+            editorRegistry.forEach((editor) =>
+                    editor.setCanvasStyle(showGrid, bgColor, gridColor, showLevelLabels, textColor));
         }
 
         /**
@@ -2210,6 +2878,68 @@
         if (gridColorField) {
             wireColorPair(gridColorField, document.getElementById(gridColorPickerId));
         }
+        if (showLevelLabelsField) {
+            showLevelLabelsField.addEventListener('change', broadcast);
+        }
+        if (textColorField) {
+            wireColorPair(textColorField, document.getElementById(textColorPickerId));
+        }
+    }
+
+    /**
+     * Wires the edit form's MAX_LEVEL_LABEL_OVERRIDES per-depth override rows
+     * (each a "levellabelshow_$depth"/"levellabeltitle_$depth"/
+     * "levellabelsubtitle_$depth" trio - see the loop in edit_graph_form.php's
+     * definition_inner()) so editing any of them immediately re-renders tree-mode
+     * level labels on every canvas belonging to this question, the same way
+     * initCanvasSettings() above does for the grid/color/showlevellabels
+     * controls - and keeps the single levellabelsjson hidden field (the value
+     * actually submitted - see questiontype.php's save_question_options()) in
+     * sync, mirroring how the graph canvas itself keeps its own hidden field in
+     * sync with on-canvas edits.
+     *
+     * @param {string} hiddenFieldId id of the levellabelsjson hidden field.
+     */
+    function initLevelLabelOverrides(hiddenFieldId) {
+        const hiddenField = document.getElementById(hiddenFieldId);
+        if (!hiddenField) {
+            return;
+        }
+
+        const rows = [];
+        for (let depth = 0; depth < MAX_LEVEL_LABEL_OVERRIDES; depth++) {
+            const showField = document.getElementById(`id_levellabelshow_${depth}`);
+            const titleField = document.getElementById(`id_levellabeltitle_${depth}`);
+            const subtitleField = document.getElementById(`id_levellabelsubtitle_${depth}`);
+            if (showField && titleField && subtitleField) {
+                rows.push({showField, titleField, subtitleField});
+            }
+        }
+        if (!rows.length) {
+            return;
+        }
+
+        /**
+         * Read every row's current values, write them into the hidden field, and
+         * push them to every registered editor (default, result, every alternate,
+         * and the attempt canvas is never present here since this only runs in the
+         * edit form).
+         */
+        function broadcast() {
+            const overrides = rows.map((row) => ({
+                show: row.showField.checked,
+                title: row.titleField.value.trim(),
+                subtitle: row.subtitleField.value.trim(),
+            }));
+            hiddenField.value = JSON.stringify(overrides);
+            editorRegistry.forEach((editor) => editor.setLevelLabelOverrides(overrides));
+        }
+
+        rows.forEach((row) => {
+            row.showField.addEventListener('change', broadcast);
+            row.titleField.addEventListener('input', broadcast);
+            row.subtitleField.addEventListener('input', broadcast);
+        });
     }
 
     /**
@@ -2332,6 +3062,9 @@
      * @param {boolean} [opts.readOnly] true to render non-editable.
      * @param {boolean} [opts.allowAddNodes] true if new nodes may be added.
      * @param {boolean} [opts.allowDeleteNodes] true if teacher-authored nodes may be deleted.
+     * @param {boolean} [opts.showNodeTrail] true if clicking a node should highlight the
+     *                  path (nodes/edges) back to its origin node - see showTrailFrom() in
+     *                  createGraphEditor().
      * @param {string} [opts.initialResponseJson] a previously-saved response to seed from.
      * @param {Function} [opts.onResponseChange] (response) => void, called whenever the
      *                    response changes as a result of user interaction (never for the
@@ -2426,6 +3159,7 @@
             mode: 'attempt',
             allowAddNodes: opts.allowAddNodes !== false,
             allowDeleteNodes: opts.allowDeleteNodes !== false,
+            showNodeTrail: !!opts.showNodeTrail,
             newNodeContentType: opts.newNodeContentType,
             newNodeContentValue: opts.newNodeContentValue,
             newEdgeContentType: opts.newEdgeContentType,
@@ -2463,8 +3197,10 @@
      * @param {boolean} readOnly true if the question is being displayed read-only (e.g. review).
      * @param {boolean} allowAddNodes true if the student may add new nodes.
      * @param {boolean} allowDeleteNodes true if the student may delete the teacher-authored nodes.
+     * @param {boolean} showNodeTrail true if clicking a node should highlight the path
+     *                  (nodes/edges) back to its origin node.
      */
-    function initAttempt(containerId, hiddenFieldId, readOnly, allowAddNodes, allowDeleteNodes) {
+    function initAttempt(containerId, hiddenFieldId, readOnly, allowAddNodes, allowDeleteNodes, showNodeTrail) {
         const root = document.getElementById(containerId);
         const hidden = document.getElementById(hiddenFieldId);
         if (!root || !hidden) {
@@ -2475,6 +3211,7 @@
             readOnly,
             allowAddNodes,
             allowDeleteNodes,
+            showNodeTrail,
             newNodeContentType: root.dataset.newnodecontenttype,
             newNodeContentValue: root.dataset.newnodecontentvalue,
             newEdgeContentType: root.dataset.newedgecontenttype,
@@ -2502,6 +3239,7 @@
                 attempt.editor.markFeedback({
                     nodes: Object.assign({}, feedback.nodes, feedback.newnodes),
                     edges: feedback.edges,
+                    floatingLabels: feedback.floatinglabels,
                 });
             }
         }
@@ -2695,5 +3433,6 @@
         initValidation,
         initAltAnswers,
         initCanvasSettings,
+        initLevelLabelOverrides,
     };
 })(window);

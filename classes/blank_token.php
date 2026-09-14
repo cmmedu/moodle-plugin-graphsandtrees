@@ -57,6 +57,13 @@ class blank_token {
             if (isset($node['text']) && is_string($node['text'])) {
                 $node['text'] = preg_replace(self::TOKEN_PATTERN, self::SANITIZED_MARKER, $node['text']);
             }
+            // A leaf node's floating label (see CLAUDE.md, "Floating labels on leaf
+            // nodes") uses the exact same blank grammar as its own text, so it can just
+            // as easily carry a legacy embedded-answer token that must never reach the
+            // student's browser either.
+            if (isset($node['floatingLabel']) && is_string($node['floatingLabel'])) {
+                $node['floatingLabel'] = preg_replace(self::TOKEN_PATTERN, self::SANITIZED_MARKER, $node['floatingLabel']);
+            }
         }
         unset($node);
         $data['nodes'] = $nodes;

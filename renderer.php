@@ -56,7 +56,8 @@ class qtype_graph_renderer extends qtype_with_combined_feedback_renderer {
         $feedbackjson = '';
         if ($options->correctness) {
             $breakdown = $question->get_feedback_breakdown($submittedresponse);
-            if (!empty($breakdown['nodes']) || !empty($breakdown['edges']) || !empty($breakdown['newnodes'])) {
+            if (!empty($breakdown['nodes']) || !empty($breakdown['edges']) || !empty($breakdown['newnodes'])
+                    || !empty($breakdown['floatinglabels'])) {
                 $feedbackjson = json_encode($breakdown);
             }
         }
@@ -76,6 +77,7 @@ class qtype_graph_renderer extends qtype_with_combined_feedback_renderer {
             'showgrid' => $question->showgrid ? '1' : '0',
             'bgcolor' => $question->bgcolor,
             'gridcolor' => $question->gridcolor,
+            'textcolor' => $question->textcolor,
             'showlevellabels' => $question->showlevellabels ? '1' : '0',
             'levellabelsjson' => $question->levellabelsjson,
         ]);

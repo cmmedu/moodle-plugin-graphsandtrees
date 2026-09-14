@@ -71,6 +71,11 @@ class qtype_graph_question extends question_graded_automatically {
     /** @var string background grid line color (CSS hex) of every canvas for this question. */
     public $gridcolor = '#1b1f27';
 
+    /** @var string text color (CSS hex) for node labels and connection labels on every canvas for
+     *  this question - empty means each falls back to its own default (white node text, dark
+     *  connection text) - see .qtype_graph-node/.qtype_graph-edge-label in styles.css. */
+    public $textcolor = '';
+
     /** @var bool whether clicking a node during the attempt highlights the path back to its origin node. */
     public $shownodetrail = true;
 
@@ -168,7 +173,7 @@ class qtype_graph_question extends question_graded_automatically {
      */
     public function get_feedback_breakdown(array $response) {
         if (!$this->has_answer_graph()) {
-            return ['nodes' => [], 'edges' => [], 'newnodes' => []];
+            return ['nodes' => [], 'edges' => [], 'newnodes' => [], 'floatinglabels' => []];
         }
         return \qtype_graph\grading::feedback_breakdown($this->graphjson, $this->resultgraphjson,
                 $response, (bool) $this->allowaddnodes, $this->altresultgraphs);

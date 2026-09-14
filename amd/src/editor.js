@@ -502,7 +502,16 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const addConnectedBtn = root.querySelector('[data-role="add-connected-btn"]');
         const addInputBtn = root.querySelector('[data-role="add-input-btn"]');
         const addSelectBtn = root.querySelector('[data-role="add-select-btn"]');
+        const addFloatingLabelBtn = root.querySelector('[data-role="add-floatinglabel-btn"]');
         const deleteNodeBtn = root.querySelector('[data-role="delete-node-btn"]');
+        const floatingLabelMenu = root.querySelector('[data-role="floatinglabel-menu"]');
+        const floatingLabelTextSection = root.querySelector('[data-role="floatinglabel-text-section"]');
+        const floatingLabelTextInput = root.querySelector('[data-role="floatinglabel-text-input"]');
+        const floatingLabelSelectSection = root.querySelector('[data-role="floatinglabel-select-section"]');
+        const floatingLabelSelectInput = root.querySelector('[data-role="floatinglabel-select-input"]');
+        const addFloatingLabelInputBtn = root.querySelector('[data-role="add-floatinglabel-input-btn"]');
+        const addFloatingLabelSelectBtn = root.querySelector('[data-role="add-floatinglabel-select-btn"]');
+        const deleteFloatingLabelBtn = root.querySelector('[data-role="delete-floatinglabel-btn"]');
         const edgeMenu = root.querySelector('[data-role="edge-menu"]');
         const edgeTextSection = root.querySelector('[data-role="edge-text-section"]');
         const edgeSelectSection = root.querySelector('[data-role="edge-select-section"]');
@@ -519,6 +528,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             addEdgeInputBtn.hidden = false;
             addSelectBtn.hidden = false;
             addEdgeSelectBtn.hidden = false;
+            addFloatingLabelInputBtn.hidden = false;
+            addFloatingLabelSelectBtn.hidden = false;
         }
 
         // Sibling editors (by container id) this instance pushes fill-in-the-blank
@@ -584,6 +595,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const edges = [];
         let activeNodeId = null;
         let activeEdge = null;
+        // The leaf node whose floating label popup (floatingLabelMenu) is currently open -
+        // separate from activeNodeId (the node-menu's own state) since either menu can be
+        // open independently, and openFloatingLabelMenu() below never touches activeNodeId.
+        let activeFloatingLabelNodeId = null;
         // "Show node trail" (qtype_graph_options.shownodetrail) - only ever true in
         // attempt mode (opts.showNodeTrail is not even passed by initEditor()'s editor
         // canvases). See showTrailFrom()/clearTrail() below.
@@ -628,8 +643,11 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
          * @param {string} [gridColor] a CSS color, or '' to fall back to the default theme color.
          * @param {boolean} [showLevelLabelsFlag] whether tree mode's "Nivel 0"/"Nivel 1"/...
          *                  depth labels are shown - see renderLevelLabels() below.
+         * @param {string} [textColor] a CSS color for node text and connection labels, or ''
+         *                  to fall back to each one's own default (white / dark respectively -
+         *                  see .qtype_graph-node/.qtype_graph-edge-label in styles.css).
          */
-        function setCanvasStyle(showGrid, bgColor, gridColor, showLevelLabelsFlag) {
+        function setCanvasStyle(showGrid, bgColor, gridColor, showLevelLabelsFlag, textColor) {
             canvas.classList.toggle('qtype_graph-canvas--nogrid', !showGrid);
             if (bgColor) {
                 canvas.style.setProperty('--qtype-graph-canvas-bg', bgColor);
@@ -641,6 +659,11 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             } else {
                 canvas.style.removeProperty('--qtype-graph-grid');
             }
+            if (textColor) {
+                canvas.style.setProperty('--qtype-graph-canvas-text', textColor);
+            } else {
+                canvas.style.removeProperty('--qtype-graph-canvas-text');
+            }
             showLevelLabels = !!showLevelLabelsFlag;
             if (mode === 'tree') {
                 relayoutTree();
@@ -649,7 +672,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             }
         }
         setCanvasStyle(root.dataset.showgrid !== '0', root.dataset.bgcolor || '', root.dataset.gridcolor || '',
-                root.dataset.showlevellabels !== '0');
+                root.dataset.showlevellabels !== '0', root.dataset.textcolor || '');
 
         /**
          * Set the per-depth level-label overrides (title/subtitle/show, one entry
@@ -1011,8 +1034,47 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             }
         }
 
+        /**
+         * A "leaf" for the floating-label feature: a node with no outgoing edge, only
+         * meaningful in tree mode (see CLAUDE.md, "Floating labels on leaf nodes").
+         *
+         * @param {string} id
+         * @return {boolean}
+         */
+        function isLeafNode(id) {
+            return mode === 'tree' && !edges.some((edge) => edge.fromId === id);
+        }
+
+        /**
+         * Show/hide one node's floating label and pick its below/right positioning class,
+         * without touching its content - safe to call on every layout change (edge add/
+         * remove, node add/remove, mode/orientation toggle, hydrate) even mid-attempt,
+         * since it never disturbs a student's in-progress input/select inside the label.
+         * Content is set once at creation (createNode()) or via setRecordFloatingLabelText()
+         * (editor mode only).
+         *
+         * @param {Object} record
+         */
+        function updateFloatingLabelVisibility(record) {
+            const show = isLeafNode(record.id) && (record.floatingLabel || '').trim() !== '';
+            record.floatingLabelWrap.hidden = !show;
+            record.floatingLabelWrap.classList.toggle('qtype_graph-floatinglabel--horizontal',
+                    orientation === 'horizontal');
+        }
+
+        /**
+         * Refresh every node's floating label visibility - called from relayoutTree()
+         * (covers edge/node add/remove, hydrate, orientation change) and from setMode()'s
+         * graph-mode branch (the one path that changes leaf-relevant state - mode - without
+         * calling relayoutTree()).
+         */
+        function refreshAllFloatingLabelVisibility() {
+            nodes.forEach(updateFloatingLabelVisibility);
+        }
+
         function relayoutTree() {
             if (mode !== 'tree' || nodes.size === 0) {
+                refreshAllFloatingLabelVisibility();
                 clearLevelLabels();
                 return;
             }
@@ -1151,6 +1213,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             } else {
                 clearLevelLabels();
             }
+
+            refreshAllFloatingLabelVisibility();
         }
 
         function createEdge(fromId, toId, label, locked, id) {
@@ -1269,9 +1333,20 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             activeEdge = null;
         }
 
+        /**
+         * Hide the floating-label popup (openFloatingLabelMenu()) and clear its own
+         * active-node tracking - the floating-label counterpart of closeMenu()/
+         * closeEdgeMenu() above.
+         */
+        function closeFloatingLabelMenu() {
+            floatingLabelMenu.hidden = true;
+            activeFloatingLabelNodeId = null;
+        }
+
         function closeMenus() {
             closeMenu();
             closeEdgeMenu();
+            closeFloatingLabelMenu();
             clearTrail();
         }
 
@@ -1539,6 +1614,132 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             }
         });
 
+        // "+ Etiqueta flotante" only creates one (seeded with a placeholder the teacher
+        // is expected to overwrite) and immediately opens its own popup to edit it - see
+        // openFloatingLabelMenu() below, which is also reachable later by clicking the
+        // label itself on the canvas (setupNode()'s floatingLabelWrap click handler).
+        addFloatingLabelBtn.addEventListener('click', () => {
+            if (!activeNodeId) {
+                return;
+            }
+            const record = nodes.get(activeNodeId);
+            setRecordFloatingLabelText(record, 'Etiqueta');
+            notifyChange();
+            openFloatingLabelMenu(activeNodeId);
+        });
+
+        /**
+         * Open the popup for editing one leaf node's floating label (text/input/selector),
+         * positioned next to the label itself on the canvas - the on-canvas counterpart to
+         * openMenu()/openEdgeMenu() above, kept as its own menu (rather than folded into
+         * the node menu) since it's reached by clicking the label directly, independently
+         * of whether the node's own menu is open.
+         *
+         * @param {string} nodeId
+         */
+        function openFloatingLabelMenu(nodeId) {
+            closeMenus();
+            activeFloatingLabelNodeId = nodeId;
+            const record = nodes.get(nodeId);
+
+            const text = getRecordFloatingLabelText(record);
+            const selectOptions = parseWholeSelectOptions(text);
+            floatingLabelTextSection.hidden = !!selectOptions;
+            floatingLabelSelectSection.hidden = !selectOptions;
+            floatingLabelTextInput.value = text;
+            // Shown WITH its [[...]] brackets (see nodeSelectInput above for why).
+            floatingLabelSelectInput.value = selectOptions ? text : '';
+
+            const wrapRect = record.floatingLabelWrap.getBoundingClientRect();
+            const canvasRect = canvas.getBoundingClientRect();
+            let left = wrapRect.right - canvasRect.left + 12;
+            let top = wrapRect.top - canvasRect.top;
+            floatingLabelMenu.style.left = `${left}px`;
+            floatingLabelMenu.style.top = `${top}px`;
+            floatingLabelMenu.hidden = false;
+
+            const menuRect = floatingLabelMenu.getBoundingClientRect();
+            if (menuRect.right > canvasRect.right) {
+                left = wrapRect.left - canvasRect.left - menuRect.width - 12;
+            }
+            if (menuRect.bottom > canvasRect.bottom) {
+                top = Math.max(0, canvasRect.height - menuRect.height - 8);
+            }
+            floatingLabelMenu.style.left = `${left}px`;
+            floatingLabelMenu.style.top = `${top}px`;
+        }
+
+        addFloatingLabelInputBtn.addEventListener('click', () => {
+            if (!activeFloatingLabelNodeId) {
+                return;
+            }
+            const record = nodes.get(activeFloatingLabelNodeId);
+            setRecordFloatingLabelText(record, BLANK_MARKER);
+            floatingLabelTextInput.value = BLANK_MARKER;
+            floatingLabelTextSection.hidden = false;
+            floatingLabelSelectSection.hidden = true;
+            notifyChange();
+            getAddInputTargets().forEach((target) => target.setFloatingLabel(activeFloatingLabelNodeId, ''));
+        });
+
+        addFloatingLabelSelectBtn.addEventListener('click', () => {
+            if (!activeFloatingLabelNodeId) {
+                return;
+            }
+            const record = nodes.get(activeFloatingLabelNodeId);
+            const defaultOptions = 'Opción 1, Opción 2';
+            setRecordFloatingLabelText(record, buildSelectMarker(defaultOptions));
+            floatingLabelSelectInput.value = getRecordFloatingLabelText(record);
+            floatingLabelTextSection.hidden = true;
+            floatingLabelSelectSection.hidden = false;
+            notifyChange();
+            getAddInputTargets().forEach((target) => target.setFloatingLabel(activeFloatingLabelNodeId, ''));
+            floatingLabelSelectInput.focus();
+        });
+
+        floatingLabelSelectInput.addEventListener('input', () => {
+            if (!activeFloatingLabelNodeId) {
+                return;
+            }
+            // Raw assignment, same reasoning as nodeSelectInput above.
+            const record = nodes.get(activeFloatingLabelNodeId);
+            setRecordFloatingLabelText(record, floatingLabelSelectInput.value);
+            notifyChange();
+        });
+
+        floatingLabelSelectInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                floatingLabelSelectInput.blur();
+            }
+        });
+
+        floatingLabelTextInput.addEventListener('input', () => {
+            if (!activeFloatingLabelNodeId) {
+                return;
+            }
+            const record = nodes.get(activeFloatingLabelNodeId);
+            setRecordFloatingLabelText(record, floatingLabelTextInput.value);
+            notifyChange();
+        });
+
+        floatingLabelTextInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                floatingLabelTextInput.blur();
+            }
+        });
+
+        deleteFloatingLabelBtn.addEventListener('click', () => {
+            if (!activeFloatingLabelNodeId) {
+                return;
+            }
+            const record = nodes.get(activeFloatingLabelNodeId);
+            setRecordFloatingLabelText(record, '');
+            notifyChange();
+            closeMenus();
+        });
+
         function openMenu(nodeId) {
             closeMenus();
             activeNodeId = nodeId;
@@ -1560,6 +1761,14 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             nodeColorSection.hidden = locked;
             nodeShapeSection.hidden = locked;
             addConnectedBtn.hidden = !allowAddNodes;
+
+            // "+ Etiqueta flotante": only offered on a leaf node (no outgoing edge) in tree
+            // mode - see isLeafNode()/CLAUDE.md - and only while it doesn't have one yet;
+            // once created, it's edited via its own popup (openFloatingLabelMenu()),
+            // opened by clicking the label itself on the canvas, not from here.
+            const isLeaf = isLeafNode(nodeId);
+            const hasFloatingLabel = isLeaf && getRecordFloatingLabelText(record).trim() !== '';
+            addFloatingLabelBtn.hidden = attemptMode || locked || !isLeaf || hasFloatingLabel;
             deleteNodeBtn.hidden = !canDeleteThisNode;
 
             if (!locked) {
@@ -1707,6 +1916,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 relayoutTree();
             } else {
                 clearLevelLabels();
+                refreshAllFloatingLabelVisibility();
             }
             if (!silent) {
                 notifyChange();
@@ -1815,6 +2025,35 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             }
         }
 
+        /**
+         * Read a node's floating label raw text - always just `record.floatingLabel`
+         * (unlike getRecordText() above, a floating label's DOM element is never a live
+         * INPUT/SELECT the canonical value must be read back from: in editor mode it's a
+         * plain span kept in sync by setRecordFloatingLabelText() below, and in attempt
+         * mode the student's own typed/picked value lives in the response's `blanks` map,
+         * never written back into this field).
+         *
+         * @param {Object} record
+         * @return {string}
+         */
+        function getRecordFloatingLabelText(record) {
+            return record.floatingLabel || '';
+        }
+
+        /**
+         * Set a node's floating label raw text (editor mode only - see
+         * getRecordFloatingLabelText() above) and refresh its on-canvas visibility, since
+         * an edit here can be exactly what makes an empty label start (or stop) showing.
+         *
+         * @param {Object} record
+         * @param {string} value
+         */
+        function setRecordFloatingLabelText(record, value) {
+            record.floatingLabel = value;
+            record.floatingLabelEl.textContent = value;
+            updateFloatingLabelVisibility(record);
+        }
+
         function applyShape(el, shape) {
             el.dataset.shape = SHAPES.includes(shape) ? shape : DEFAULT_SHAPE;
             el.classList.toggle('qtype_graph-node--shape-circle', el.dataset.shape === 'circle');
@@ -1841,7 +2080,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             }
         }
 
-        function createNode(left, top, text, color, locked, id, shape, borderColor) {
+        function createNode(left, top, text, color, locked, id, shape, borderColor, floatingLabel) {
             if (!id) {
                 nodeCounter += 1;
                 id = `node-${Date.now().toString(36)}-${nodeCounter}`;
@@ -1933,11 +2172,49 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             }
 
             el.appendChild(textEl);
+
+            // "Floating label": an optional extra piece of content next to a leaf node
+            // (no outgoing edge) in tree mode - see isLeafNode()/updateFloatingLabelVisibility()
+            // below. Appended as a CHILD of `el` (position: absolute in styles.css) rather than
+            // a separate canvas-level overlay like .qtype_graph-levellabel uses, so it tracks
+            // this node's position/drag/relayout automatically via plain CSS, no relayout math
+            // needed. Follows the exact same {{T_INPUT}}/[[opt1;opt2]] blank grammar as node
+            // text - see CLAUDE.md.
+            const floatingLabelText = floatingLabel || '';
+            const floatingLabelWrap = document.createElement('div');
+            floatingLabelWrap.className = 'qtype_graph-floatinglabel';
+            const floatingLabelEl = document.createElement('span');
+            floatingLabelEl.className = 'qtype_graph-floatinglabel-text';
+            if (attemptMode && hasBlankTokens(floatingLabelText)) {
+                renderLabelSegments(floatingLabelEl, floatingLabelText, 'floatingLabel', id,
+                        editable, opts.getBlankValue, opts.onBlankChange);
+            } else {
+                floatingLabelEl.textContent = floatingLabelText;
+            }
+            floatingLabelWrap.appendChild(floatingLabelEl);
+            if (!attemptMode) {
+                // Editor mode only - opens openFloatingLabelMenu() (see its own click-vs-
+                // node-drag stopPropagation reasoning below). In attempt mode the wrap either
+                // holds plain read-only text or blank inputs/selects that already
+                // stopPropagation themselves (renderLabelSegments()), so no listener here.
+                floatingLabelWrap.classList.add('qtype_graph-floatinglabel--clickable');
+                floatingLabelWrap.addEventListener('mousedown', (e) => e.stopPropagation());
+                floatingLabelWrap.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openFloatingLabelMenu(id);
+                });
+            }
+            el.appendChild(floatingLabelWrap);
+
             graphContent.appendChild(el);
 
-            const record = {id, el, textEl, edges: new Set(), locked: !!locked};
+            const record = {
+                id, el, textEl, edges: new Set(), locked: !!locked,
+                floatingLabel: floatingLabelText, floatingLabelWrap, floatingLabelEl,
+            };
             nodes.set(id, record);
             setupNode(record);
+            updateFloatingLabelVisibility(record);
             return id;
         }
 
@@ -2107,6 +2384,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                     bordercolor: record.el.style.getPropertyValue('--node-border-color').trim(),
                     shape: record.el.dataset.shape || DEFAULT_SHAPE,
                     locked: !!record.locked,
+                    floatingLabel: record.floatingLabel || '',
                 })),
                 edges: edges.map((edge) => ({
                     id: edge.id, from: edge.fromId, to: edge.toId, label: edge.label, locked: !!edge.locked,
@@ -2119,7 +2397,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             clear();
             const nodeList = Array.isArray(data.nodes) ? data.nodes : [];
             nodeList.forEach((n) => {
-                createNode(n.left || 0, n.top || 0, n.text, n.color, !!n.locked, n.id, n.shape, n.bordercolor);
+                createNode(n.left || 0, n.top || 0, n.text, n.color, !!n.locked, n.id, n.shape, n.bordercolor,
+                        n.floatingLabel);
             });
             const edgeList = Array.isArray(data.edges) ? data.edges : [];
             edgeList.forEach((e) => {
@@ -2180,18 +2459,40 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         }
 
         /**
-         * Draw correct/incorrect feedback markers (a colored outline on a node, a
-         * colored/dashed stroke on an edge) on top of whatever nodes/edges the caller
-         * identifies by id - never anything else, since a plain structural node/edge
-         * has no "answer" to mark right or wrong. Only ever called in attempt mode,
-         * once per feedback render, so any markers from a previous render are cleared
-         * first rather than accumulated.
+         * Directly set one node's floating label by id, without a full hydrate. Same
+         * purpose/caller as setNodeText/setEdgeLabel above ("Marcar como input/selector"
+         * sync, see addSyncTarget()), for the floating-label menu's own pair of buttons.
          *
-         * @param {Object} [feedback] {nodes: {id: bool}, edges: {id: bool}} - true = correct, false = incorrect.
+         * @param {string} id
+         * @param {string} text
+         * @return {boolean} whether a matching node was found and updated.
+         */
+        function setFloatingLabel(id, text) {
+            const record = nodes.get(id);
+            if (!record) {
+                return false;
+            }
+            setRecordFloatingLabelText(record, text);
+            notifyChange();
+            return true;
+        }
+
+        /**
+         * Draw correct/incorrect feedback markers (a colored outline on a node, a
+         * colored/dashed stroke on an edge, or on a leaf node's floating label) on top of
+         * whatever nodes/edges/labels the caller identifies by id - never anything else,
+         * since a plain structural node/edge has no "answer" to mark right or wrong. Only
+         * ever called in attempt mode, once per feedback render, so any markers from a
+         * previous render are cleared first rather than accumulated.
+         *
+         * @param {Object} [feedback] {nodes: {id: bool}, edges: {id: bool}, floatingLabels: {id: bool}} -
+         *      true = correct, false = incorrect.
          */
         function markFeedback(feedback) {
             nodes.forEach((record) => {
                 record.el.classList.remove('qtype_graph-node--feedback-correct', 'qtype_graph-node--feedback-incorrect');
+                record.floatingLabelWrap.classList.remove(
+                        'qtype_graph-floatinglabel--feedback-correct', 'qtype_graph-floatinglabel--feedback-incorrect');
             });
             edges.forEach((edge) => {
                 edge.group.classList.remove(
@@ -2214,11 +2515,18 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                             'qtype_graph-edge-group--feedback-correct' : 'qtype_graph-edge-group--feedback-incorrect');
                 }
             });
+            Object.entries(feedback.floatingLabels || {}).forEach(([id, correct]) => {
+                const record = nodes.get(id);
+                if (record) {
+                    record.floatingLabelWrap.classList.add(correct ?
+                            'qtype_graph-floatinglabel--feedback-correct' : 'qtype_graph-floatinglabel--feedback-incorrect');
+                }
+            });
         }
 
         const api = {
-            hydrate, serialize, setNodeText, setEdgeLabel, setLayout, markFeedback, addSyncTarget, setCanvasStyle,
-            setLevelLabelOverrides,
+            hydrate, serialize, setNodeText, setEdgeLabel, setFloatingLabel, setLayout, markFeedback, addSyncTarget,
+            setCanvasStyle, setLevelLabelOverrides,
         };
         editorRegistry.set(root.id, api);
         return api;
@@ -2237,9 +2545,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             return {
                 nodes: Array.isArray(data.nodes) ? data.nodes : [],
                 edges: Array.isArray(data.edges) ? data.edges : [],
+                mode: data.mode || 'graph',
             };
         } catch (e) {
-            return {nodes: [], edges: []};
+            return {nodes: [], edges: [], mode: 'graph'};
         }
     }
 
@@ -2348,6 +2657,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const resultEdges = indexById(resultData.edges);
         const defaultNodeIds = new Set(defaultData.nodes.map((n) => n.id));
         const defaultEdgeIds = new Set(defaultData.edges.map((e) => e.id));
+        // Leaf = no outgoing edge - see isLeafNode() in createGraphEditor() above; a
+        // floating label only ever applies to one, and only in tree mode.
+        const parentIds = new Set(defaultData.edges.map((e) => e.from));
 
         defaultData.nodes.forEach((node) => {
             // A blank node's own text is just its marker ({{T_INPUT}} or [[opt1,opt2,...]]),
@@ -2361,6 +2673,11 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             }
             if (hasBlankTokens(node.text)) {
                 checkAnswerField(`El input del nodo "${label}"`, stripDefaultContext(node.text, resultNode.text), issues);
+            }
+            const isLeaf = defaultData.mode === 'tree' && !parentIds.has(node.id);
+            if (isLeaf && hasBlankTokens(node.floatingLabel)) {
+                checkAnswerField(`La etiqueta flotante del nodo "${label}"`,
+                        stripDefaultContext(node.floatingLabel, resultNode.floatingLabel), issues);
             }
         });
 
@@ -2493,13 +2810,16 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * @param {string} [gridColorFieldId] id of the grid line color text field.
      * @param {string} [gridColorPickerId] id of its paired <input type="color"> swatch.
      * @param {string} [showLevelLabelsFieldId] id of the "show level labels" checkbox.
+     * @param {string} [textColorFieldId] id of the node/connection text color text field.
+     * @param {string} [textColorPickerId] id of its paired <input type="color"> swatch.
      */
     function initCanvasSettings(showGridFieldId, bgColorFieldId, bgColorPickerId, gridColorFieldId, gridColorPickerId,
-            showLevelLabelsFieldId) {
+            showLevelLabelsFieldId, textColorFieldId, textColorPickerId) {
         const showGridField = document.getElementById(showGridFieldId);
         const bgColorField = document.getElementById(bgColorFieldId);
         const gridColorField = document.getElementById(gridColorFieldId);
         const showLevelLabelsField = document.getElementById(showLevelLabelsFieldId);
+        const textColorField = document.getElementById(textColorFieldId);
         if (!showGridField || !bgColorField) {
             return;
         }
@@ -2509,7 +2829,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const bgColor = bgColorField.value;
             const gridColor = gridColorField ? gridColorField.value : '';
             const showLevelLabels = showLevelLabelsField ? showLevelLabelsField.checked : true;
-            editorRegistry.forEach((editor) => editor.setCanvasStyle(showGrid, bgColor, gridColor, showLevelLabels));
+            const textColor = textColorField ? textColorField.value : '';
+            editorRegistry.forEach((editor) =>
+                    editor.setCanvasStyle(showGrid, bgColor, gridColor, showLevelLabels, textColor));
         }
 
         /**
@@ -2543,6 +2865,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         }
         if (showLevelLabelsField) {
             showLevelLabelsField.addEventListener('change', broadcast);
+        }
+        if (textColorField) {
+            wireColorPair(textColorField, document.getElementById(textColorPickerId));
         }
     }
 
@@ -2899,6 +3224,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 attempt.editor.markFeedback({
                     nodes: Object.assign({}, feedback.nodes, feedback.newnodes),
                     edges: feedback.edges,
+                    floatingLabels: feedback.floatinglabels,
                 });
             }
         }

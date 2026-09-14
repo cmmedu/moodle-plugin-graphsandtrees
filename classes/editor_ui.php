@@ -124,7 +124,21 @@ class editor_ui {
       <button type="button" class="qtype_graph-menubtn" data-role="add-connected-btn">+ Nodo conectado</button>
       <button type="button" class="qtype_graph-menubtn" data-role="add-input-btn" hidden>Marcar como input</button>
       <button type="button" class="qtype_graph-menubtn" data-role="add-select-btn" hidden>Marcar como selector</button>
+      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-btn" hidden>+ Etiqueta flotante</button>
       <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-node-btn">Eliminar nodo</button>
+    </div>
+    <div class="qtype_graph-nodemenu" data-role="floatinglabel-menu" hidden>
+      <div class="qtype_graph-menusection" data-role="floatinglabel-text-section">
+        <span class="qtype_graph-menulabel">Etiqueta flotante</span>
+        <input type="text" data-role="floatinglabel-text-input" class="qtype_graph-textinput">
+      </div>
+      <div class="qtype_graph-menusection" data-role="floatinglabel-select-section" hidden>
+        <span class="qtype_graph-menulabel">Opciones [[opt1;opt2]] (puedes agregar texto antes/después de los corchetes)</span>
+        <input type="text" data-role="floatinglabel-select-input" class="qtype_graph-textinput">
+      </div>
+      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-input-btn" hidden>Marcar como input</button>
+      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-select-btn" hidden>Marcar como selector</button>
+      <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-floatinglabel-btn">Eliminar etiqueta</button>
     </div>
     <div class="qtype_graph-nodemenu" data-role="edge-menu" hidden>
       <div class="qtype_graph-menusection" data-role="edge-text-section">

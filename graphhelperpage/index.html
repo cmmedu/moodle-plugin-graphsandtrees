@@ -94,7 +94,12 @@
     <p class="section-help">
       Haz clic en un nodo o conexión para editar su texto/color, añadir nodos
       conectados o eliminarlo. El botón "JSON" del propio editor permite pegar/copiar
-      el grafo directamente.
+      el grafo directamente. "Marcar como input"/"Marcar como selector" convierten el
+      texto en un espacio en blanco ({{T_INPUT}} o [[opción1;opción2]]) para el alumno -
+      puedes escribir texto antes/después de los corchetes en el mismo campo. En "Modo
+      árbol", un nodo sin hijos ofrece además "+ Etiqueta flotante": una etiqueta aparte
+      (texto, input o selector) que se muestra debajo del nodo (vertical) o a su derecha
+      (horizontal) - haz clic en la etiqueta ya creada para editarla o eliminarla.
     </p>
     <div id="qtype_graph_editor"></div>
     <input type="hidden" id="id_graphjson">
@@ -169,7 +174,7 @@
       '        <input type="text" data-role="node-text-input" class="qtype_graph-textinput">' +
       '      </div>' +
       '      <div class="qtype_graph-menusection" data-role="node-select-section" hidden>' +
-      '        <span class="qtype_graph-menulabel">Opciones (separadas por punto y coma)</span>' +
+      '        <span class="qtype_graph-menulabel">Opciones [[opt1;opt2]] (puedes agregar texto antes/después de los corchetes)</span>' +
       '        <input type="text" data-role="node-select-input" class="qtype_graph-textinput">' +
       '      </div>' +
       '      <div class="qtype_graph-menusection" data-role="node-color-section">' +
@@ -200,7 +205,21 @@
       '      <button type="button" class="qtype_graph-menubtn" data-role="add-connected-btn">+ Nodo conectado</button>' +
       '      <button type="button" class="qtype_graph-menubtn" data-role="add-input-btn" hidden>Marcar como input</button>' +
       '      <button type="button" class="qtype_graph-menubtn" data-role="add-select-btn" hidden>Marcar como selector</button>' +
+      '      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-btn" hidden>+ Etiqueta flotante</button>' +
       '      <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-node-btn">Eliminar nodo</button>' +
+      '    </div>' +
+      '    <div class="qtype_graph-nodemenu" data-role="floatinglabel-menu" hidden>' +
+      '      <div class="qtype_graph-menusection" data-role="floatinglabel-text-section">' +
+      '        <span class="qtype_graph-menulabel">Etiqueta flotante</span>' +
+      '        <input type="text" data-role="floatinglabel-text-input" class="qtype_graph-textinput">' +
+      '      </div>' +
+      '      <div class="qtype_graph-menusection" data-role="floatinglabel-select-section" hidden>' +
+      '        <span class="qtype_graph-menulabel">Opciones [[opt1;opt2]] (puedes agregar texto antes/después de los corchetes)</span>' +
+      '        <input type="text" data-role="floatinglabel-select-input" class="qtype_graph-textinput">' +
+      '      </div>' +
+      '      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-input-btn" hidden>Marcar como input</button>' +
+      '      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-select-btn" hidden>Marcar como selector</button>' +
+      '      <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-floatinglabel-btn">Eliminar etiqueta</button>' +
       '    </div>' +
       '    <div class="qtype_graph-nodemenu" data-role="edge-menu" hidden>' +
       '      <div class="qtype_graph-menusection" data-role="edge-text-section">' +
@@ -208,7 +227,7 @@
       '        <input type="text" data-role="edge-label-input" class="qtype_graph-textinput" maxlength="40">' +
       '      </div>' +
       '      <div class="qtype_graph-menusection" data-role="edge-select-section" hidden>' +
-      '        <span class="qtype_graph-menulabel">Opciones (separadas por punto y coma)</span>' +
+      '        <span class="qtype_graph-menulabel">Opciones [[opt1;opt2]] (puedes agregar texto antes/después de los corchetes)</span>' +
       '        <input type="text" data-role="edge-select-input" class="qtype_graph-textinput">' +
       '      </div>' +
       '      <div class="qtype_graph-menusection" data-role="edge-value-section" hidden>' +
@@ -227,7 +246,13 @@
   var root = document.getElementById('qtype_graph_editor');
   root.outerHTML = renderGraphEditorSkeleton('qtype_graph_editor');
 
-  QtypeGraphEditor.initEditor('qtype_graph_editor', 'id_graphjson');
+  // The 5th argument only ever matters inside Moodle, where it's the id of the
+  // separate result-graph canvas "Marcar como input/selector" pushes its clears
+  // into (see addSyncTarget() in editor.js) - there's no second canvas on this
+  // page, but passing any truthy id still makes initEditor() show those buttons
+  // (enableAddInput), matching the default graph canvas on the teacher side;
+  // the sync itself just silently finds no matching editor and no-ops.
+  QtypeGraphEditor.initEditor('qtype_graph_editor', 'id_graphjson', null, null, 'qtype_graph_editor_no_sync_target');
 
   var exportField = document.getElementById('export-json');
   var statusField = document.getElementById('export-status');

@@ -49,6 +49,15 @@ namespace qtype_graph;
  *   reachable by hand-typing the legacy embedded-answer syntax) would have
  *   its later blanks silently ungraded.
  *
+ * A leaf node (no outgoing edge) in a tree-mode default graph can also carry a
+ * "floating label" - a separate blank, gradable exactly like the node's own
+ * text blank above but under its own 'floatingLabel:<id>:0' key (see
+ * evaluate()'s floating-label loop and CLAUDE.md, "Floating labels on leaf
+ * nodes"). Gated on the CURRENT default graph's mode/leaf status rather than
+ * mere presence of the field, so a label left over from a node that has since
+ * grown a child - or a graph switched out of tree mode - is saved but never
+ * silently graded.
+ *
  * A node id in the result graph with NO counterpart in the default graph at
  * all is a different kind of item: the student is expected to *create* it
  * (only possible when $allowaddnodes is true, since only then can a student
@@ -151,6 +160,7 @@ class grading {
             'nodes' => $report['blanknodes'],
             'edges' => $report['blankedges'],
             'newnodes' => $report['newnodes'],
+            'floatinglabels' => $report['floatinglabels'],
         ];
     }
 
@@ -273,6 +283,7 @@ class grading {
             'blanknodes' => [],
             'blankedges' => [],
             'newnodes' => [],
+            'floatinglabels' => [],
         ];
     }
 
@@ -304,6 +315,7 @@ class grading {
             'blanknodes' => [],
             'blankedges' => [],
             'newnodes' => [],
+            'floatinglabels' => [],
         ];
 
         $default = json_decode($graphjson, true);
@@ -360,6 +372,39 @@ class grading {
             self::record($report, $status, 'edge:' . ($id ?? '') . ':0', null);
             if ($id !== null && $hasblank) {
                 $report['blankedges'][$id] = ($status === self::ITEM_CORRECT);
+            }
+        }
+
+        // Floating labels (see CLAUDE.md, "Floating labels on leaf nodes"): an optional
+        // extra blank attached to a leaf node (no outgoing edge) in tree mode, graded
+        // exactly like the node's own text blank above but under its own
+        // 'floatingLabel:<id>:0' key. Gated on the CURRENT default graph's mode/leaf
+        // status (not just presence of $node['floatingLabel']) so data left over from a
+        // node that has since grown a child, or a graph switched out of tree mode, is
+        // never silently graded - it stays saved but simply isn't a gradable item.
+        if (($default['mode'] ?? 'graph') === 'tree') {
+            $parentids = [];
+            foreach (($default['edges'] ?? []) as $edge) {
+                if (isset($edge['from'])) {
+                    $parentids[$edge['from']] = true;
+                }
+            }
+            foreach ($default['nodes'] as $node) {
+                $id = $node['id'] ?? null;
+                if ($id === null || isset($parentids[$id]) || array_key_exists($id, $removednodes)) {
+                    continue;
+                }
+                $floatingtext = $node['floatingLabel'] ?? '';
+                if (!answer_matcher::has_blank($floatingtext) || !array_key_exists($id, $resultnodes)) {
+                    continue;
+                }
+                $report['total']++;
+                $studentvalue = $blanks["floatingLabel:{$id}:0"] ?? '';
+                $accepted = answer_matcher::strip_default_context($floatingtext,
+                        $resultnodes[$id]['floatingLabel'] ?? '');
+                $status = answer_matcher::matches($studentvalue, $accepted) ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
+                self::record($report, $status, 'floatingLabel:' . $id . ':0', null);
+                $report['floatinglabels'][$id] = ($status === self::ITEM_CORRECT);
             }
         }
 

@@ -63,5 +63,7 @@ $string['bgcolor'] = 'Color de fondo del lienzo';
 $string['bgcolor_help'] = 'El color de fondo (como valor hexadecimal CSS, p. ej. #e2e8f0) de todos los lienzos de esta pregunta: el grafo por defecto, el grafo de respuesta, cada grafo de respuesta alternativo, y lo que ve el estudiante durante su intento.';
 $string['gridcolor'] = 'Color de la cuadrícula';
 $string['gridcolor_help'] = 'El color (como valor hexadecimal CSS, p. ej. #1b1f27) de las líneas de la cuadrícula de fondo, en todos los lienzos de esta pregunta. Solo visible si "Mostrar cuadrícula de fondo" está activado.';
+$string['textcolor'] = 'Color de texto';
+$string['textcolor_help'] = 'El color (como valor hexadecimal CSS, p. ej. #1f2937) del texto de las etiquetas de los nodos y de las conexiones, en todos los lienzos de esta pregunta. Déjalo en blanco para usar el valor por defecto de cada uno (texto blanco en los nodos, texto oscuro en las conexiones) - ten en cuenta que un color elegido aquí se aplica a ambos, por lo que podría no combinar bien con el color de fondo de todos los nodos.';
 $string['addednodessummary'] = '{$a} nodo(s) añadido(s) por el estudiante';
 $string['privacy:metadata'] = 'El plugin de tipo de pregunta Grafo no almacena ningún dato personal por sí mismo. Las respuestas de los estudiantes (los nodos que añaden) se almacenan como parte de los datos estándar del intento de pregunta, que están cubiertos por el propio proveedor de privacidad del motor de preguntas.';

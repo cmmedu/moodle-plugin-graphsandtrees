@@ -135,6 +135,26 @@ class qtype_graph_edit_form extends question_edit_form {
         $mform->setDefault('gridcolor', '#e2e8f0');
         $mform->addHelpButton('gridcolorgroup', 'gridcolor', 'qtype_graph');
 
+        // Same text-field-plus-swatch pattern as bgcolor/gridcolor above, for node label
+        // and connection label text color. Left blank by default (unlike bgcolor/
+        // gridcolor, which always carry a real color) - see .qtype_graph-node/
+        // .qtype_graph-edge-label in styles.css for the default each one falls back to
+        // on its own when this is empty.
+        $textcolorgroup = [
+            $mform->createElement('text', 'textcolor', '', ['id' => 'id_textcolor', 'size' => 10]),
+            $mform->createElement('html', html_writer::empty_tag('input', [
+                'type' => 'color',
+                'id' => 'id_textcolor_picker',
+                'value' => $this->question->options->textcolor ?? '#1f2937',
+                'class' => 'qtype_graph-bgcolorpicker',
+                'aria-label' => get_string('textcolor', 'qtype_graph'),
+            ])),
+        ];
+        $mform->addGroup($textcolorgroup, 'textcolorgroup', get_string('textcolor', 'qtype_graph'), ' ', false);
+        $mform->setType('textcolor', PARAM_TEXT);
+        $mform->setDefault('textcolor', '');
+        $mform->addHelpButton('textcolorgroup', 'textcolor', 'qtype_graph');
+
         // Generated upfront (before either canvas is rendered) so the default graph's
         // initEditor call below can reference the result graph's container id as its
         // "Marcar como input" sync target, even though that second canvas is only
@@ -150,6 +170,7 @@ class qtype_graph_edit_form extends question_edit_form {
             'showgrid' => (!empty($this->question->options) ? (int) $this->question->options->showgrid : 1) ? '1' : '0',
             'bgcolor' => !empty($this->question->options) ? $this->question->options->bgcolor : '#e2e8f0',
             'gridcolor' => !empty($this->question->options) ? $this->question->options->gridcolor : '#cbd5e1',
+            'textcolor' => !empty($this->question->options) ? ($this->question->options->textcolor ?? '') : '',
             'showlevellabels' =>
                     (!empty($this->question->options) ? (int) $this->question->options->showlevellabels : 1) ? '1' : '0',
             'levellabelsjson' => !empty($this->question->options) ? ($this->question->options->levellabelsjson ?? '') : '',
@@ -165,7 +186,7 @@ class qtype_graph_edit_form extends question_edit_form {
 
         $PAGE->requires->js_call_amd('qtype_graph/editor', 'initCanvasSettings',
                 ['id_showgrid', 'id_bgcolor', 'id_bgcolor_picker', 'id_gridcolor', 'id_gridcolor_picker',
-                        'id_showlevellabels']);
+                        'id_showlevellabels', 'id_textcolor', 'id_textcolor_picker']);
 
         // Per-depth overrides for "Show level labels" above: up to MAX_LEVEL_LABELS rows,
         // each a show/hide checkbox plus a custom title and subtitle for that one tree
@@ -305,6 +326,7 @@ class qtype_graph_edit_form extends question_edit_form {
             $question->showgrid = $question->options->showgrid ?? 1;
             $question->bgcolor = $question->options->bgcolor ?? '#e2e8f0';
             $question->gridcolor = $question->options->gridcolor ?? '#1b1f27';
+            $question->textcolor = $question->options->textcolor ?? '';
             $question->shownodetrail = $question->options->shownodetrail ?? 1;
             $question->showlevellabels = $question->options->showlevellabels ?? 1;
             $question->levellabelsjson = $question->options->levellabelsjson ?? '';

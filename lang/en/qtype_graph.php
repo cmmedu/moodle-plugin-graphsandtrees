@@ -63,5 +63,7 @@ $string['bgcolor'] = 'Canvas background color';
 $string['bgcolor_help'] = 'The background color (as a CSS hex value, e.g. #e2e8f0) of every canvas for this question: the default graph, the answer graph, every alternate answer graph, and what the student sees during their attempt.';
 $string['gridcolor'] = 'Grid color';
 $string['gridcolor_help'] = 'The color (as a CSS hex value, e.g. #1b1f27) of the background grid lines, on every canvas for this question. Only visible when "Show background grid" is enabled.';
+$string['textcolor'] = 'Text color';
+$string['textcolor_help'] = 'The color (as a CSS hex value, e.g. #1f2937) of node labels and connection labels, on every canvas for this question. Leave blank to use the default for each (white node text, dark connection text) - note that a color chosen here applies to both, so it might not suit every node\'s own background color equally well.';
 $string['addednodessummary'] = '{$a} student-added node(s)';
 $string['privacy:metadata'] = 'The Graph question type plugin does not store any personal data itself. Student responses (the nodes they add) are stored as part of the standard question attempt data, which is covered by the question engine\'s own privacy provider.';

@@ -262,5 +262,23 @@ function xmldb_qtype_graph_upgrade(int $oldversion): bool {
         upgrade_plugin_savepoint(true, 2026091003, 'qtype', 'graph');
     }
 
+    if ($oldversion < 2026091005) {
+        $table = new xmldb_table('qtype_graph_options');
+
+        // Nullable with no default (not NOTNULL + '', which XMLDB rejects for a CHAR
+        // column) - null/empty means "no override": node text and connection labels
+        // each fall back to their own default color (see .qtype_graph-node/
+        // .qtype_graph-edge-label in styles.css) until a teacher explicitly picks
+        // one, so every existing question keeps rendering correctly with no
+        // backfill needed.
+        $field = new xmldb_field('textcolor', XMLDB_TYPE_CHAR, '20', null,
+                null, null, null, 'gridcolor');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026091005, 'qtype', 'graph');
+    }
+
     return true;
 }

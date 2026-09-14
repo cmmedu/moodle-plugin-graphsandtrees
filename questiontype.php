@@ -74,6 +74,7 @@ class qtype_graph extends question_type {
         $options->showgrid = !empty($formdata->showgrid) ? 1 : 0;
         $options->bgcolor = $formdata->bgcolor ?? '#e2e8f0';
         $options->gridcolor = $formdata->gridcolor ?? '#1b1f27';
+        $options->textcolor = $formdata->textcolor ?? '';
         $options->shownodetrail = !empty($formdata->shownodetrail) ? 1 : 0;
         $options->showlevellabels = !empty($formdata->showlevellabels) ? 1 : 0;
         $options->levellabelsjson = $formdata->levellabelsjson ?? '';
@@ -138,6 +139,7 @@ class qtype_graph extends question_type {
         $question->showgrid = (bool) ($questiondata->options->showgrid ?? 1);
         $question->bgcolor = $questiondata->options->bgcolor ?? '#e2e8f0';
         $question->gridcolor = $questiondata->options->gridcolor ?? '#1b1f27';
+        $question->textcolor = $questiondata->options->textcolor ?? '';
         $question->shownodetrail = (bool) ($questiondata->options->shownodetrail ?? 1);
         $question->showlevellabels = (bool) ($questiondata->options->showlevellabels ?? 1);
         $question->levellabelsjson = $questiondata->options->levellabelsjson ?? '';
@@ -204,6 +206,7 @@ class qtype_graph extends question_type {
         $expout .= "    <showgrid>{$options->showgrid}</showgrid>\n";
         $expout .= '    <bgcolor>' . $format->xml_escape($options->bgcolor) . "</bgcolor>\n";
         $expout .= '    <gridcolor>' . $format->xml_escape($options->gridcolor) . "</gridcolor>\n";
+        $expout .= '    <textcolor>' . $format->xml_escape($options->textcolor ?? '') . "</textcolor>\n";
         $expout .= "    <shownodetrail>{$options->shownodetrail}</shownodetrail>\n";
         $expout .= "    <showlevellabels>{$options->showlevellabels}</showlevellabels>\n";
         $expout .= '    <levellabelsjson>' . $format->xml_escape($options->levellabelsjson ?? '') .
@@ -253,6 +256,7 @@ class qtype_graph extends question_type {
         $qo->showgrid = $format->getpath($data, ['#', 'showgrid', 0, '#'], 1);
         $qo->bgcolor = $format->getpath($data, ['#', 'bgcolor', 0, '#'], '#e2e8f0', true);
         $qo->gridcolor = $format->getpath($data, ['#', 'gridcolor', 0, '#'], '#1b1f27', true);
+        $qo->textcolor = $format->getpath($data, ['#', 'textcolor', 0, '#'], '', true);
         $qo->shownodetrail = $format->getpath($data, ['#', 'shownodetrail', 0, '#'], 1);
         $qo->showlevellabels = $format->getpath($data, ['#', 'showlevellabels', 0, '#'], 1);
         $qo->levellabelsjson = $format->getpath($data, ['#', 'levellabelsjson', 0, '#'], '', true);
