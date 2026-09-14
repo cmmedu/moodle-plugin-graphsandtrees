@@ -99,48 +99,6 @@ class qtype_graph_edit_form extends question_edit_form {
         $mform->setDefault('showlevellabels', 1);
         $mform->addHelpButton('showlevellabels', 'showlevellabels', 'qtype_graph');
 
-        // Per-depth overrides for "Show level labels" above: up to MAX_LEVEL_LABELS rows,
-        // each a show/hide checkbox plus a custom title and subtitle for that one tree
-        // depth. Purely UI - the row fields below are never read directly from $formdata
-        // (see save_question_options() in questiontype.php); amd/src/editor.js's
-        // initLevelLabelOverrides() keeps the single levellabelsjson hidden field below
-        // in sync with them on every change, the same way the graph canvas itself keeps
-        // the graphjson hidden field in sync with on-canvas edits. A depth left blank
-        // (title) falls back to "Nivel <depth>"; a blank subtitle shows no subtitle.
-        $mform->addElement('header', 'levellabeloverridesheader', get_string('levellabeloverridesheader', 'qtype_graph'));
-        $mform->setExpanded('levellabeloverridesheader', false);
-        $mform->addElement('static', 'levellabeloverrideshelp', '', get_string('levellabeloverrideshelp', 'qtype_graph'));
-
-        for ($depth = 0; $depth < self::MAX_LEVEL_LABELS; $depth++) {
-            $rowgroup = [
-                $mform->createElement('advcheckbox', "levellabelshow_$depth", '', null,
-                        ['id' => "id_levellabelshow_$depth"]),
-                // Placeholder is the literal fallback text amd/src/editor.js's
-                // renderLevelLabels() uses when this field is left blank - hardcoded
-                // Spanish, not get_string(), like every other canvas-facing default
-                // in this plugin (e.g. "Nuevo nodo" in amd/src/editor.js) - it never
-                // changes with the Moodle UI language.
-                $mform->createElement('text', "levellabeltitle_$depth", '', [
-                    'id' => "id_levellabeltitle_$depth",
-                    'placeholder' => "Nivel $depth",
-                    'size' => 18,
-                ]),
-                $mform->createElement('text', "levellabelsubtitle_$depth", '', [
-                    'id' => "id_levellabelsubtitle_$depth",
-                    'placeholder' => get_string('levellabeloverride_subtitleplaceholder', 'qtype_graph'),
-                    'size' => 22,
-                ]),
-            ];
-            $mform->addGroup($rowgroup, "levellabeloverridegroup_$depth",
-                    get_string('levellabeloverride_row', 'qtype_graph', $depth), ' ', false);
-            $mform->setType("levellabeltitle_$depth", PARAM_TEXT);
-            $mform->setType("levellabelsubtitle_$depth", PARAM_TEXT);
-            $mform->setDefault("levellabelshow_$depth", 1);
-        }
-
-        $mform->addElement('hidden', 'levellabelsjson', '', ['id' => 'id_levellabelsjson']);
-        $mform->setType('levellabelsjson', PARAM_RAW);
-
         // A plain text field (so a hex value can be typed/pasted directly), paired on the
         // same row with a native color-swatch picker as a convenience that overwrites it -
         // the picker isn't an mform element itself (no name attribute, so it never submits
@@ -208,6 +166,50 @@ class qtype_graph_edit_form extends question_edit_form {
         $PAGE->requires->js_call_amd('qtype_graph/editor', 'initCanvasSettings',
                 ['id_showgrid', 'id_bgcolor', 'id_bgcolor_picker', 'id_gridcolor', 'id_gridcolor_picker',
                         'id_showlevellabels']);
+
+        // Per-depth overrides for "Show level labels" above: up to MAX_LEVEL_LABELS rows,
+        // each a show/hide checkbox plus a custom title and subtitle for that one tree
+        // depth. Purely UI - the row fields below are never read directly from $formdata
+        // (see save_question_options() in questiontype.php); amd/src/editor.js's
+        // initLevelLabelOverrides() keeps the single levellabelsjson hidden field below
+        // in sync with them on every change, the same way the graph canvas itself keeps
+        // the graphjson hidden field in sync with on-canvas edits. A depth left blank
+        // (title) falls back to "Nivel <depth>"; a blank subtitle shows no subtitle.
+        // Its own header (collapsed by default, unlike the canvas above it) since these
+        // rows are an advanced/optional refinement, not something every teacher needs.
+        $mform->addElement('header', 'levellabeloverridesheader', get_string('levellabeloverridesheader', 'qtype_graph'));
+        $mform->setExpanded('levellabeloverridesheader', false);
+        $mform->addElement('static', 'levellabeloverrideshelp', '', get_string('levellabeloverrideshelp', 'qtype_graph'));
+
+        for ($depth = 0; $depth < self::MAX_LEVEL_LABELS; $depth++) {
+            $rowgroup = [
+                $mform->createElement('advcheckbox', "levellabelshow_$depth", '', null,
+                        ['id' => "id_levellabelshow_$depth"]),
+                // Placeholder is the literal fallback text amd/src/editor.js's
+                // renderLevelLabels() uses when this field is left blank - hardcoded
+                // Spanish, not get_string(), like every other canvas-facing default
+                // in this plugin (e.g. "Nuevo nodo" in amd/src/editor.js) - it never
+                // changes with the Moodle UI language.
+                $mform->createElement('text', "levellabeltitle_$depth", '', [
+                    'id' => "id_levellabeltitle_$depth",
+                    'placeholder' => "Nivel $depth",
+                    'size' => 18,
+                ]),
+                $mform->createElement('text', "levellabelsubtitle_$depth", '', [
+                    'id' => "id_levellabelsubtitle_$depth",
+                    'placeholder' => get_string('levellabeloverride_subtitleplaceholder', 'qtype_graph'),
+                    'size' => 22,
+                ]),
+            ];
+            $mform->addGroup($rowgroup, "levellabeloverridegroup_$depth",
+                    get_string('levellabeloverride_row', 'qtype_graph', $depth), ' ', false);
+            $mform->setType("levellabeltitle_$depth", PARAM_TEXT);
+            $mform->setType("levellabelsubtitle_$depth", PARAM_TEXT);
+            $mform->setDefault("levellabelshow_$depth", 1);
+        }
+
+        $mform->addElement('hidden', 'levellabelsjson', '', ['id' => 'id_levellabelsjson']);
+        $mform->setType('levellabelsjson', PARAM_RAW);
 
         $PAGE->requires->js_call_amd('qtype_graph/editor', 'initLevelLabelOverrides', ['id_levellabelsjson']);
 
