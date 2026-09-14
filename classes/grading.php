@@ -615,7 +615,7 @@ class grading {
             return self::ITEM_CORRECT;
         }
         $studentvalue = $blanks["node:{$id}:0"] ?? '';
-        $accepted = $resultnodes[$id]['text'] ?? '';
+        $accepted = answer_matcher::strip_default_context($text, $resultnodes[$id]['text'] ?? '');
         return answer_matcher::matches($studentvalue, $accepted) ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
     }
 
@@ -648,7 +648,7 @@ class grading {
             return self::ITEM_CORRECT;
         }
         $studentvalue = $blanks["edge:{$id}:0"] ?? '';
-        $accepted = $resultedges[$id]['label'] ?? '';
+        $accepted = answer_matcher::strip_default_context($text, $resultedges[$id]['label'] ?? '');
         return answer_matcher::matches($studentvalue, $accepted) ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
     }
 }

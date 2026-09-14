@@ -120,10 +120,6 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     // legacy {{T_INPUT;"a";"b"}} embedded-answer form blank_token.php strips
     // server-side. Must match classes/blank_token.php's SANITIZED_MARKER.
     const BLANK_TOKEN_RE = /\{\{T_INPUT\}\}/g;
-    // Extracts each quoted answer out of a result-graph {{"a";"b"}} answer
-    // list - unrelated to BLANK_TOKEN_RE above; see parseAcceptedAnswers().
-    const BLANK_ANSWER_RE = /"([^"]*)"/g;
-
     const BLANK_MARKER = '{{T_INPUT}}';
 
     // Matches a [[option1;option2;...]] dropdown blank marker - "Marcar como
@@ -142,7 +138,12 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     // grammar") - these describe what a *result* graph node/edge's text means
     // for a blank, as opposed to BLANK_TOKEN_RE/BLANK_MARKER above, which
     // describe the *default* graph's blank marker.
-    const ANSWER_LIST_RE = /^\{\{\s*(?:"[^"]*"\s*;?\s*)+\}\}$/;
+    // Matches a whole result-graph field that is a {{...}} multi-answer list - either the
+    // original quoted-items form {{"a";"b"}} or the plainer unquoted form {{a;b}} (same
+    // semicolon convention as a [[a;b]] select-options list). Must match
+    // classes/answer_matcher.php's ANSWER_LIST_PATTERN; see splitAnswerList() below for
+    // the actual per-item extraction.
+    const ANSWER_LIST_RE = /^\{\{([\s\S]*)\}\}$/;
     const ANY_ANSWER_MARKER = '{{T_ANY}}';
     const ANY_OR_EMPTY_ANSWER_MARKER = '{{T_ANY_N_EMPTY}}';
 
@@ -210,6 +211,47 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      */
     function buildSelectMarker(optionsCsv) {
         return `[[${splitOptions(optionsCsv).join(';')}]]`;
+    }
+
+    // Matches the FULL span of the (only graded, see classes/grading.php's docblock)
+    // index-0 blank marker in a default-graph label - used positionally by
+    // stripDefaultContext() below. Must match classes/answer_matcher.php's
+    // BLANK_SPAN_PATTERN.
+    const BLANK_SPAN_RE = /\{\{T_INPUT\b[^}]*\}\}|\[\[[^\]]*\]\]/;
+
+    /**
+     * JS mirror of classes/answer_matcher.php's strip_default_context() - see its
+     * docblock. Strips the decorative prefix/suffix text around a default-graph
+     * blank marker (e.g. "antes [[opt1;opt2]] despues") off the matching
+     * result-graph field, wherever the result field actually carries that same
+     * prefix/suffix verbatim, before it's parsed/checked as an accepted-answer
+     * expression - the student's typed/picked value for the blank itself never
+     * includes that surrounding text either (renderLabelSegments() only ever
+     * feeds the input/select's own value into the response's `blanks` map).
+     *
+     * @param {string} defaultText the default-graph node/edge's raw text.
+     * @param {string} resultText the matching result-graph node/edge's raw text.
+     * @return {string} resultText with the default label's prefix/suffix stripped
+     *      off, wherever present.
+     */
+    function stripDefaultContext(defaultText, resultText) {
+        if (typeof defaultText !== 'string' || typeof resultText !== 'string') {
+            return typeof resultText === 'string' ? resultText : '';
+        }
+        const match = BLANK_SPAN_RE.exec(defaultText);
+        if (!match) {
+            return resultText;
+        }
+        const prefix = defaultText.slice(0, match.index);
+        const suffix = defaultText.slice(match.index + match[0].length);
+        let stripped = resultText;
+        if (prefix !== '' && stripped.startsWith(prefix)) {
+            stripped = stripped.slice(prefix.length);
+        }
+        if (suffix !== '' && stripped.endsWith(suffix)) {
+            stripped = stripped.slice(0, stripped.length - suffix.length);
+        }
+        return stripped;
     }
 
     /**
@@ -353,10 +395,31 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     }
 
     /**
+     * Split a {{...}}-wrapped answer list's inner content into individual accepted
+     * answers, on ';' - each item may optionally be wrapped in double quotes (stripped
+     * here), for backward compatibility with the original {{"a";"b"}} authoring
+     * convention; an item can just as well be left bare, e.g. {{a;b}}. A blank item
+     * (stray/trailing semicolon, or "") is dropped rather than treated as "empty answer
+     * accepted" - {{T_ANY_N_EMPTY}} already exists for that. Must match
+     * classes/answer_matcher.php's split_answer_list().
+     *
+     * @param {string} inner the content between the outer {{ and }}.
+     * @return {Array}
+     */
+    function splitAnswerList(inner) {
+        return inner.split(';')
+                .map((item) => item.trim())
+                .map((item) => (item.length >= 2 && item[0] === '"' && item[item.length - 1] === '"') ?
+                        item.slice(1, -1) : item)
+                .filter((item) => item !== '');
+    }
+
+    /**
      * Parse a result-graph node/edge's text into the answer-field grammar
      * documented in CLAUDE.md: empty means "not authored yet", {{T_ANY}} /
-     * {{T_ANY_N_EMPTY}} are the wildcard markers, {{"a";"b"}} is a list of
-     * accepted answers, and any other text is a single accepted answer.
+     * {{T_ANY_N_EMPTY}} are the wildcard markers, {{a;b}} (items optionally
+     * quoted) is a list of accepted answers, and any other text is a single
+     * accepted answer.
      *
      * Used by checkAnswerField() (authoring-time validation) below.
      *
@@ -375,14 +438,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         if (trimmed === ANY_OR_EMPTY_ANSWER_MARKER) {
             return {type: 'any_or_empty', answers: []};
         }
-        if (ANSWER_LIST_RE.test(trimmed)) {
-            const answers = [];
-            let match;
-            BLANK_ANSWER_RE.lastIndex = 0;
-            while ((match = BLANK_ANSWER_RE.exec(trimmed)) !== null) {
-                answers.push(match[1]);
-            }
-            return {type: 'exact', answers};
+        const listMatch = trimmed.match(ANSWER_LIST_RE);
+        if (listMatch) {
+            return {type: 'exact', answers: splitAnswerList(listMatch[1])};
         }
         return {type: 'exact', answers: [trimmed]};
     }
@@ -1296,7 +1354,12 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             edgeValueSection.hidden = !attemptSelect;
             edgeLabelInput.value = edge.label;
             edgeLabelInput.readOnly = attemptMode && !edge.locked && newEdgeContentType === 'text';
-            edgeSelectInput.value = selectOptions ? selectOptions.join('; ') : '';
+            // Shown WITH its [[...]] brackets (unlike a plain options list) so text typed
+            // immediately before/after them in this same field becomes prefix/suffix text
+            // around the marker (e.g. "text before [[opt1;opt2]] after") - see the plain
+            // assignment in this field's 'input' handler below, which no longer re-wraps
+            // the whole value through buildSelectMarker().
+            edgeSelectInput.value = selectOptions ? edge.label : '';
             if (attemptSelect) {
                 const options = splitOptions(newEdgeContentValue);
                 edgeValueSelect.innerHTML = '';
@@ -1359,7 +1422,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             if (!activeEdge) {
                 return;
             }
-            activeEdge.label = buildSelectMarker(edgeSelectInput.value);
+            // Raw assignment (like edgeLabelInput above) rather than buildSelectMarker() -
+            // this field now displays the [[...]] marker literally, so re-wrapping it would
+            // double-bracket it and would discard any prefix/suffix text typed around it.
+            activeEdge.label = edgeSelectInput.value;
             activeEdge.textEl.textContent = activeEdge.label;
             notifyChange();
         });
@@ -1411,7 +1477,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const defaultOptions = 'Opción 1, Opción 2';
             activeEdge.label = buildSelectMarker(defaultOptions);
             activeEdge.textEl.textContent = activeEdge.label;
-            edgeSelectInput.value = defaultOptions;
+            edgeSelectInput.value = activeEdge.label;
             edgeTextSection.hidden = true;
             edgeSelectSection.hidden = false;
             notifyChange();
@@ -1446,7 +1512,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const record = nodes.get(activeNodeId);
             const defaultOptions = 'Opción 1, Opción 2';
             setRecordText(record, buildSelectMarker(defaultOptions));
-            nodeSelectInput.value = defaultOptions;
+            nodeSelectInput.value = getRecordText(record);
             nodeTextSection.hidden = true;
             nodeSelectSection.hidden = false;
             notifyChange();
@@ -1458,8 +1524,11 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             if (!activeNodeId) {
                 return;
             }
+            // Raw assignment (like nodeTextInput below) rather than buildSelectMarker() -
+            // this field now displays the [[...]] marker literally, so re-wrapping it would
+            // double-bracket it and would discard any prefix/suffix text typed around it.
             const record = nodes.get(activeNodeId);
-            setRecordText(record, buildSelectMarker(nodeSelectInput.value));
+            setRecordText(record, nodeSelectInput.value);
             notifyChange();
         });
 
@@ -1496,7 +1565,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             if (!locked) {
                 if (!attemptRestricted) {
                     nodeTextInput.value = getRecordText(record);
-                    nodeSelectInput.value = selectOptions ? selectOptions.join('; ') : '';
+                    // Shown WITH its [[...]] brackets (see edgeSelectInput above for why).
+                    nodeSelectInput.value = selectOptions ? getRecordText(record) : '';
                 }
 
                 const currentColor = getComputedStyle(record.el).getPropertyValue('--node-color').trim();
@@ -2231,9 +2301,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                     '[[...]] sin reemplazar por la respuesta aceptada en el grafo de respuesta.'});
             return;
         }
-        if (spec.type === 'exact' && spec.answers.some((a) => a.trim() === '')) {
+        if (spec.type === 'exact' && ANSWER_LIST_RE.test(trimmed) && spec.answers.length === 0) {
             issues.push({severity: 'warning',
-                    message: `${itemDescription} tiene una respuesta vacía dentro de su lista de respuestas aceptadas.`});
+                    message: `${itemDescription} tiene una lista de respuestas aceptadas {{...}} sin ningún ` +
+                            'valor dentro.'});
         }
     }
 
@@ -2289,7 +2360,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 return;
             }
             if (hasBlankTokens(node.text)) {
-                checkAnswerField(`El input del nodo "${label}"`, resultNode.text, issues);
+                checkAnswerField(`El input del nodo "${label}"`, stripDefaultContext(node.text, resultNode.text), issues);
             }
         });
 
@@ -2302,7 +2373,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 return;
             }
             if (hasBlankTokens(edge.label)) {
-                checkAnswerField(`El input de la conexión "${label}"`, resultEdge.label, issues);
+                checkAnswerField(`El input de la conexión "${label}"`,
+                        stripDefaultContext(edge.label, resultEdge.label), issues);
             }
         });
 

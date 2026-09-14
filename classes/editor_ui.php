@@ -93,7 +93,7 @@ class editor_ui {
         <input type="text" data-role="node-text-input" class="qtype_graph-textinput">
       </div>
       <div class="qtype_graph-menusection" data-role="node-select-section" hidden>
-        <span class="qtype_graph-menulabel">Opciones (separadas por punto y coma)</span>
+        <span class="qtype_graph-menulabel">Opciones [[opt1;opt2]] (puedes agregar texto antes/después de los corchetes)</span>
         <input type="text" data-role="node-select-input" class="qtype_graph-textinput">
       </div>
       <div class="qtype_graph-menusection" data-role="node-color-section">
@@ -132,7 +132,7 @@ class editor_ui {
         <input type="text" data-role="edge-label-input" class="qtype_graph-textinput" maxlength="40">
       </div>
       <div class="qtype_graph-menusection" data-role="edge-select-section" hidden>
-        <span class="qtype_graph-menulabel">Opciones (separadas por punto y coma)</span>
+        <span class="qtype_graph-menulabel">Opciones [[opt1;opt2]] (puedes agregar texto antes/después de los corchetes)</span>
         <input type="text" data-role="edge-select-input" class="qtype_graph-textinput">
       </div>
       <div class="qtype_graph-menusection" data-role="edge-value-section" hidden>

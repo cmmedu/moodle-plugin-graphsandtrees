@@ -20,7 +20,8 @@ namespace qtype_graph;
  * PHP-side counterpart of the parseAcceptedAnswers()/normalize() helpers in
  * amd/src/editor.js. Implements the result-graph answer-field grammar
  * documented in this plugin's CLAUDE.md ("Answer-field grammar"): empty,
- * {{T_ANY}}, {{T_ANY_N_EMPTY}}, {{"a";"b"}}, or plain text.
+ * {{T_ANY}}, {{T_ANY_N_EMPTY}}, {{a;b}} (items optionally quoted, {{"a";"b"}}),
+ * or plain text.
  *
  * @package    qtype_graph
  * @copyright  2026 Rutas Digitales
@@ -39,11 +40,21 @@ class answer_matcher {
      *  the student answers (a <select> instead of a text box), never how the answer is graded. */
     const SELECT_TOKEN_PATTERN = '/\[\[[^\]]*\]\]/';
 
-    /** @var string matches a whole result-graph field that is a {{"a";"b";...}} answer list. */
-    const ANSWER_LIST_PATTERN = '/^\{\{\s*(?:"[^"]*"\s*;?\s*)+\}\}$/';
+    /** @var string matches the FULL span of the (only graded, see grading.php's docblock)
+     *  index-0 blank marker in a default-graph label - either form of blank, free-text or
+     *  select. Unlike BLANK_TOKEN_PATTERN/SELECT_TOKEN_PATTERN above (existence checks),
+     *  this one is used positionally by strip_default_context() below to find where the
+     *  blank sits amid any decorative prefix/suffix text the label may also carry (e.g.
+     *  "antes [[Opción 1;Opción 2]] despues"). */
+    const BLANK_SPAN_PATTERN = '/\{\{T_INPUT\b[^}]*\}\}|\[\[[^\]]*\]\]/';
 
-    /** @var string extracts each quoted answer out of an ANSWER_LIST_PATTERN match. */
-    const ANSWER_QUOTED_PATTERN = '/"([^"]*)"/';
+    /** @var string matches a whole result-graph field that is a {{...}} multi-answer list -
+     *  either the original quoted-items form {{"a";"b"}} or the plainer unquoted form
+     *  {{a;b}} (same semicolon convention as a [[a;b]] select-options list, so a node with
+     *  several acceptable answers - free-text or select alike - can be authored the same
+     *  way as its options were). Items may freely mix quoted and unquoted; see
+     *  split_answer_list() below for the actual per-item extraction. */
+    const ANSWER_LIST_PATTERN = '/^\{\{(.*)\}\}$/s';
 
     /** @var string result-graph field meaning "any non-empty student input is accepted". */
     const ANY_MARKER = '{{T_ANY}}';
@@ -67,6 +78,48 @@ class answer_matcher {
     }
 
     /**
+     * Strip the decorative prefix/suffix text surrounding a default-graph blank marker
+     * off the matching result-graph field, before it is parsed as an accepted-answer
+     * expression - e.g. a default-graph label "antes [[Opción 1;Opción 2]] despues"
+     * paired with a result-graph field "antes Opción 1 despues" should be parsed as
+     * just "Opción 1", not the whole string, since the student's typed/picked value for
+     * the blank itself never includes that surrounding text either (see
+     * renderLabelSegments() in amd/src/editor.js, which renders the prefix/suffix as
+     * plain text around the fillable input/select, and only the input/select's own
+     * value ever reaches the response's `blanks` map).
+     *
+     * Only strips a side that is actually present verbatim at that end of the result
+     * field - a teacher who typed just the bare answer (the original, pre-embedding
+     * convention, with no prefix/suffix at all) is left untouched, since there is
+     * nothing to strip. Only the index-0 blank is considered, matching grading.php's
+     * existing "only blank index 0 is graded" limitation.
+     *
+     * @param mixed $defaulttext the default-graph node/edge's raw text.
+     * @param mixed $resulttext the matching result-graph node/edge's raw text.
+     * @return string $resulttext with the default label's prefix/suffix stripped off,
+     *      wherever present - unchanged if the default label has no blank, or the
+     *      result text doesn't carry that prefix/suffix.
+     */
+    public static function strip_default_context($defaulttext, $resulttext): string {
+        if (!is_string($defaulttext) || !is_string($resulttext)) {
+            return is_string($resulttext) ? $resulttext : '';
+        }
+        if (preg_match(self::BLANK_SPAN_PATTERN, $defaulttext, $match, PREG_OFFSET_CAPTURE) !== 1) {
+            return $resulttext;
+        }
+        $prefix = substr($defaulttext, 0, $match[0][1]);
+        $suffix = substr($defaulttext, $match[0][1] + strlen($match[0][0]));
+        $stripped = $resulttext;
+        if ($prefix !== '' && str_starts_with($stripped, $prefix)) {
+            $stripped = substr($stripped, strlen($prefix));
+        }
+        if ($suffix !== '' && str_ends_with($stripped, $suffix)) {
+            $stripped = substr($stripped, 0, strlen($stripped) - strlen($suffix));
+        }
+        return $stripped;
+    }
+
+    /**
      * Parse a result-graph node/edge's text into the answer-field grammar.
      *
      * @param mixed $text raw result-graph field text.
@@ -83,11 +136,36 @@ class answer_matcher {
         if ($trimmed === self::ANY_OR_EMPTY_MARKER) {
             return ['type' => 'any_or_empty', 'answers' => []];
         }
-        if (preg_match(self::ANSWER_LIST_PATTERN, $trimmed)) {
-            preg_match_all(self::ANSWER_QUOTED_PATTERN, $trimmed, $matches);
-            return ['type' => 'exact', 'answers' => $matches[1]];
+        if (preg_match(self::ANSWER_LIST_PATTERN, $trimmed, $match)) {
+            return ['type' => 'exact', 'answers' => self::split_answer_list($match[1])];
         }
         return ['type' => 'exact', 'answers' => [$trimmed]];
+    }
+
+    /**
+     * Split a {{...}}-wrapped answer list's inner content into individual accepted
+     * answers, on ';' - each item may optionally be wrapped in double quotes (stripped
+     * here), for backward compatibility with the original {{"a";"b"}} authoring
+     * convention; an item can just as well be left bare, e.g. {{a;b}}. A blank item
+     * (stray/trailing semicolon, or "") is dropped rather than treated as "empty answer
+     * accepted" - {{T_ANY_N_EMPTY}} already exists for that, so this never needs to
+     * guess whether a blank was intentional.
+     *
+     * @param string $inner the content between the outer {{ and }}.
+     * @return string[]
+     */
+    private static function split_answer_list(string $inner): array {
+        $items = [];
+        foreach (explode(';', $inner) as $item) {
+            $item = trim($item);
+            if (strlen($item) >= 2 && $item[0] === '"' && substr($item, -1) === '"') {
+                $item = substr($item, 1, -1);
+            }
+            if ($item !== '') {
+                $items[] = $item;
+            }
+        }
+        return $items;
     }
 
     /**
