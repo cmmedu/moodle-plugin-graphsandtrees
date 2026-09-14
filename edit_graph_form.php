@@ -109,14 +109,14 @@ class qtype_graph_edit_form extends question_edit_form {
             $mform->createElement('html', html_writer::empty_tag('input', [
                 'type' => 'color',
                 'id' => 'id_bgcolor_picker',
-                'value' => $this->question->options->bgcolor ?? '#e2e8f0',
+                'value' => $this->question->options->bgcolor ?? '#f8f9fa',
                 'class' => 'qtype_graph-bgcolorpicker',
                 'aria-label' => get_string('bgcolor', 'qtype_graph'),
             ])),
         ];
         $mform->addGroup($bgcolorgroup, 'bgcolorgroup', get_string('bgcolor', 'qtype_graph'), ' ', false);
         $mform->setType('bgcolor', PARAM_TEXT);
-        $mform->setDefault('bgcolor', '#e2e8f0');
+        $mform->setDefault('bgcolor', '#f8f9fa');
         $mform->addHelpButton('bgcolorgroup', 'bgcolor', 'qtype_graph');
 
         // Same text-field-plus-swatch pattern as bgcolor above, for the grid line color.
@@ -125,14 +125,14 @@ class qtype_graph_edit_form extends question_edit_form {
             $mform->createElement('html', html_writer::empty_tag('input', [
                 'type' => 'color',
                 'id' => 'id_gridcolor_picker',
-                'value' => $this->question->options->gridcolor ?? '#cbd5e1',
+                'value' => $this->question->options->gridcolor ?? '#e2e8f0',
                 'class' => 'qtype_graph-bgcolorpicker',
                 'aria-label' => get_string('gridcolor', 'qtype_graph'),
             ])),
         ];
         $mform->addGroup($gridcolorgroup, 'gridcolorgroup', get_string('gridcolor', 'qtype_graph'), ' ', false);
         $mform->setType('gridcolor', PARAM_TEXT);
-        $mform->setDefault('gridcolor', '#cbd5e1');
+        $mform->setDefault('gridcolor', '#e2e8f0');
         $mform->addHelpButton('gridcolorgroup', 'gridcolor', 'qtype_graph');
 
         // Generated upfront (before either canvas is rendered) so the default graph's
