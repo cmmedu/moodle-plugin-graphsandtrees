@@ -1,481 +1,683 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Editor de grafos - Rutas Digitales</title>
-<link rel="stylesheet" href="styles.css">
-<style>
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: #f3f4f6;
-    color: #1f2937;
-  }
-  header.page-header {
-    padding: 20px 24px;
-    background: #111827;
-    color: #fff;
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
-  }
-  header.page-header h1 {
-    margin: 0 0 4px;
-    font-size: 20px;
-  }
-  header.page-header p {
-    margin: 0;
-    color: #cbd5e1;
-    font-size: 14px;
-  }
-  .btn-instructions {
-    flex: none;
-    padding: 8px 16px;
-    border-radius: 6px;
-    border: 1px solid #374151;
-    background: #1f2937;
-    color: #fff;
-    cursor: pointer;
-    font-size: 13px;
-    white-space: nowrap;
-  }
-  .btn-instructions:hover {
-    background: #374151;
-  }
-  .modal-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(15, 17, 21, 0.6);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-    z-index: 1000;
-  }
-  .modal-overlay[hidden] {
-    display: none;
-  }
-  .modal-box {
-    background: #fff;
-    border-radius: 10px;
-    max-width: 720px;
-    width: 100%;
-    max-height: 85vh;
-    display: flex;
-    flex-direction: column;
-    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
-  }
-  .modal-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 20px;
-    border-bottom: 1px solid #e5e7eb;
-  }
-  .modal-header h2 {
-    margin: 0;
-    font-size: 18px;
-  }
-  .modal-close {
-    border: none;
-    background: transparent;
-    font-size: 22px;
-    line-height: 1;
-    cursor: pointer;
-    color: #6b7280;
-    padding: 4px 8px;
-    border-radius: 6px;
-  }
-  .modal-close:hover {
-    background: #f3f4f6;
-    color: #111827;
-  }
-  .modal-body {
-    padding: 4px 20px 20px;
-    overflow-y: auto;
-    font-size: 14px;
-    line-height: 1.6;
-  }
-  .modal-body h3 {
-    font-size: 15px;
-    margin: 20px 0 6px;
-    color: #111827;
-  }
-  .modal-body h3:first-child {
-    margin-top: 16px;
-  }
-  .modal-body p,
-  .modal-body ul {
-    margin: 0 0 10px;
-    color: #374151;
-  }
-  .modal-body ul {
-    padding-left: 20px;
-  }
-  .modal-body li {
-    margin-bottom: 6px;
-  }
-  .modal-body code {
-    background: #f3f4f6;
-    border-radius: 4px;
-    padding: 1px 5px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 12.5px;
-  }
-  main {
-    max-width: 1100px;
-    margin: 0 auto;
-    padding: 24px;
-  }
-  section.graph-section {
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 16px;
-    margin-bottom: 24px;
-  }
-  section.graph-section .section-help {
-    font-size: 13px;
-    color: #4b5563;
-    margin-bottom: 12px;
-  }
-  .action-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 12px;
-  }
-  .btn {
-    padding: 6px 14px;
-    border-radius: 6px;
-    border: 1px solid #d1d5db;
-    background: #fff;
-    cursor: pointer;
-    font-size: 13px;
-  }
-  .btn:hover { background: #f3f4f6; }
-  .export-panel {
-    background: #fff;
-    border: 1px solid #e5e7eb;
-    border-radius: 8px;
-    padding: 16px;
-  }
-  .export-panel textarea {
-    width: 100%;
-    min-height: 160px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 12px;
-    border: 1px solid #d1d5db;
-    border-radius: 6px;
-    padding: 8px;
-  }
-  .export-status {
-    font-size: 13px;
-    margin: 8px 0;
-    min-height: 18px;
-  }
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Editor de grafos - Rutas Digitales</title>
+  <link rel="stylesheet" href="styles.css">
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f3f4f6;
+      color: #1f2937;
+    }
+
+    header.page-header {
+      padding: 20px 24px;
+      background: #111827;
+      color: #fff;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    header.page-header h1 {
+      margin: 0 0 4px;
+      font-size: 20px;
+    }
+
+    header.page-header p {
+      margin: 0;
+      color: #cbd5e1;
+      font-size: 14px;
+    }
+
+    .btn-instructions {
+      flex: none;
+      padding: 8px 16px;
+      border-radius: 6px;
+      border: 1px solid #374151;
+      background: #1f2937;
+      color: #fff;
+      cursor: pointer;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .btn-instructions:hover {
+      background: #374151;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 17, 21, 0.6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 1000;
+    }
+
+    .modal-overlay[hidden] {
+      display: none;
+    }
+
+    .modal-box {
+      background: #fff;
+      border-radius: 10px;
+      max-width: 720px;
+      width: 100%;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+    }
+
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid #e5e7eb;
+    }
+
+    .modal-header h2 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .modal-close {
+      border: none;
+      background: transparent;
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+      color: #6b7280;
+      padding: 4px 8px;
+      border-radius: 6px;
+    }
+
+    .modal-close:hover {
+      background: #f3f4f6;
+      color: #111827;
+    }
+
+    .modal-body {
+      padding: 4px 20px 20px;
+      overflow-y: auto;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .modal-body h3 {
+      font-size: 15px;
+      margin: 20px 0 6px;
+      color: #111827;
+    }
+
+    .modal-body h3:first-child {
+      margin-top: 16px;
+    }
+
+    .modal-body p,
+    .modal-body ul {
+      margin: 0 0 10px;
+      color: #374151;
+    }
+
+    .modal-body ul {
+      padding-left: 20px;
+    }
+
+    .modal-body li {
+      margin-bottom: 6px;
+    }
+
+    .modal-body code {
+      background: #f3f4f6;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12.5px;
+    }
+
+    main {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    section.graph-section {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 24px;
+    }
+
+    section.graph-section .section-help {
+      font-size: 13px;
+      color: #4b5563;
+      margin-bottom: 12px;
+    }
+
+    .action-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .btn {
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid #d1d5db;
+      background: #fff;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .btn:hover {
+      background: #f3f4f6;
+    }
+
+    .export-panel {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .export-panel textarea {
+      width: 100%;
+      min-height: 160px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      padding: 8px;
+    }
+
+    .export-status {
+      font-size: 13px;
+      margin: 8px 0;
+      min-height: 18px;
+    }
+  </style>
 </head>
+
 <body>
 
-<header class="page-header">
-  <div>
-    <h1>Editor de grafos</h1>
-    <p>Construye un grafo y exporta su JSON para el script de montaje del curso.</p>
+  <header class="page-header">
+    <div>
+      <h1>Editor de grafos</h1>
+      <p>Construye un grafo y exporta su JSON para el script de montaje del curso.</p>
+    </div>
+    <button type="button" class="btn-instructions" id="btn-instructions">Instrucciones</button>
+  </header>
+
+  <div class="modal-overlay" id="instructions-modal" hidden>
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="instructions-title">
+      <div class="modal-header">
+        <h2 id="instructions-title">Instrucciones del editor</h2>
+        <button type="button" class="modal-close" id="instructions-close" aria-label="Cerrar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <h3>Nodos</h3>
+        <ul>
+          <li>Haz clic en un nodo para abrir su menú: texto, color, forma, agregar un nodo conectado, marcar el texto
+            como blanco de respuesta, o eliminarlo.</li>
+          <li>Arrastra un nodo para moverlo (en "Modo árbol" la posición se recalcula automáticamente).</li>
+        </ul>
+
+        <h3>Conexiones</h3>
+        <ul>
+          <li>Al agregar un nodo conectado se crea automáticamente la conexión entre ambos.</li>
+          <li>Haz clic en una conexión para editar su etiqueta o eliminarla.</li>
+        </ul>
+
+        <h3>Modo grafo vs. modo árbol</h3>
+        <ul>
+          <li><strong>Modo grafo</strong>: los nodos se ubican libremente, sin una jerarquía definida.</li>
+          <center><img src="img/graph_graph.png" style="width: 85%;" /></center>
+          <li><strong>Modo árbol</strong>: los nodos se organizan automáticamente en niveles (padre/hijo), con
+            orientación vertical u horizontal.</li>
+          <center><img src="img/graph_tree_h.png" style="width: 45%;"><img src="img/graph_tree_v.png"
+              style="width: 45%;"></center>
+          <li>El estilo de línea (recta / en ángulo recto) y el zoom se controlan desde la barra superior del editor.
+          </li>
+          <center><img src="img/graph_tree_h_angled.png" style="width: 45%;" /><img src="img/graph_tree_v_angled.png"
+              style="width: 45%;" /</center>
+        </ul>
+
+        <h2>Edición de nodos y Conectores</h2>
+
+        <h3>Cambio de forma</h3>
+        <ul>
+          <li>Cada nodo puede tener una forma diferente</li>
+          <center><img src="img/graph_shapes.png" style="width: 85%;" /></center>
+        </ul>
+
+        <h3>nodos como pregunta: "Marcar como input" / "Marcar como selector"</h3>
+        <ul>
+          <li><strong>Marcar como input</strong> convierte el texto de un nodo o conexión en <code>{{T_INPUT}}</code>:
+            el alumno verá una caja de texto para completar.</li>
+          <li><strong>Marcar como selector</strong> lo convierte en <code>[[opción1;opción2]]</code>: el alumno verá una
+            lista desplegable con esas opciones.</li>
+          <li>Puedes escribir texto antes y/o después de los corchetes en el mismo campo (por ejemplo
+            <code>antes [[Sí;No]] después</code>) - ese texto se muestra igual, solo el contenido entre corchetes/llaves
+            se convierte en el espacio en blanco.
+          </li>
+          <li>Este editor solo genera el <strong>grafo por defecto</strong> (lo que ve el alumno). Las respuestas
+            correctas para cada espacio en blanco se configuran aparte, en el grafo de respuesta dentro de Moodle.</li>
+        </ul>
+
+        <h3>Etiquetas flotantes (solo en modo árbol)</h3>
+        <ul>
+          <li>Un nodo <strong>sin hijos</strong> (una rama final) puede tener además una "+ Etiqueta flotante": un texto
+            aparte que se muestra debajo del nodo (orientación vertical) o a su derecha (orientación horizontal) - útil,
+            por ejemplo, para mostrar un porcentaje al final de una rama.</li>
+          <li>Haz clic en la etiqueta ya creada para editar su texto, marcarla como input/selector, o eliminarla.</li>
+          <li>Si el nodo deja de ser una rama final (se le conecta un hijo), la etiqueta se oculta pero su contenido no
+            se pierde - reaparece si vuelve a quedar sin hijos.</li>
+        </ul>
+
+        <center>
+          <img src="img/graph_inputtypes.png" style="width: 45%;" /> <img src="img/graph_inputtypes2.png"
+            style="width: 45%;" />
+        </center>
+
+
+        <h2>grafo de repsuesta</h2>
+        <ul>
+          <li>luego de añadir los diferentes tipos de inputs a los grafos, se crea otro grafo mas que es el grafo de
+            respuesta este conciste en el mismo grafo que el anterior pero con las respuestas esperadas, este tipo de
+            preguntas acepta mas de uno como respuesta correcta. </li>
+          <center><img src="img/graph_inputtypes_resp.png" style="width: 85%;" /></center>
+        </ul>
+
+        <h2>Exportar el grafo</h2>
+        <ul>
+          <li>El botón <strong>"JSON"</strong> (en la barra superior del editor) abre un panel para copiar/pegar el JSON
+            del grafo directamente.</li>
+          <li>Más abajo en esta página, <strong>"Copiar al portapapeles"</strong> y <strong>"Guardar como
+              .json"</strong> hacen lo mismo con el grafo completo, listo para el script de montaje del curso.</li>
+        </ul>
+
+        <h3>Qué queda para el montaje en la plataforma</h3>
+        <ul>
+          <li>Los nombres de los niveles del árbol ("Nivel 0", "Nivel 1", ...) no se pueden cambiar en este editor.
+            Basta con indicar en el guión de la clase cómo quieres que se llame cada nivel - quien haga el montaje los
+            renombrará directamente en Moodle.</li>
+          <li>Este editor solo construye el <strong>grafo de entrada</strong> (el grafo por defecto que ve el alumno).
+            El <strong>grafo de repsuesta</strong> (con las respuestas correctas, usado para la calificación automática)
+            se arma aparte, dentro de Moodle. Indica en el guión de la clase cómo debe quedar tanto el grafo de entrada
+            como el grafo de revisión.</li>
+        </ul>
+      </div>
+    </div>
   </div>
-  <button type="button" class="btn-instructions" id="btn-instructions">Instrucciones</button>
-</header>
 
-<div class="modal-overlay" id="instructions-modal" hidden>
-  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="instructions-title">
-    <div class="modal-header">
-      <h2 id="instructions-title">Instrucciones del editor</h2>
-      <button type="button" class="modal-close" id="instructions-close" aria-label="Cerrar">&times;</button>
-    </div>
-    <div class="modal-body">
-      <h3>Nodos</h3>
-      <ul>
-        <li>Haz clic en un nodo para abrir su menú: texto, color, forma, agregar un nodo conectado, marcar el texto como blanco de respuesta, o eliminarlo.</li>
-        <li>Arrastra un nodo para moverlo (en "Modo árbol" la posición se recalcula automáticamente).</li>
-      </ul>
+  <main>
 
-      <h3>Conexiones</h3>
-      <ul>
-        <li>Al agregar un nodo conectado se crea automáticamente la conexión entre ambos.</li>
-        <li>Haz clic en una conexión para editar su etiqueta o eliminarla.</li>
-      </ul>
+    <section class="graph-section">
+      <p class="section-help">
+        Haz clic en un nodo o conexión para editar su texto/color, añadir nodos
+        conectados o eliminarlo. El botón "JSON" del propio editor permite pegar/copiar
+        el grafo directamente. "Marcar como input"/"Marcar como selector" convierten el
+        texto en un espacio en blanco ({{T_INPUT}} o [[opción1;opción2]]) para el alumno -
+        puedes escribir texto antes/después de los corchetes en el mismo campo. En "Modo
+        árbol", un nodo sin hijos ofrece además "+ Etiqueta flotante": una etiqueta aparte
+        (texto, input o selector) que se muestra debajo del nodo (vertical) o a su derecha
+        (horizontal) - haz clic en la etiqueta ya creada para editarla o eliminarla.
+      </p>
+      <div id="qtype_graph_editor"></div>
+      <input type="hidden" id="id_graphjson">
+    </section>
 
-      <h3>Modo grafo vs. modo árbol</h3>
-      <ul>
-        <li><strong>Modo grafo</strong>: los nodos se ubican libremente, sin una jerarquía definida.</li>
-        <li><strong>Modo árbol</strong>: los nodos se organizan automáticamente en niveles (padre/hijo), con orientación vertical u horizontal.</li>
-        <li>El estilo de línea (recta / en ángulo recto) y el zoom se controlan desde la barra superior del editor.</li>
-      </ul>
+    <section class="export-panel">
+      <h2 style="margin-top:0; font-size:16px;">Exportar</h2>
+      <div class="action-row">
+        <button type="button" id="btn-copy" class="btn">Copiar al portapapeles</button>
+        <button type="button" id="btn-download" class="btn">Guardar como .json</button>
+        <button type="button" id="btn-screenshot" class="btn">Descargar captura (PNG)</button>
+      </div>
+      <div class="export-status" id="export-status"></div>
+      <textarea id="export-json" readonly></textarea>
+    </section>
 
-      <h3>Espacios en blanco: "Marcar como input" / "Marcar como selector"</h3>
-      <ul>
-        <li><strong>Marcar como input</strong> convierte el texto de un nodo o conexión en <code>{{T_INPUT}}</code>: el alumno verá una caja de texto para completar.</li>
-        <li><strong>Marcar como selector</strong> lo convierte en <code>[[opción1;opción2]]</code>: el alumno verá una lista desplegable con esas opciones.</li>
-        <li>Puedes escribir texto antes y/o después de los corchetes en el mismo campo (por ejemplo <code>antes [[Sí;No]] después</code>) - ese texto se muestra igual, solo el contenido entre corchetes/llaves se convierte en el espacio en blanco.</li>
-        <li>Este editor solo genera el <strong>grafo por defecto</strong> (lo que ve el alumno). Las respuestas correctas para cada espacio en blanco se configuran aparte, en el grafo de respuesta dentro de Moodle.</li>
-      </ul>
+  </main>
 
-      <h3>Etiquetas flotantes (solo en modo árbol)</h3>
-      <ul>
-        <li>Un nodo <strong>sin hijos</strong> (una rama final) puede tener además una "+ Etiqueta flotante": un texto aparte que se muestra debajo del nodo (orientación vertical) o a su derecha (orientación horizontal) - útil, por ejemplo, para mostrar un porcentaje al final de una rama.</li>
-        <li>Haz clic en la etiqueta ya creada para editar su texto, marcarla como input/selector, o eliminarla.</li>
-        <li>Si el nodo deja de ser una rama final (se le conecta un hijo), la etiqueta se oculta pero su contenido no se pierde - reaparece si vuelve a quedar sin hijos.</li>
-      </ul>
+  <script src="editor.js"></script>
+  <script>
+    (function () {
+      // JS port of qtype_graph's classes/editor_ui.php::render() - the exact same
+      // container markup editor.js expects, since there is no PHP to generate it
+      // here. Keep this in sync by hand with that file if the plugin's markup
+      // ever changes.
+      function renderGraphEditorSkeleton(id) {
+        return (
+          '<div id="' + id + '" class="qtype_graph-container">' +
+          '  <div class="qtype_graph-toolbar">' +
+          '    <div class="qtype_graph-modecontrols">' +
+          '      <div class="qtype_graph-segmented" data-role="mode-toggle">' +
+          '        <button type="button" class="active" data-mode="graph">Modo grafo</button>' +
+          '        <button type="button" data-mode="tree">Modo árbol</button>' +
+          '      </div>' +
+          '      <div class="qtype_graph-segmented" data-role="orientation-toggle" hidden>' +
+          '        <button type="button" class="active" data-orientation="vertical">V</button>' +
+          '        <button type="button" data-orientation="horizontal">H</button>' +
+          '      </div>' +
+          '      <div class="qtype_graph-segmented" data-role="linestyle-toggle">' +
+          '        <button type="button" class="active" data-line-style="straight">/</button>' +
+          '        <button type="button" data-line-style="orthogonal">⌐</button>' +
+          '      </div>' +
+          '      <div class="qtype_graph-segmented qtype_graph-zoomcontrols" data-role="zoom-controls">' +
+          '        <button type="button" data-role="zoom-out" aria-label="-">-</button>' +
+          '        <button type="button" data-role="zoom-reset">100%</button>' +
+          '        <button type="button" data-role="zoom-in" aria-label="+">+</button>' +
+          '      </div>' +
+          '      <button type="button" class="qtype_graph-menubtn qtype_graph-exportbtn" data-role="json-btn" hidden>' +
+          '        JSON' +
+          '      </button>' +
+          '    </div>' +
+          '  </div>' +
+          '  <div class="qtype_graph-canvas" data-role="canvas">' +
+          '    <div class="qtype_graph-content" data-role="content">' +
+          '      <svg class="qtype_graph-edges" data-role="edges"></svg>' +
+          '    </div>' +
+          '    <div class="qtype_graph-exportpanel" data-role="json-panel" hidden>' +
+          '      <div class="qtype_graph-menulabel">JSON del grafo</div>' +
+          '      <textarea class="qtype_graph-exporttextarea" data-role="json-textarea"></textarea>' +
+          '      <div class="qtype_graph-jsonstatus" data-role="json-status" hidden></div>' +
+          '      <div class="qtype_graph-exportactions">' +
+          '        <button type="button" class="qtype_graph-menubtn" data-role="json-build-btn"' +
+          '            data-confirm="Esto reemplazará el grafo actual por el contenido del JSON. ¿Continuar?">' +
+          '          Construir grafo' +
+          '        </button>' +
+          '        <button type="button" class="qtype_graph-menubtn" data-role="json-copy-btn">Copiar al portapapeles</button>' +
+          '        <button type="button" class="qtype_graph-menubtn" data-role="json-close-btn">Cerrar</button>' +
+          '      </div>' +
+          '    </div>' +
+          '    <div class="qtype_graph-nodemenu" data-role="node-menu" hidden>' +
+          '      <div class="qtype_graph-menusection" data-role="node-text-section">' +
+          '        <span class="qtype_graph-menulabel">Texto</span>' +
+          '        <input type="text" data-role="node-text-input" class="qtype_graph-textinput">' +
+          '      </div>' +
+          '      <div class="qtype_graph-menusection" data-role="node-select-section" hidden>' +
+          '        <span class="qtype_graph-menulabel">Opciones [[opt1;opt2]] (puedes agregar texto antes/después de los corchetes)</span>' +
+          '        <input type="text" data-role="node-select-input" class="qtype_graph-textinput">' +
+          '      </div>' +
+          '      <div class="qtype_graph-menusection" data-role="node-color-section">' +
+          '        <span class="qtype_graph-menulabel">Color</span>' +
+          '        <div class="qtype_graph-colorrow" data-role="color-row"></div>' +
+          '      </div>' +
+          '      <details class="qtype_graph-collapsible" data-role="node-shape-section">' +
+          '        <summary class="qtype_graph-menulabel">Forma</summary>' +
+          '        <div class="qtype_graph-shaperow" data-role="shape-row">' +
+          '          <button type="button" class="qtype_graph-shapebtn" data-shape="rounded">' +
+          '            <span class="qtype_graph-shapeicon qtype_graph-shapeicon--rounded"></span>' +
+          '            Redondeada' +
+          '          </button>' +
+          '          <button type="button" class="qtype_graph-shapebtn" data-shape="circle">' +
+          '            <span class="qtype_graph-shapeicon qtype_graph-shapeicon--circle"></span>' +
+          '            Círculo' +
+          '          </button>' +
+          '          <button type="button" class="qtype_graph-shapebtn" data-shape="rectangle">' +
+          '            <span class="qtype_graph-shapeicon qtype_graph-shapeicon--rectangle"></span>' +
+          '            Rectángulo' +
+          '          </button>' +
+          '          <button type="button" class="qtype_graph-shapebtn" data-shape="oval">' +
+          '            <span class="qtype_graph-shapeicon qtype_graph-shapeicon--oval"></span>' +
+          '            Óvalo' +
+          '          </button>' +
+          '        </div>' +
+          '      </details>' +
+          '      <button type="button" class="qtype_graph-menubtn" data-role="add-connected-btn">+ Nodo conectado</button>' +
+          '      <button type="button" class="qtype_graph-menubtn" data-role="add-input-btn" hidden>Marcar como input</button>' +
+          '      <button type="button" class="qtype_graph-menubtn" data-role="add-select-btn" hidden>Marcar como selector</button>' +
+          '      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-btn" hidden>+ Etiqueta flotante</button>' +
+          '      <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-node-btn">Eliminar nodo</button>' +
+          '    </div>' +
+          '    <div class="qtype_graph-nodemenu" data-role="floatinglabel-menu" hidden>' +
+          '      <div class="qtype_graph-menusection" data-role="floatinglabel-text-section">' +
+          '        <span class="qtype_graph-menulabel">Etiqueta flotante</span>' +
+          '        <input type="text" data-role="floatinglabel-text-input" class="qtype_graph-textinput">' +
+          '      </div>' +
+          '      <div class="qtype_graph-menusection" data-role="floatinglabel-select-section" hidden>' +
+          '        <span class="qtype_graph-menulabel">Opciones [[opt1;opt2]] (puedes agregar texto antes/después de los corchetes)</span>' +
+          '        <input type="text" data-role="floatinglabel-select-input" class="qtype_graph-textinput">' +
+          '      </div>' +
+          '      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-input-btn" hidden>Marcar como input</button>' +
+          '      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-select-btn" hidden>Marcar como selector</button>' +
+          '      <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-floatinglabel-btn">Eliminar etiqueta</button>' +
+          '    </div>' +
+          '    <div class="qtype_graph-nodemenu" data-role="edge-menu" hidden>' +
+          '      <div class="qtype_graph-menusection" data-role="edge-text-section">' +
+          '        <span class="qtype_graph-menulabel">Etiqueta</span>' +
+          '        <input type="text" data-role="edge-label-input" class="qtype_graph-textinput" maxlength="40">' +
+          '      </div>' +
+          '      <div class="qtype_graph-menusection" data-role="edge-select-section" hidden>' +
+          '        <span class="qtype_graph-menulabel">Opciones [[opt1;opt2]] (puedes agregar texto antes/después de los corchetes)</span>' +
+          '        <input type="text" data-role="edge-select-input" class="qtype_graph-textinput">' +
+          '      </div>' +
+          '      <div class="qtype_graph-menusection" data-role="edge-value-section" hidden>' +
+          '        <span class="qtype_graph-menulabel">Respuesta</span>' +
+          '        <select data-role="edge-value-select" class="qtype_graph-textinput"></select>' +
+          '      </div>' +
+          '      <button type="button" class="qtype_graph-menubtn" data-role="add-edge-input-btn" hidden>Marcar como input</button>' +
+          '      <button type="button" class="qtype_graph-menubtn" data-role="add-edge-select-btn" hidden>Marcar como selector</button>' +
+          '      <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-edge-btn">Eliminar conexión</button>' +
+          '    </div>' +
+          '  </div>' +
+          '</div>'
+        );
+      }
 
-      <h3>Exportar el grafo</h3>
-      <ul>
-        <li>El botón <strong>"JSON"</strong> (en la barra superior del editor) abre un panel para copiar/pegar el JSON del grafo directamente.</li>
-        <li>Más abajo en esta página, <strong>"Copiar al portapapeles"</strong> y <strong>"Guardar como .json"</strong> hacen lo mismo con el grafo completo, listo para el script de montaje del curso.</li>
-      </ul>
+      var root = document.getElementById('qtype_graph_editor');
+      root.outerHTML = renderGraphEditorSkeleton('qtype_graph_editor');
 
-      <h3>Qué queda para el montaje en la plataforma</h3>
-      <ul>
-        <li>Los nombres de los niveles del árbol ("Nivel 0", "Nivel 1", ...) no se pueden cambiar en este editor. Basta con indicar en el guión de la clase cómo quieres que se llame cada nivel - quien haga el montaje los renombrará directamente en Moodle.</li>
-        <li>Este editor solo construye el <strong>grafo de entrada</strong> (el grafo por defecto que ve el alumno). El <strong>grafo de revisión</strong> (con las respuestas correctas, usado para la calificación automática) se arma aparte, dentro de Moodle. Indica en el guión de la clase cómo debe quedar tanto el grafo de entrada como el grafo de revisión.</li>
-      </ul>
-    </div>
-  </div>
-</div>
+      // The 5th argument only ever matters inside Moodle, where it's the id of the
+      // separate result-graph canvas "Marcar como input/selector" pushes its clears
+      // into (see addSyncTarget() in editor.js) - there's no second canvas on this
+      // page, but passing any truthy id still makes initEditor() show those buttons
+      // (enableAddInput), matching the default graph canvas on the teacher side;
+      // the sync itself just silently finds no matching editor and no-ops.
+      QtypeGraphEditor.initEditor('qtype_graph_editor', 'id_graphjson', null, null, 'qtype_graph_editor_no_sync_target');
 
-<main>
+      var exportField = document.getElementById('export-json');
+      var statusField = document.getElementById('export-status');
 
-  <section class="graph-section">
-    <p class="section-help">
-      Haz clic en un nodo o conexión para editar su texto/color, añadir nodos
-      conectados o eliminarlo. El botón "JSON" del propio editor permite pegar/copiar
-      el grafo directamente. "Marcar como input"/"Marcar como selector" convierten el
-      texto en un espacio en blanco ({{T_INPUT}} o [[opción1;opción2]]) para el alumno -
-      puedes escribir texto antes/después de los corchetes en el mismo campo. En "Modo
-      árbol", un nodo sin hijos ofrece además "+ Etiqueta flotante": una etiqueta aparte
-      (texto, input o selector) que se muestra debajo del nodo (vertical) o a su derecha
-      (horizontal) - haz clic en la etiqueta ya creada para editarla o eliminarla.
-    </p>
-    <div id="qtype_graph_editor"></div>
-    <input type="hidden" id="id_graphjson">
-  </section>
+      function currentJson() {
+        return document.getElementById('id_graphjson').value || '';
+      }
 
-  <section class="export-panel">
-    <h2 style="margin-top:0; font-size:16px;">Exportar</h2>
-    <div class="action-row">
-      <button type="button" id="btn-copy" class="btn">Copiar al portapapeles</button>
-      <button type="button" id="btn-download" class="btn">Guardar como .json</button>
-    </div>
-    <div class="export-status" id="export-status"></div>
-    <textarea id="export-json" readonly></textarea>
-  </section>
-
-</main>
-
-<script src="editor.js"></script>
-<script>
-(function() {
-  // JS port of qtype_graph's classes/editor_ui.php::render() - the exact same
-  // container markup editor.js expects, since there is no PHP to generate it
-  // here. Keep this in sync by hand with that file if the plugin's markup
-  // ever changes.
-  function renderGraphEditorSkeleton(id) {
-    return (
-      '<div id="' + id + '" class="qtype_graph-container">' +
-      '  <div class="qtype_graph-toolbar">' +
-      '    <div class="qtype_graph-modecontrols">' +
-      '      <div class="qtype_graph-segmented" data-role="mode-toggle">' +
-      '        <button type="button" class="active" data-mode="graph">Modo grafo</button>' +
-      '        <button type="button" data-mode="tree">Modo árbol</button>' +
-      '      </div>' +
-      '      <div class="qtype_graph-segmented" data-role="orientation-toggle" hidden>' +
-      '        <button type="button" class="active" data-orientation="vertical">V</button>' +
-      '        <button type="button" data-orientation="horizontal">H</button>' +
-      '      </div>' +
-      '      <div class="qtype_graph-segmented" data-role="linestyle-toggle">' +
-      '        <button type="button" class="active" data-line-style="straight">/</button>' +
-      '        <button type="button" data-line-style="orthogonal">⌐</button>' +
-      '      </div>' +
-      '      <div class="qtype_graph-segmented qtype_graph-zoomcontrols" data-role="zoom-controls">' +
-      '        <button type="button" data-role="zoom-out" aria-label="-">-</button>' +
-      '        <button type="button" data-role="zoom-reset">100%</button>' +
-      '        <button type="button" data-role="zoom-in" aria-label="+">+</button>' +
-      '      </div>' +
-      '      <button type="button" class="qtype_graph-menubtn qtype_graph-exportbtn" data-role="json-btn" hidden>' +
-      '        JSON' +
-      '      </button>' +
-      '    </div>' +
-      '  </div>' +
-      '  <div class="qtype_graph-canvas" data-role="canvas">' +
-      '    <div class="qtype_graph-content" data-role="content">' +
-      '      <svg class="qtype_graph-edges" data-role="edges"></svg>' +
-      '    </div>' +
-      '    <div class="qtype_graph-exportpanel" data-role="json-panel" hidden>' +
-      '      <div class="qtype_graph-menulabel">JSON del grafo</div>' +
-      '      <textarea class="qtype_graph-exporttextarea" data-role="json-textarea"></textarea>' +
-      '      <div class="qtype_graph-jsonstatus" data-role="json-status" hidden></div>' +
-      '      <div class="qtype_graph-exportactions">' +
-      '        <button type="button" class="qtype_graph-menubtn" data-role="json-build-btn"' +
-      '            data-confirm="Esto reemplazará el grafo actual por el contenido del JSON. ¿Continuar?">' +
-      '          Construir grafo' +
-      '        </button>' +
-      '        <button type="button" class="qtype_graph-menubtn" data-role="json-copy-btn">Copiar al portapapeles</button>' +
-      '        <button type="button" class="qtype_graph-menubtn" data-role="json-close-btn">Cerrar</button>' +
-      '      </div>' +
-      '    </div>' +
-      '    <div class="qtype_graph-nodemenu" data-role="node-menu" hidden>' +
-      '      <div class="qtype_graph-menusection" data-role="node-text-section">' +
-      '        <span class="qtype_graph-menulabel">Texto</span>' +
-      '        <input type="text" data-role="node-text-input" class="qtype_graph-textinput">' +
-      '      </div>' +
-      '      <div class="qtype_graph-menusection" data-role="node-select-section" hidden>' +
-      '        <span class="qtype_graph-menulabel">Opciones [[opt1;opt2]] (puedes agregar texto antes/después de los corchetes)</span>' +
-      '        <input type="text" data-role="node-select-input" class="qtype_graph-textinput">' +
-      '      </div>' +
-      '      <div class="qtype_graph-menusection" data-role="node-color-section">' +
-      '        <span class="qtype_graph-menulabel">Color</span>' +
-      '        <div class="qtype_graph-colorrow" data-role="color-row"></div>' +
-      '      </div>' +
-      '      <details class="qtype_graph-collapsible" data-role="node-shape-section">' +
-      '        <summary class="qtype_graph-menulabel">Forma</summary>' +
-      '        <div class="qtype_graph-shaperow" data-role="shape-row">' +
-      '          <button type="button" class="qtype_graph-shapebtn" data-shape="rounded">' +
-      '            <span class="qtype_graph-shapeicon qtype_graph-shapeicon--rounded"></span>' +
-      '            Redondeada' +
-      '          </button>' +
-      '          <button type="button" class="qtype_graph-shapebtn" data-shape="circle">' +
-      '            <span class="qtype_graph-shapeicon qtype_graph-shapeicon--circle"></span>' +
-      '            Círculo' +
-      '          </button>' +
-      '          <button type="button" class="qtype_graph-shapebtn" data-shape="rectangle">' +
-      '            <span class="qtype_graph-shapeicon qtype_graph-shapeicon--rectangle"></span>' +
-      '            Rectángulo' +
-      '          </button>' +
-      '          <button type="button" class="qtype_graph-shapebtn" data-shape="oval">' +
-      '            <span class="qtype_graph-shapeicon qtype_graph-shapeicon--oval"></span>' +
-      '            Óvalo' +
-      '          </button>' +
-      '        </div>' +
-      '      </details>' +
-      '      <button type="button" class="qtype_graph-menubtn" data-role="add-connected-btn">+ Nodo conectado</button>' +
-      '      <button type="button" class="qtype_graph-menubtn" data-role="add-input-btn" hidden>Marcar como input</button>' +
-      '      <button type="button" class="qtype_graph-menubtn" data-role="add-select-btn" hidden>Marcar como selector</button>' +
-      '      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-btn" hidden>+ Etiqueta flotante</button>' +
-      '      <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-node-btn">Eliminar nodo</button>' +
-      '    </div>' +
-      '    <div class="qtype_graph-nodemenu" data-role="floatinglabel-menu" hidden>' +
-      '      <div class="qtype_graph-menusection" data-role="floatinglabel-text-section">' +
-      '        <span class="qtype_graph-menulabel">Etiqueta flotante</span>' +
-      '        <input type="text" data-role="floatinglabel-text-input" class="qtype_graph-textinput">' +
-      '      </div>' +
-      '      <div class="qtype_graph-menusection" data-role="floatinglabel-select-section" hidden>' +
-      '        <span class="qtype_graph-menulabel">Opciones [[opt1;opt2]] (puedes agregar texto antes/después de los corchetes)</span>' +
-      '        <input type="text" data-role="floatinglabel-select-input" class="qtype_graph-textinput">' +
-      '      </div>' +
-      '      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-input-btn" hidden>Marcar como input</button>' +
-      '      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-select-btn" hidden>Marcar como selector</button>' +
-      '      <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-floatinglabel-btn">Eliminar etiqueta</button>' +
-      '    </div>' +
-      '    <div class="qtype_graph-nodemenu" data-role="edge-menu" hidden>' +
-      '      <div class="qtype_graph-menusection" data-role="edge-text-section">' +
-      '        <span class="qtype_graph-menulabel">Etiqueta</span>' +
-      '        <input type="text" data-role="edge-label-input" class="qtype_graph-textinput" maxlength="40">' +
-      '      </div>' +
-      '      <div class="qtype_graph-menusection" data-role="edge-select-section" hidden>' +
-      '        <span class="qtype_graph-menulabel">Opciones [[opt1;opt2]] (puedes agregar texto antes/después de los corchetes)</span>' +
-      '        <input type="text" data-role="edge-select-input" class="qtype_graph-textinput">' +
-      '      </div>' +
-      '      <div class="qtype_graph-menusection" data-role="edge-value-section" hidden>' +
-      '        <span class="qtype_graph-menulabel">Respuesta</span>' +
-      '        <select data-role="edge-value-select" class="qtype_graph-textinput"></select>' +
-      '      </div>' +
-      '      <button type="button" class="qtype_graph-menubtn" data-role="add-edge-input-btn" hidden>Marcar como input</button>' +
-      '      <button type="button" class="qtype_graph-menubtn" data-role="add-edge-select-btn" hidden>Marcar como selector</button>' +
-      '      <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-edge-btn">Eliminar conexión</button>' +
-      '    </div>' +
-      '  </div>' +
-      '</div>'
-    );
-  }
-
-  var root = document.getElementById('qtype_graph_editor');
-  root.outerHTML = renderGraphEditorSkeleton('qtype_graph_editor');
-
-  // The 5th argument only ever matters inside Moodle, where it's the id of the
-  // separate result-graph canvas "Marcar como input/selector" pushes its clears
-  // into (see addSyncTarget() in editor.js) - there's no second canvas on this
-  // page, but passing any truthy id still makes initEditor() show those buttons
-  // (enableAddInput), matching the default graph canvas on the teacher side;
-  // the sync itself just silently finds no matching editor and no-ops.
-  QtypeGraphEditor.initEditor('qtype_graph_editor', 'id_graphjson', null, null, 'qtype_graph_editor_no_sync_target');
-
-  var exportField = document.getElementById('export-json');
-  var statusField = document.getElementById('export-status');
-
-  function currentJson() {
-    return document.getElementById('id_graphjson').value || '';
-  }
-
-  document.getElementById('btn-copy').addEventListener('click', function() {
-    exportField.value = currentJson();
-    var restore = function() {
-      statusField.textContent = 'Copiado al portapapeles.';
-    };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(exportField.value).then(restore, function() {
+      document.getElementById('btn-copy').addEventListener('click', function () {
+        exportField.value = currentJson();
+        var restore = function () {
+          statusField.textContent = 'Copiado al portapapeles.';
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(exportField.value).then(restore, function () {
+            exportField.focus();
+            exportField.select();
+          });
+          return;
+        }
         exportField.focus();
         exportField.select();
+        try {
+          document.execCommand('copy');
+          restore();
+        } catch (e) {
+          statusField.textContent = 'No se pudo copiar automáticamente - selecciona y copia manualmente.';
+        }
       });
-      return;
-    }
-    exportField.focus();
-    exportField.select();
-    try {
-      document.execCommand('copy');
-      restore();
-    } catch (e) {
-      statusField.textContent = 'No se pudo copiar automáticamente - selecciona y copia manualmente.';
-    }
-  });
 
-  document.getElementById('btn-download').addEventListener('click', function() {
-    exportField.value = currentJson();
-    var blob = new Blob([exportField.value], {type: 'application/json'});
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = 'grafo.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    statusField.textContent = 'Descarga iniciada (grafo.json).';
-  });
+      document.getElementById('btn-download').addEventListener('click', function () {
+        exportField.value = currentJson();
+        var blob = new Blob([exportField.value], { type: 'application/json' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'grafo.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        statusField.textContent = 'Descarga iniciada (grafo.json).';
+      });
 
-  var instructionsModal = document.getElementById('instructions-modal');
-  var openInstructions = function() {
-    instructionsModal.hidden = false;
-  };
-  var closeInstructions = function() {
-    instructionsModal.hidden = true;
-  };
-  document.getElementById('btn-instructions').addEventListener('click', openInstructions);
-  document.getElementById('instructions-close').addEventListener('click', closeInstructions);
-  instructionsModal.addEventListener('click', function(e) {
-    if (e.target === instructionsModal) {
-      closeInstructions();
-    }
-  });
-  document.addEventListener('keydown', function(e) {
-    if (e.key === 'Escape' && !instructionsModal.hidden) {
-      closeInstructions();
-    }
-  });
-})();
-</script>
+      // Nodes/labels are plain HTML+SVG (not a <canvas>), so a screenshot is built
+      // by rasterizing the visible canvas viewport through an SVG <foreignObject>:
+      // clone the canvas DOM, resolve every element's live computed style onto its
+      // clone (see inlineComputedStyles below - a foreignObject image can't apply
+      // the page's own stylesheet, and on a page opened directly as file:// Chrome
+      // throws a SecurityError just reading a linked stylesheet's cssRules, so
+      // that text can't be embedded either), serialize with XMLSerializer (unlike
+      // string-concatenated outerHTML, it self-closes void elements like <input>
+      // so the SVG stays valid XML), then draw the resulting image onto a real
+      // <canvas> and export that as a PNG.
+      var XHTML_NS = 'http://www.w3.org/1999/xhtml';
+      var SVG_NS_URI = 'http://www.w3.org/2000/svg';
+
+      // getComputedStyle() also resolves CSS custom properties (--qtype-graph-*)
+      // to their concrete values, so the clone renders correctly even though it's
+      // detached from the page's cascade once dropped inside the foreignObject.
+      function inlineComputedStyles(sourceRoot, cloneRoot) {
+        var sourceEls = [sourceRoot].concat(Array.prototype.slice.call(sourceRoot.querySelectorAll('*')));
+        var cloneEls = [cloneRoot].concat(Array.prototype.slice.call(cloneRoot.querySelectorAll('*')));
+        for (var i = 0; i < sourceEls.length; i++) {
+          var computed = window.getComputedStyle(sourceEls[i]);
+          var cssText = '';
+          for (var j = 0; j < computed.length; j++) {
+            var prop = computed[j];
+            cssText += prop + ':' + computed.getPropertyValue(prop) + ';';
+          }
+          cloneEls[i].setAttribute('style', cssText);
+        }
+      }
+
+      // cloneNode(true) copies DOM attributes, not live JS properties, so a blank
+      // node rendered as <input>/<select> (its .value is set via JS - see
+      // editor.js) would otherwise clone back to empty. Both trees have identical
+      // structure right after cloning, so matching form controls positionally is
+      // safe.
+      function copyLiveFormState(sourceRoot, cloneRoot) {
+        var sourceControls = sourceRoot.querySelectorAll('input, select, textarea');
+        var cloneControls = cloneRoot.querySelectorAll('input, select, textarea');
+        for (var i = 0; i < sourceControls.length; i++) {
+          cloneControls[i].value = sourceControls[i].value;
+        }
+      }
+
+      function captureCanvasScreenshot() {
+        var canvasEl = document.querySelector('#qtype_graph_editor .qtype_graph-canvas');
+        if (!canvasEl) {
+          return Promise.reject(new Error('No se encontró el lienzo del editor.'));
+        }
+        var rect = canvasEl.getBoundingClientRect();
+        var width = Math.max(1, Math.round(rect.width));
+        var height = Math.max(1, Math.round(rect.height));
+
+        var clone = canvasEl.cloneNode(true);
+        copyLiveFormState(canvasEl, clone);
+        inlineComputedStyles(canvasEl, clone);
+        clone.style.transition = 'none';
+
+        var wrapper = document.createElementNS(XHTML_NS, 'div');
+        wrapper.setAttribute('style', 'width:' + width + 'px;height:' + height + 'px;overflow:hidden;');
+        wrapper.appendChild(clone);
+
+        var svgRoot = document.createElementNS(SVG_NS_URI, 'svg');
+        svgRoot.setAttribute('xmlns', SVG_NS_URI);
+        svgRoot.setAttribute('width', String(width));
+        svgRoot.setAttribute('height', String(height));
+        var foreignObject = document.createElementNS(SVG_NS_URI, 'foreignObject');
+        foreignObject.setAttribute('width', '100%');
+        foreignObject.setAttribute('height', '100%');
+        foreignObject.appendChild(wrapper);
+        svgRoot.appendChild(foreignObject);
+
+        var svgMarkup = new XMLSerializer().serializeToString(svgRoot);
+        var svgUrl = URL.createObjectURL(new Blob([svgMarkup], { type: 'image/svg+xml;charset=utf-8' }));
+
+        return new Promise(function (resolve, reject) {
+          var img = new Image();
+          img.onload = function () {
+            var scale = window.devicePixelRatio || 1;
+            var outCanvas = document.createElement('canvas');
+            outCanvas.width = Math.round(width * scale);
+            outCanvas.height = Math.round(height * scale);
+            var ctx = outCanvas.getContext('2d');
+            ctx.scale(scale, scale);
+            ctx.drawImage(img, 0, 0, width, height);
+            URL.revokeObjectURL(svgUrl);
+            outCanvas.toBlob(function (blob) {
+              if (!blob) {
+                reject(new Error('No se pudo generar el PNG.'));
+                return;
+              }
+              var pngUrl = URL.createObjectURL(blob);
+              var a = document.createElement('a');
+              a.href = pngUrl;
+              a.download = 'grafo.png';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(pngUrl);
+              resolve();
+            }, 'image/png');
+          };
+          img.onerror = function () {
+            URL.revokeObjectURL(svgUrl);
+            reject(new Error('No se pudo generar la imagen intermedia del lienzo.'));
+          };
+          img.src = svgUrl;
+        });
+      }
+
+      document.getElementById('btn-screenshot').addEventListener('click', function () {
+        statusField.textContent = 'Generando captura...';
+        captureCanvasScreenshot().then(function () {
+          statusField.textContent = 'Captura descargada (grafo.png).';
+        }, function (err) {
+          console.error(err);
+          statusField.textContent = 'No se pudo generar la captura del grafo.';
+        });
+      });
+
+      var instructionsModal = document.getElementById('instructions-modal');
+      var openInstructions = function () {
+        instructionsModal.hidden = false;
+      };
+      var closeInstructions = function () {
+        instructionsModal.hidden = true;
+      };
+      document.getElementById('btn-instructions').addEventListener('click', openInstructions);
+      document.getElementById('instructions-close').addEventListener('click', closeInstructions);
+      instructionsModal.addEventListener('click', function (e) {
+        if (e.target === instructionsModal) {
+          closeInstructions();
+        }
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !instructionsModal.hidden) {
+          closeInstructions();
+        }
+      });
+    })();
+  </script>
 
 </body>
+
 </html>
