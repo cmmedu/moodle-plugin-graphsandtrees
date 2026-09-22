@@ -55,12 +55,13 @@ class backup_qtype_graph_plugin extends backup_qtype_plugin {
         // generic handling pick this straight into $questiondata->options
         // without qtype_graph needing to override that method itself.
         $graph = new backup_nested_element('graph', ['id'], [
-            'graphjson', 'resultgraphjson', 'allowaddnodes', 'allowdeletenodes',
+            'graphjson', 'resultgraphjson', 'allowaddnodes', 'allowdeletenodes', 'strictinputchecks',
             'newnodecontenttype', 'newnodecontentvalue', 'newedgecontenttype', 'newedgecontentvalue',
             'correctfeedback', 'correctfeedbackformat',
             'partiallycorrectfeedback', 'partiallycorrectfeedbackformat',
             'incorrectfeedback', 'incorrectfeedbackformat', 'shownumcorrect',
             'showgrid', 'bgcolor', 'gridcolor', 'textcolor',
+            'shownodetrail', 'showlevellabels', 'levellabelsjson',
         ]);
         $pluginwrapper->add_child($graph);
         $graph->set_source_table('qtype_graph_options', ['questionid' => backup::VAR_PARENTID]);

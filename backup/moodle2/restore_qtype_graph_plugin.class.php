@@ -78,12 +78,16 @@ class restore_qtype_graph_plugin extends restore_qtype_plugin {
         // Backups made before these columns existed on qtype_graph_options won't
         // have them in the XML at all - fall back to the same defaults
         // save_question_options() uses for a freshly-authored question.
+        $data->strictinputchecks = $data->strictinputchecks ?? 1;
         $data->newnodecontenttype = $data->newnodecontenttype ?? 'input';
         $data->newedgecontenttype = $data->newedgecontenttype ?? 'input';
         $data->showgrid = $data->showgrid ?? 1;
         $data->bgcolor = $data->bgcolor ?? '#e2e8f0';
         $data->gridcolor = $data->gridcolor ?? '#1b1f27';
         $data->textcolor = $data->textcolor ?? '';
+        $data->shownodetrail = $data->shownodetrail ?? 1;
+        $data->showlevellabels = $data->showlevellabels ?? 1;
+        $data->levellabelsjson = $data->levellabelsjson ?? '';
 
         $newitemid = $DB->insert_record('qtype_graph_options', $data);
         $this->set_mapping('qtype_graph_options', $oldid, $newitemid);
