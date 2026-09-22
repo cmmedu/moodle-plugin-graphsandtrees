@@ -57,6 +57,10 @@ class qtype_graph_edit_form extends question_edit_form {
         $mform->addElement('advcheckbox', 'allowdeletenodes', get_string('allowdeletenodes', 'qtype_graph'));
         $mform->setDefault('allowdeletenodes', 0);
 
+        $mform->addElement('advcheckbox', 'strictinputchecks', get_string('strictinputchecks', 'qtype_graph'));
+        $mform->setDefault('strictinputchecks', 1);
+        $mform->addHelpButton('strictinputchecks', 'strictinputchecks', 'qtype_graph');
+
         $mform->addElement('advcheckbox', 'shownodetrail', get_string('shownodetrail', 'qtype_graph'));
         $mform->setDefault('shownodetrail', 1);
         $mform->addHelpButton('shownodetrail', 'shownodetrail', 'qtype_graph');
@@ -319,6 +323,7 @@ class qtype_graph_edit_form extends question_edit_form {
             $question->resultgraphjson = $question->options->resultgraphjson ?? '';
             $question->allowaddnodes = $question->options->allowaddnodes;
             $question->allowdeletenodes = $question->options->allowdeletenodes;
+            $question->strictinputchecks = $question->options->strictinputchecks ?? 1;
             $question->newnodecontenttype = $question->options->newnodecontenttype ?? 'input';
             $question->newnodecontentvalue = $question->options->newnodecontentvalue ?? '';
             $question->newedgecontenttype = $question->options->newedgecontenttype ?? 'input';

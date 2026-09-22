@@ -12,6 +12,7 @@
         <FIELD NAME="resultgraphjson" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON-encoded expected/correct result graph, for automatic grading."/>
         <FIELD NAME="allowaddnodes" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether students can add new nodes to the graph."/>
         <FIELD NAME="allowdeletenodes" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Whether students can delete the teacher-authored (original) nodes."/>
+        <FIELD NAME="strictinputchecks" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether automatic grading matches blanks strictly by node/edge id (1) or also accepts any structure-preserving rearrangement among interchangeable blanks (0) - see classes/grading.php's build_permutation()."/>
         <FIELD NAME="newnodecontenttype" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="input" SEQUENCE="false" COMMENT="What a student's new node looks like: input (free text), select (dropdown), or text (fixed, non-editable)."/>
         <FIELD NAME="newnodecontentvalue" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Meaning depends on newnodecontenttype: placeholder text (input), comma-separated options (select), or the fixed text itself (text)."/>
         <FIELD NAME="newedgecontenttype" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="input" SEQUENCE="false" COMMENT="What a student's new connection label looks like when they open its menu: input, select, or text - same meaning as newnodecontenttype."/>

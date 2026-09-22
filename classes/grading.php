@@ -87,6 +87,26 @@ namespace qtype_graph;
  * answer graph, rather than trying to encode every alternative into one set
  * of accepted answers per blank.
  *
+ * Strict vs. non-strict matching ($strict, the "Strict input checks" edit
+ * form checkbox): the id-to-id matching described above is what "strict"
+ * means, and is unaffected by anything below. When a question turns strict
+ * OFF, id-to-id matching is too rigid for a common authoring pattern -
+ * several sibling nodes sharing an identical blank (e.g. three nodes each
+ * [[Mago;Dragon;Hada]] under the same parent) - where the teacher can only
+ * author ONE specific id/answer pairing, even though any permutation of it
+ * among the interchangeable siblings is equally correct. Non-strict grading
+ * instead searches for the best structure-preserving relabeling ("π") of
+ * the default graph's BLANK-bearing nodes among themselves - see
+ * build_permutation() - and grades every blank/floating-label/edge-label
+ * through it instead of straight id equality. Nodes/edges with no blank
+ * (scaffolding) are always fixed points of π, which is what keeps a swap
+ * confined to true structural siblings (an edge-preservation constraint)
+ * without any hardcoded notion of "parent"/"level" - and is what makes a
+ * swap of an internal node correctly carry its whole subtree along,
+ * recursively, as a side effect of that same constraint. Deletion-expected
+ * items and student-added-node anchor matching (below) are NOT affected by
+ * π - both stay strictly id-based even when $strict is false.
+ *
  * @package    qtype_graph
  * @copyright  2026 Rutas Digitales
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
@@ -100,6 +120,10 @@ class grading {
     const ITEM_WRONG_REMOVED = 'wrongremoved';
     /** Wrong in a way clearing the response cannot undo (e.g. not deleted when it should be). */
     const ITEM_WRONG = 'wrong';
+    /** Hard cap on build_permutation()'s backtracking steps, so a pathologically
+     *  symmetric authored graph degrades toward identity matching rather than risking
+     *  a slow grading request. */
+    const MAX_PERMUTATION_STEPS = 100000;
 
     /**
      * Grade a student's response against the teacher's graphs.
@@ -109,12 +133,15 @@ class grading {
      * @param array $response the question's response array (has 'nodesjson').
      * @param bool $allowaddnodes whether this question allows students to add new nodes.
      * @param string[] $altresultgraphjsons extra alternate answer graphs (see evaluate_best()).
+     * @param bool $strict whether blanks must match by exact node/edge id (true, the
+     *      default) or also accept any structure-preserving rearrangement among
+     *      interchangeable blanks (false) - see this class's docblock.
      * @return float fraction correct, 0.0 to 1.0.
      */
     public static function grade(string $graphjson, string $resultgraphjson, array $response,
-            bool $allowaddnodes = true, array $altresultgraphjsons = []): float {
+            bool $allowaddnodes = true, array $altresultgraphjsons = [], bool $strict = true): float {
         list($correct, $total) = self::count_parts_right($graphjson, $resultgraphjson, $response, $allowaddnodes,
-                $altresultgraphjsons);
+                $altresultgraphjsons, $strict);
         return $total > 0 ? $correct / $total : 0.0;
     }
 
@@ -129,11 +156,13 @@ class grading {
      * @param array $response the question's response array (has 'nodesjson').
      * @param bool $allowaddnodes whether this question allows students to add new nodes.
      * @param string[] $altresultgraphjsons extra alternate answer graphs (see evaluate_best()).
+     * @param bool $strict see grade()'s docblock.
      * @return array [number of items correct, total number of items].
      */
     public static function count_parts_right(string $graphjson, string $resultgraphjson, array $response,
-            bool $allowaddnodes = true, array $altresultgraphjsons = []): array {
-        $report = self::evaluate_best($graphjson, $resultgraphjson, $altresultgraphjsons, $response, $allowaddnodes);
+            bool $allowaddnodes = true, array $altresultgraphjsons = [], bool $strict = true): array {
+        $report = self::evaluate_best($graphjson, $resultgraphjson, $altresultgraphjsons, $response, $allowaddnodes,
+                $strict);
         return [$report['correct'], $report['total']];
     }
 
@@ -150,12 +179,14 @@ class grading {
      * @param array $response the question's response array (has 'nodesjson').
      * @param bool $allowaddnodes whether this question allows students to add new nodes.
      * @param string[] $altresultgraphjsons extra alternate answer graphs (see evaluate_best()).
+     * @param bool $strict see grade()'s docblock.
      * @return array {nodes: {id: bool}, edges: {id: bool}, newnodes: {id: bool}} - true = correct.
      *      newnodes is keyed by the student's own added-node id, not a default-graph id.
      */
     public static function feedback_breakdown(string $graphjson, string $resultgraphjson, array $response,
-            bool $allowaddnodes = true, array $altresultgraphjsons = []): array {
-        $report = self::evaluate_best($graphjson, $resultgraphjson, $altresultgraphjsons, $response, $allowaddnodes);
+            bool $allowaddnodes = true, array $altresultgraphjsons = [], bool $strict = true): array {
+        $report = self::evaluate_best($graphjson, $resultgraphjson, $altresultgraphjsons, $response, $allowaddnodes,
+                $strict);
         return [
             'nodes' => $report['blanknodes'],
             'edges' => $report['blankedges'],
@@ -179,10 +210,11 @@ class grading {
      * @param array $response the question's response array (has 'nodesjson').
      * @param bool $allowaddnodes whether this question allows students to add new nodes.
      * @param string[] $altresultgraphjsons extra alternate answer graphs (see evaluate_best()).
+     * @param bool $strict see grade()'s docblock.
      * @return array the response with its wrong parts reset.
      */
     public static function clear_wrong(string $graphjson, string $resultgraphjson, array $response,
-            bool $allowaddnodes = true, array $altresultgraphjsons = []): array {
+            bool $allowaddnodes = true, array $altresultgraphjsons = [], bool $strict = true): array {
         $data = json_decode($response['nodesjson'] ?? '', true);
         if (!is_array($data)) {
             return $response;
@@ -190,7 +222,8 @@ class grading {
         // Clear towards whichever answer graph the response is already closest to -
         // the same one feedback/grading are using (see evaluate_best()) - rather than
         // always the primary, so alternates behave like a real accepted answer.
-        $report = self::evaluate_best($graphjson, $resultgraphjson, $altresultgraphjsons, $response, $allowaddnodes);
+        $report = self::evaluate_best($graphjson, $resultgraphjson, $altresultgraphjsons, $response, $allowaddnodes,
+                $strict);
 
         if (is_array($data['blanks'] ?? null)) {
             foreach (array_keys($report['wrongblanks']) as $key) {
@@ -246,18 +279,19 @@ class grading {
      * @param string[] $altresultgraphjsons extra alternate answer graphs, same shape as $resultgraphjson.
      * @param array $response the question's response array (has 'nodesjson').
      * @param bool $allowaddnodes whether this question allows students to add new nodes.
+     * @param bool $strict see grade()'s docblock.
      * @return array an evaluate() report - see its own docblock for the shape - or empty_report()
      *      if every candidate was blank.
      */
     protected static function evaluate_best(string $graphjson, string $resultgraphjson,
-            array $altresultgraphjsons, array $response, bool $allowaddnodes): array {
+            array $altresultgraphjsons, array $response, bool $allowaddnodes, bool $strict = true): array {
         $best = null;
         $bestfraction = -1.0;
         foreach (array_merge([$resultgraphjson], $altresultgraphjsons) as $candidate) {
             if (trim((string) $candidate) === '') {
                 continue;
             }
-            $report = self::evaluate($graphjson, (string) $candidate, $response, $allowaddnodes);
+            $report = self::evaluate($graphjson, (string) $candidate, $response, $allowaddnodes, $strict);
             $fraction = $report['total'] > 0 ? $report['correct'] / $report['total'] : 0.0;
             if ($fraction > $bestfraction) {
                 $bestfraction = $fraction;
@@ -298,6 +332,9 @@ class grading {
      * @param string $resultgraphjson the expected/correct result graph.
      * @param array $response the question's response array (has 'nodesjson').
      * @param bool $allowaddnodes whether this question allows students to add new nodes.
+     * @param bool $strict see grade()'s docblock; when false, blanks are matched through
+     *      build_permutation()'s best structure-preserving relabeling instead of straight
+     *      id equality.
      * @return array with keys total, correct, wrongblanks (blank key => true),
      *      wrongremovals (node id => true), expectedbyanchor
      *      (default-graph node id => list of accepted texts for new nodes hung off it),
@@ -305,7 +342,7 @@ class grading {
      *      and newnodes (student-added node id => bool, only for anchored candidates).
      */
     protected static function evaluate(string $graphjson, string $resultgraphjson, array $response,
-            bool $allowaddnodes): array {
+            bool $allowaddnodes, bool $strict = true): array {
         $report = [
             'total' => 0,
             'correct' => 0,
@@ -342,6 +379,14 @@ class grading {
         }
         $studentnodesbyid = self::index_by_id($studentnodes);
 
+        // Non-strict grading (see this class's docblock): find the best structure-preserving
+        // relabeling of the default graph's blank-bearing nodes, and grade every blank/
+        // floating-label/edge-label through it below instead of straight id equality.
+        // Strict grading (the default) never runs the search - $permutation stays empty,
+        // so every `$permutation['nodes'][$id] ?? $id` lookup below is a no-op identity.
+        $permutation = $strict ? ['nodes' => [], 'edges' => []]
+                : self::build_permutation($default, $resultnodes, $resultedges, $removednodes, $blanks);
+
         foreach ($default['nodes'] as $node) {
             $id = $node['id'] ?? null;
             $hasblank = answer_matcher::has_blank($node['text'] ?? '');
@@ -351,7 +396,7 @@ class grading {
                 continue;
             }
             $report['total']++;
-            $status = self::node_status($node, $resultnodes, $removednodes, $blanks);
+            $status = self::node_status($node, $resultnodes, $removednodes, $blanks, $permutation['nodes']);
             self::record($report, $status, 'node:' . ($id ?? '') . ':0', $id);
             if ($id !== null && $hasblank) {
                 $report['blanknodes'][$id] = ($status === self::ITEM_CORRECT);
@@ -366,7 +411,7 @@ class grading {
                 continue;
             }
             $report['total']++;
-            $status = self::edge_status($edge, $resultedges, $removednodes, $blanks);
+            $status = self::edge_status($edge, $resultedges, $removednodes, $blanks, $permutation['edges']);
             // An edge is only ever "removed" as a side effect of deleting one of its
             // endpoint nodes, so restoring it is that node's entry to undo, not the edge's.
             self::record($report, $status, 'edge:' . ($id ?? '') . ':0', null);
@@ -400,8 +445,9 @@ class grading {
                 }
                 $report['total']++;
                 $studentvalue = $blanks["floatingLabel:{$id}:0"] ?? '';
+                $targetid = $permutation['nodes'][$id] ?? $id;
                 $accepted = answer_matcher::strip_default_context($floatingtext,
-                        $resultnodes[$id]['floatingLabel'] ?? '');
+                        $resultnodes[$targetid]['floatingLabel'] ?? '');
                 $status = answer_matcher::matches($studentvalue, $accepted) ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
                 self::record($report, $status, 'floatingLabel:' . $id . ':0', null);
                 $report['floatinglabels'][$id] = ($status === self::ITEM_CORRECT);
@@ -639,10 +685,13 @@ class grading {
      * @param array $resultnodes result-graph nodes indexed by id.
      * @param array $removednodes ids the student deleted, as array keys.
      * @param array $blanks the response's blanks map.
+     * @param array $idmap non-strict grading's default-graph id => result-graph id
+     *      relabeling (see build_permutation()); empty under strict grading, in which
+     *      case every lookup below falls back to the node's own id.
      * @return string one of the ITEM_* constants.
      */
     protected static function node_status(array $node, array $resultnodes, array $removednodes,
-            array $blanks): string {
+            array $blanks, array $idmap = []): string {
         $id = $node['id'] ?? null;
         if ($id === null) {
             return self::ITEM_WRONG;
@@ -660,7 +709,8 @@ class grading {
             return self::ITEM_CORRECT;
         }
         $studentvalue = $blanks["node:{$id}:0"] ?? '';
-        $accepted = answer_matcher::strip_default_context($text, $resultnodes[$id]['text'] ?? '');
+        $targetid = $idmap[$id] ?? $id;
+        $accepted = answer_matcher::strip_default_context($text, $resultnodes[$targetid]['text'] ?? '');
         return answer_matcher::matches($studentvalue, $accepted) ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
     }
 
@@ -671,10 +721,14 @@ class grading {
      * @param array $resultedges result-graph edges indexed by id.
      * @param array $removednodes ids the student deleted, as array keys.
      * @param array $blanks the response's blanks map.
+     * @param array $edgeidmap non-strict grading's default-graph edge id => result-graph
+     *      edge id relabeling, derived from build_permutation()'s node relabeling; empty
+     *      under strict grading, in which case the lookup below falls back to the edge's
+     *      own id.
      * @return string one of the ITEM_* constants.
      */
     protected static function edge_status(array $edge, array $resultedges, array $removednodes,
-            array $blanks): string {
+            array $blanks, array $edgeidmap = []): string {
         $id = $edge['id'] ?? null;
         if ($id === null) {
             return self::ITEM_WRONG;
@@ -693,7 +747,417 @@ class grading {
             return self::ITEM_CORRECT;
         }
         $studentvalue = $blanks["edge:{$id}:0"] ?? '';
-        $accepted = answer_matcher::strip_default_context($text, $resultedges[$id]['label'] ?? '');
+        $targetid = $edgeidmap[$id] ?? $id;
+        $accepted = answer_matcher::strip_default_context($text, $resultedges[$targetid]['label'] ?? '');
         return answer_matcher::matches($studentvalue, $accepted) ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
+    }
+
+    /**
+     * Non-strict grading's core search: find the best structure-preserving relabeling
+     * ("π") of the default graph's BLANK-bearing nodes among themselves, so grading can
+     * accept any permutation of interchangeable siblings' answers rather than requiring
+     * the exact id/answer pairing the teacher happened to author - see this class's
+     * docblock for the full rationale and worked example.
+     *
+     * Every node present in both $default and $resultnodes is either:
+     * - "Fixed": no blank in its text, and (if a tree-mode leaf) no blank in its floating
+     *   label either - pure scaffolding, forced to π(u) = u. Anchoring the structure this
+     *   way is what confines a swap to true structural siblings and what makes swapping an
+     *   internal node correctly carry its subtree along - both fall out of the edge-
+     *   preservation constraint below alone, with no hardcoded parent/child notion needed.
+     * - "Free": has a blank (text and/or floating label) - eligible to be permuted with any
+     *   other Free node, subject to that same constraint.
+     * Nodes expected to be deleted (absent from $resultnodes) take no part in π at all.
+     *
+     * A candidate π is legal only if it preserves the default graph's edge structure: for
+     * every edge (u, v) in $default['edges'], (π(u), π(v)) must also be an edge there
+     * (identity substituted for any Fixed endpoint). Search picks whichever legal π
+     * maximises the number of matched blanks/floating labels/edge labels (branch-and-bound
+     * backtracking over the Free set, most-promising-candidate-first, with a hard step cap -
+     * self::MAX_PERMUTATION_STEPS - beyond which it simply stops searching and returns
+     * whatever best assignment it found so far, degrading toward strict/identity behaviour
+     * rather than risking a slow grading request on a pathologically symmetric graph).
+     *
+     * @param array $default the default (student-visible) graph, decoded.
+     * @param array $resultnodes result-graph nodes indexed by id.
+     * @param array $resultedges result-graph edges indexed by id.
+     * @param array $removednodes ids the student deleted, as array keys.
+     * @param array $blanks the response's blanks map.
+     * @return array {nodes: {default id => target id}, edges: {default edge id => target
+     *      edge id}} - both empty if there was nothing to permute (no Free nodes).
+     */
+    protected static function build_permutation(array $default, array $resultnodes, array $resultedges,
+            array $removednodes, array $blanks): array {
+        $mode = $default['mode'] ?? 'graph';
+        $edges = $default['edges'] ?? [];
+
+        $parentids = [];
+        foreach ($edges as $edge) {
+            if (isset($edge['from'])) {
+                $parentids[$edge['from']] = true;
+            }
+        }
+
+        $fixedids = [];
+        $freeids = [];
+        $hastextblank = [];
+        $hasfloatblank = [];
+        foreach ($default['nodes'] as $node) {
+            $id = $node['id'] ?? null;
+            if ($id === null || !array_key_exists($id, $resultnodes)) {
+                // Malformed, or expected-deleted: outside π's domain entirely.
+                continue;
+            }
+            $textblank = answer_matcher::has_blank($node['text'] ?? '');
+            $isleaf = $mode === 'tree' && !isset($parentids[$id]);
+            $floatblank = $isleaf && answer_matcher::has_blank($node['floatingLabel'] ?? '');
+            if ($textblank || $floatblank) {
+                $freeids[] = $id;
+                if ($textblank) {
+                    $hastextblank[$id] = true;
+                }
+                if ($floatblank) {
+                    $hasfloatblank[$id] = true;
+                }
+            } else {
+                $fixedids[$id] = true;
+            }
+        }
+
+        if (empty($freeids)) {
+            return ['nodes' => [], 'edges' => []];
+        }
+
+        $domain = $fixedids;
+        foreach ($freeids as $id) {
+            $domain[$id] = true;
+        }
+        $freeset = array_flip($freeids);
+
+        // The structure π must preserve, restricted to nodes actually in its domain -
+        // an edge to/from an expected-deleted node plays no part in this at all.
+        $outedges = [];
+        $inedges = [];
+        $outto = [];
+        $into = [];
+        $edgeidbyendpoints = [];
+        $totalitems = count($hastextblank) + count($hasfloatblank);
+        foreach ($edges as $edge) {
+            $from = $edge['from'] ?? null;
+            $to = $edge['to'] ?? null;
+            $eid = $edge['id'] ?? null;
+            if ($from === null || $to === null || $eid === null || !isset($domain[$from]) || !isset($domain[$to])) {
+                continue;
+            }
+            $blank = answer_matcher::has_blank($edge['label'] ?? '');
+            $outedges[$from][] = ['to' => $to, 'edgeid' => $eid, 'blank' => $blank];
+            $inedges[$to][] = ['from' => $from, 'edgeid' => $eid, 'blank' => $blank];
+            $outto[$from][] = $to;
+            $into[$to][] = $from;
+            $edgeidbyendpoints[$from][$to] = $eid;
+            if ($blank && (isset($freeset[$from]) || isset($freeset[$to]))) {
+                $totalitems++;
+            }
+        }
+
+        $outdegree = [];
+        $indegree = [];
+        foreach ($domain as $id => $unused) {
+            $outdegree[$id] = count($outedges[$id] ?? []);
+            $indegree[$id] = count($inedges[$id] ?? []);
+        }
+
+        // Processing order: most-constrained-first (most domain edges touching an
+        // already-ordered node), so a Free node's candidates get narrowed down by its
+        // neighbours as early in the search as possible. Fixed ids are "ordered" from
+        // the start - they're never branched on (see permutation_search()) but still
+        // anchor the connectivity count for whichever Free id gets picked first.
+        $order = [];
+        $ordered = $fixedids;
+        $remaining = $freeids;
+        while (!empty($remaining)) {
+            $bestid = null;
+            $bestscore = -1;
+            foreach ($remaining as $id) {
+                $score = 0;
+                foreach (($outedges[$id] ?? []) as $info) {
+                    if (isset($ordered[$info['to']])) {
+                        $score++;
+                    }
+                }
+                foreach (($inedges[$id] ?? []) as $info) {
+                    if (isset($ordered[$info['from']])) {
+                        $score++;
+                    }
+                }
+                if ($score > $bestscore) {
+                    $bestscore = $score;
+                    $bestid = $id;
+                }
+            }
+            $order[] = $bestid;
+            $ordered[$bestid] = true;
+            $remaining = array_values(array_diff($remaining, [$bestid]));
+        }
+
+        $state = [
+            'freeset' => $freeset,
+            'order' => $order,
+            'outedges' => $outedges,
+            'inedges' => $inedges,
+            'outto' => $outto,
+            'into' => $into,
+            'outdegree' => $outdegree,
+            'indegree' => $indegree,
+            'resultnodes' => $resultnodes,
+            'resultedges' => $resultedges,
+            'removednodes' => $removednodes,
+            'blanks' => $blanks,
+            'hastextblank' => $hastextblank,
+            'hasfloatblank' => $hasfloatblank,
+            'edgeidbyendpoints' => $edgeidbyendpoints,
+            'totalitems' => $totalitems,
+            'best' => -1.0,
+            'bestassign' => [],
+            'steps' => 0,
+        ];
+
+        self::permutation_search($state, 0, [], [], 0.0, 0);
+
+        $nodemap = [];
+        foreach ($state['bestassign'] as $id => $target) {
+            if ($id !== $target) {
+                $nodemap[$id] = $target;
+            }
+        }
+        if (empty($nodemap)) {
+            return ['nodes' => [], 'edges' => []];
+        }
+
+        $edgemap = [];
+        foreach ($edges as $edge) {
+            $from = $edge['from'] ?? null;
+            $to = $edge['to'] ?? null;
+            $eid = $edge['id'] ?? null;
+            if ($from === null || $to === null || $eid === null) {
+                continue;
+            }
+            $tfrom = $nodemap[$from] ?? $from;
+            $tto = $nodemap[$to] ?? $to;
+            if ($tfrom === $from && $tto === $to) {
+                continue;
+            }
+            $target = $edgeidbyendpoints[$tfrom][$tto] ?? null;
+            if ($target !== null) {
+                $edgemap[$eid] = $target;
+            }
+        }
+
+        return ['nodes' => $nodemap, 'edges' => $edgemap];
+    }
+
+    /**
+     * Recursive branch-and-bound step of build_permutation()'s search: decide π for
+     * $state['order'][$index] onward, tracking the best-scoring complete assignment
+     * found in $state['best']/$state['bestassign'] (both modified in place).
+     *
+     * @param array $state search state - see build_permutation() for every key's meaning.
+     * @param int $index position in $state['order'] being decided.
+     * @param array $assign π so far, Free id => Free id (Fixed ids are never present here -
+     *      they're implicitly themselves).
+     * @param array $used target ids already claimed by $assign, as array keys.
+     * @param float $score total matched items so far along this branch.
+     * @param int $scoredcount total items (node/floating-label/edge blanks) accounted for
+     *      so far along this branch - lets the bound below know how many are left.
+     */
+    protected static function permutation_search(array &$state, int $index, array $assign, array $used,
+            float $score, int $scoredcount): void {
+        $state['steps']++;
+        if ($state['steps'] > self::MAX_PERMUTATION_STEPS) {
+            return;
+        }
+        if ($index >= count($state['order'])) {
+            if ($score > $state['best']) {
+                $state['best'] = $score;
+                $state['bestassign'] = $assign;
+            }
+            return;
+        }
+        $id = $state['order'][$index];
+        if (!isset($state['freeset'][$id])) {
+            // Fixed anchor: always itself, nothing to branch on - move straight on.
+            self::permutation_search($state, $index + 1, $assign, $used, $score, $scoredcount);
+            return;
+        }
+
+        // Bound: even a perfect run through every remaining item can't beat the best
+        // complete assignment found so far - stop exploring this branch.
+        $remaining = $state['totalitems'] - $scoredcount;
+        if ($score + $remaining <= $state['best']) {
+            return;
+        }
+
+        foreach (self::permutation_candidates($state, $id, $assign, $used) as [$target, $delta, $counted]) {
+            if ($state['steps'] > self::MAX_PERMUTATION_STEPS) {
+                return;
+            }
+            $newassign = $assign;
+            $newassign[$id] = $target;
+            $newused = $used;
+            $newused[$target] = true;
+            self::permutation_search($state, $index + 1, $newassign, $newused, $score + $delta,
+                    $scoredcount + $counted);
+        }
+    }
+
+    /**
+     * Every structurally-legal target id for $id (edge-preservation-checked against
+     * already-decided neighbours, degree-signature-filtered), each paired with the score
+     * delta assigning π($id) = target would add right now - see permutation_delta() - and
+     * ordered best-delta-first so a fully-correct response's optimum is found (and starts
+     * pruning inferior branches) almost immediately.
+     *
+     * @param array $state search state - see build_permutation().
+     * @param string $id the Free id being decided.
+     * @param array $assign π decided so far (does not include $id).
+     * @param array $used target ids already claimed, as array keys.
+     * @return array list of [target id, score delta, items counted] triples.
+     */
+    protected static function permutation_candidates(array $state, string $id, array $assign, array $used): array {
+        $resolved = static function(string $w) use ($state, $assign): ?string {
+            if (array_key_exists($w, $assign)) {
+                return $assign[$w];
+            }
+            return isset($state['freeset'][$w]) ? null : $w;
+        };
+
+        $candidates = [];
+        foreach (array_keys($state['freeset']) as $target) {
+            if (isset($used[$target])) {
+                continue;
+            }
+            if (($state['outdegree'][$target] ?? 0) !== ($state['outdegree'][$id] ?? 0)
+                    || ($state['indegree'][$target] ?? 0) !== ($state['indegree'][$id] ?? 0)) {
+                continue;
+            }
+            $ok = true;
+            foreach (($state['outto'][$id] ?? []) as $w) {
+                $rw = $resolved($w);
+                if ($rw !== null && !in_array($rw, $state['outto'][$target] ?? [], true)) {
+                    $ok = false;
+                    break;
+                }
+            }
+            if ($ok) {
+                foreach (($state['into'][$id] ?? []) as $w) {
+                    $rw = $resolved($w);
+                    if ($rw !== null && !in_array($rw, $state['into'][$target] ?? [], true)) {
+                        $ok = false;
+                        break;
+                    }
+                }
+            }
+            if (!$ok) {
+                continue;
+            }
+            [$delta, $counted] = self::permutation_delta($state, $id, $target, $assign);
+            $candidates[] = [$target, $delta, $counted];
+        }
+        usort($candidates, static fn($a, $b) => $b[1] <=> $a[1]);
+        return $candidates;
+    }
+
+    /**
+     * Score contribution of assigning π($id) = $target right now: $id's own text/floating-
+     * label blank(s) (always resolved at this point), plus any blank-labelled edge touching
+     * $id whose OTHER endpoint was already resolved in $assignbefore (an edge whose other
+     * endpoint isn't decided yet is left for THAT endpoint's own turn - each qualifying edge
+     * is therefore counted exactly once, at whichever of its two endpoints is decided last).
+     * A student-deleted node/edge-endpoint always contributes 0, matching node_status()'s/
+     * edge_status()'s own "deleted" handling - no target text could ever change that.
+     *
+     * @param array $state search state - see build_permutation().
+     * @param string $id the Free id being assigned right now.
+     * @param string $target the candidate target id.
+     * @param array $assignbefore π decided so far, NOT including $id (used to tell whether
+     *      an edge's other endpoint was already resolved before this step).
+     * @return array [score delta added, number of items accounted for].
+     */
+    protected static function permutation_delta(array $state, string $id, string $target, array $assignbefore): array {
+        $resultnodes = $state['resultnodes'];
+        $removednodes = $state['removednodes'];
+        $blanks = $state['blanks'];
+
+        $delta = 0.0;
+        $counted = 0;
+        $node = $resultnodes[$target] ?? [];
+        $deleted = array_key_exists($id, $removednodes);
+
+        if (isset($state['hastextblank'][$id])) {
+            $counted++;
+            if (!$deleted) {
+                $studentvalue = $blanks["node:{$id}:0"] ?? '';
+                if (answer_matcher::matches($studentvalue, $node['text'] ?? '')) {
+                    $delta += 1.0;
+                }
+            }
+        }
+        if (isset($state['hasfloatblank'][$id])) {
+            $counted++;
+            if (!$deleted) {
+                $studentvalue = $blanks["floatingLabel:{$id}:0"] ?? '';
+                if (answer_matcher::matches($studentvalue, $node['floatingLabel'] ?? '')) {
+                    $delta += 1.0;
+                }
+            }
+        }
+
+        $resolved = static function(string $w) use ($state, $assignbefore): ?string {
+            if (array_key_exists($w, $assignbefore)) {
+                return $assignbefore[$w];
+            }
+            return isset($state['freeset'][$w]) ? null : $w;
+        };
+
+        foreach (($state['outedges'][$id] ?? []) as $info) {
+            if (!$info['blank']) {
+                continue;
+            }
+            $rw = $resolved($info['to']);
+            if ($rw === null) {
+                continue;
+            }
+            $counted++;
+            if ($deleted || array_key_exists($info['to'], $removednodes)) {
+                continue;
+            }
+            $mappedid = $state['edgeidbyendpoints'][$target][$rw] ?? null;
+            $studentvalue = $blanks['edge:' . $info['edgeid'] . ':0'] ?? '';
+            $accepted = $mappedid !== null ? ($state['resultedges'][$mappedid]['label'] ?? '') : '';
+            if (answer_matcher::matches($studentvalue, $accepted)) {
+                $delta += 1.0;
+            }
+        }
+        foreach (($state['inedges'][$id] ?? []) as $info) {
+            if (!$info['blank']) {
+                continue;
+            }
+            $rw = $resolved($info['from']);
+            if ($rw === null) {
+                continue;
+            }
+            $counted++;
+            if ($deleted || array_key_exists($info['from'], $removednodes)) {
+                continue;
+            }
+            $mappedid = $state['edgeidbyendpoints'][$rw][$target] ?? null;
+            $studentvalue = $blanks['edge:' . $info['edgeid'] . ':0'] ?? '';
+            $accepted = $mappedid !== null ? ($state['resultedges'][$mappedid]['label'] ?? '') : '';
+            if (answer_matcher::matches($studentvalue, $accepted)) {
+                $delta += 1.0;
+            }
+        }
+
+        return [$delta, $counted];
     }
 }

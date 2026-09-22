@@ -25,7 +25,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'qtype_graph';
-$plugin->version   = 2026091005;
+$plugin->version   = 2026091006;
 
 $plugin->requires  = 2025041400; // Moodle 5.0 and any later version.
 

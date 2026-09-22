@@ -280,5 +280,20 @@ function xmldb_qtype_graph_upgrade(int $oldversion): bool {
         upgrade_plugin_savepoint(true, 2026091005, 'qtype', 'graph');
     }
 
+    if ($oldversion < 2026091006) {
+        $table = new xmldb_table('qtype_graph_options');
+
+        // Defaults to 1 (strict) so every existing question keeps grading
+        // exactly as before - non-strict (order-independent sibling)
+        // matching is opt-in per question, see classes/grading.php.
+        $field = new xmldb_field('strictinputchecks', XMLDB_TYPE_INTEGER, '1', null,
+                XMLDB_NOTNULL, null, '1', 'allowdeletenodes');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026091006, 'qtype', 'graph');
+    }
+
     return true;
 }
