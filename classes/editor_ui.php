@@ -100,6 +100,14 @@ class editor_ui {
         <span class="qtype_graph-menulabel">Color</span>
         <div class="qtype_graph-colorrow" data-role="color-row"></div>
       </div>
+      <div class="qtype_graph-menusection" data-role="node-textcolor-section">
+        <span class="qtype_graph-menulabel">Color de texto</span>
+        <div class="qtype_graph-textcolorrow">
+          <input type="text" data-role="node-textcolor-input" class="qtype_graph-textinput" placeholder="#ffffff">
+          <input type="color" data-role="node-textcolor-picker" class="qtype_graph-textcolorpicker"
+              aria-label="Color de texto">
+        </div>
+      </div>
       <details class="qtype_graph-collapsible" data-role="node-shape-section">
         <summary class="qtype_graph-menulabel">Forma</summary>
         <div class="qtype_graph-shaperow" data-role="shape-row">
@@ -136,6 +144,14 @@ class editor_ui {
         <span class="qtype_graph-menulabel">Opciones [[opt1;opt2]] (puedes agregar texto antes/después de los corchetes)</span>
         <input type="text" data-role="floatinglabel-select-input" class="qtype_graph-textinput">
       </div>
+      <div class="qtype_graph-menusection" data-role="floatinglabel-textcolor-section">
+        <span class="qtype_graph-menulabel">Color de texto</span>
+        <div class="qtype_graph-textcolorrow">
+          <input type="text" data-role="floatinglabel-textcolor-input" class="qtype_graph-textinput" placeholder="#e7e9ee">
+          <input type="color" data-role="floatinglabel-textcolor-picker" class="qtype_graph-textcolorpicker"
+              aria-label="Color de texto">
+        </div>
+      </div>
       <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-input-btn" hidden>Marcar como input</button>
       <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-select-btn" hidden>Marcar como selector</button>
       <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-floatinglabel-btn">Eliminar etiqueta</button>
@@ -152,6 +168,14 @@ class editor_ui {
       <div class="qtype_graph-menusection" data-role="edge-value-section" hidden>
         <span class="qtype_graph-menulabel">Respuesta</span>
         <select data-role="edge-value-select" class="qtype_graph-textinput"></select>
+      </div>
+      <div class="qtype_graph-menusection" data-role="edge-textcolor-section">
+        <span class="qtype_graph-menulabel">Color de texto</span>
+        <div class="qtype_graph-textcolorrow">
+          <input type="text" data-role="edge-textcolor-input" class="qtype_graph-textinput" placeholder="#1f2937">
+          <input type="color" data-role="edge-textcolor-picker" class="qtype_graph-textcolorpicker"
+              aria-label="Color de texto">
+        </div>
       </div>
       <button type="button" class="qtype_graph-menubtn" data-role="add-edge-input-btn" hidden>Marcar como input</button>
       <button type="button" class="qtype_graph-menubtn" data-role="add-edge-select-btn" hidden>Marcar como selector</button>

@@ -266,20 +266,26 @@
 }
 
 /* Default "Nivel <depth>" title, or the edit form's "levellabeltitle_<depth>"
-   override - see renderLevelLabels() in amd/src/editor.js. */
+   override - see renderLevelLabels() in amd/src/editor.js. --item-text-color
+   (set inline on the parent .qtype_graph-levellabel from that same depth's
+   "levellabelcolor_<depth>" override) is the SAME custom property
+   applyNodeTextColor()/applyEdgeTextColor()/applyFloatingLabelTextColor()
+   use elsewhere - safe to share since a level label is never nested inside a
+   node/edge/floating label, so there's no risk of inheriting one of theirs. */
 .qtype_graph-levellabel-title {
   font-size: 16px;
   font-weight: 600;
-  color: var(--qtype-graph-muted);
+  color: var(--item-text-color, var(--qtype-graph-muted));
   white-space: nowrap;
 }
 
 /* The edit form's "levellabelsubtitle_<depth>" override - empty (not rendered
-   at all) by default. */
+   at all) by default. Same --item-text-color as .qtype_graph-levellabel-title
+   above - a level label has one text color, not a separate one per line. */
 .qtype_graph-levellabel-subtitle {
   font-size: 13px;
   font-weight: 400;
-  color: var(--qtype-graph-muted);
+  color: var(--item-text-color, var(--qtype-graph-muted));
   opacity: 0.75;
   white-space: nowrap;
 }
@@ -338,14 +344,17 @@
 }
 
 .qtype_graph-edge-label {
-  /* --qtype-graph-canvas-text (set inline on .qtype_graph-canvas by
-     setCanvasStyle() in amd/src/editor.js, from the question's own
-     "Color de texto" setting) overrides this when set, exactly like
-     --qtype-graph-canvas-bg already does for the canvas background below -
-     see edit_graph_form.php's textcolorgroup. The #1f2937 fallback (not
-     --qtype-graph-text, a near-white meant for the toolbar/menus' own dark
-     background) is tuned for the canvas's own light default background. */
-  fill: var(--qtype-graph-canvas-text, #1f2937);
+  /* --item-text-color (set inline on this edge's own <g> by
+     applyEdgeTextColor() in amd/src/editor.js, from the edge menu's own
+     "Color de texto" picker) wins when this edge has its own color;
+     otherwise falls back to --qtype-graph-canvas-text (set inline on
+     .qtype_graph-canvas by setCanvasStyle(), from the question's own
+     now-hidden legacy "Color de texto" setting - see edit_graph_form.php),
+     exactly like --qtype-graph-canvas-bg already does for the canvas
+     background below. The #1f2937 fallback (not --qtype-graph-text, a
+     near-white meant for the toolbar/menus' own dark background) is tuned
+     for the canvas's own light default background. */
+  fill: var(--item-text-color, var(--qtype-graph-canvas-text, #1f2937));
   font-size: 14px;
   paint-order: stroke;
   stroke: var(--qtype-graph-canvas-bg, var(--qtype-graph-bg));
@@ -376,12 +385,13 @@
      render as no visible edge at all. */
   border: 1.5px solid var(--node-border-color, color-mix(in srgb, var(--node-color) 75%, black));
   border-radius: 10px;
-  /* --qtype-graph-canvas-text override, same as .qtype_graph-edge-label above -
-     white is the right default here since it reads well against every entry
-     in COLORS[] (amd/src/editor.js), but a teacher-chosen text color applies
-     to node text too (see edit_graph_form.php's textcolorgroup help text for
-     the caveat that it might not suit every node color equally well). */
-  color: var(--qtype-graph-canvas-text, #ffffff);
+  /* --item-text-color (set inline on this node by applyNodeTextColor() in
+     amd/src/editor.js, from the node menu's own "Color de texto" picker)
+     wins when this node has its own color; otherwise falls back to
+     --qtype-graph-canvas-text, same as .qtype_graph-edge-label above. White
+     is the right final default here since it reads well against every entry
+     in COLORS[] (amd/src/editor.js). */
+  color: var(--item-text-color, var(--qtype-graph-canvas-text, #ffffff));
   font-size: 14px;
   line-height: 1.4;
   text-align: center;
@@ -453,7 +463,18 @@
   border-radius: 999px;
   background: var(--qtype-graph-panel);
   border: 1px dashed var(--qtype-graph-border);
-  color: var(--qtype-graph-text);
+  /* --item-text-color (set inline on .qtype_graph-floatinglabel by
+     applyFloatingLabelTextColor() in amd/src/editor.js, from the floating
+     label's own "Color de texto" picker) - deliberately NOT chained to
+     --qtype-graph-canvas-text like the node/edge text colors above: this
+     chip's background is the dark panel color regardless of the canvas's
+     own background, so it was never tied to that setting, and
+     applyFloatingLabelTextColor() always resets --item-text-color to
+     "initial" (never just unset) when this label has no color of its own,
+     so it can never inherit the parent node's own --item-text-color either -
+     the two are visually unrelated (a light node-fill color would be
+     illegible against this chip's dark background). */
+  color: var(--item-text-color, var(--qtype-graph-text));
 }
 
 /* Editor mode only (see createNode() in amd/src/editor.js) - a solid border and pointer
@@ -699,6 +720,36 @@
   border-color: var(--qtype-graph-accent);
 }
 
+/*
+ * The node/edge/floating-label menus' own per-item "Color de texto" picker
+ * (node-textcolor-section/edge-textcolor-section/floatinglabel-textcolor-section
+ * in classes/editor_ui.php) - a plain hex .qtype_graph-textinput paired with a
+ * native color swatch, the same text-field-plus-swatch pattern the question
+ * edit form itself uses for bgcolor/gridcolor (edit_graph_form.php), just
+ * themed for this dark menu instead of Moodle's own form chrome.
+ */
+.qtype_graph-textcolorrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.qtype_graph-textcolorrow .qtype_graph-textinput {
+  flex: 1;
+  width: auto;
+}
+
+.qtype_graph-textcolorpicker {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  padding: 2px;
+  border: 1px solid var(--qtype-graph-border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
 .qtype_graph-menubtn {
   background: var(--qtype-graph-accent-soft);
   border: 1px solid var(--qtype-graph-accent);
@@ -780,10 +831,13 @@
   background: var(--qtype-graph-bg);
   border: 1px solid var(--qtype-graph-accent);
   border-radius: 4px;
-  /* --qtype-graph-canvas-text override (see .qtype_graph-edge-label above) - the
-     #1f2937 fallback (not --qtype-graph-text, a near-white meant for the dark
-     toolbar/menus) is tuned for this chip's own light background above. */
-  color: var(--qtype-graph-canvas-text, #1f2937);
+  /* --item-text-color override (see .qtype_graph-edge-label above) - shared by
+     a blank rendered inside a node, an edge label, or a floating label, so
+     whichever of the three this blank happens to be nested inside wins via
+     plain CSS inheritance. The #1f2937 fallback (not --qtype-graph-text, a
+     near-white meant for the dark toolbar/menus) is tuned for this chip's
+     own light background above. */
+  color: var(--item-text-color, var(--qtype-graph-canvas-text, #1f2937));
   font-family: inherit;
   vertical-align: baseline;
 }
@@ -809,8 +863,8 @@
   background: var(--qtype-graph-bg);
   border: 1px solid var(--qtype-graph-accent);
   border-radius: 4px;
-  /* --qtype-graph-canvas-text override, same reasoning as .qtype_graph-blank-input above. */
-  color: var(--qtype-graph-canvas-text, #1f2937);
+  /* --item-text-color override, same reasoning as .qtype_graph-blank-input above. */
+  color: var(--item-text-color, var(--qtype-graph-canvas-text, #1f2937));
   font-family: inherit;
   vertical-align: baseline;
 }
@@ -843,7 +897,7 @@
   /* Transparent background - this sits directly on the node's own colored fill
      (.qtype_graph-node), so it shares that element's own text-color override/
      fallback (white), not the light-chip #1f2937 fallback used below. */
-  color: var(--qtype-graph-canvas-text, #ffffff);
+  color: var(--item-text-color, var(--qtype-graph-canvas-text, #ffffff));
   font: inherit;
   text-align: center;
   padding: 2px 4px;
@@ -862,7 +916,7 @@
   border-radius: 6px;
   /* Own light chip background (like .qtype_graph-blank-select above), unlike
      .qtype_graph-node-text-input above it - the #1f2937 fallback matches that. */
-  color: var(--qtype-graph-canvas-text, #1f2937);
+  color: var(--item-text-color, var(--qtype-graph-canvas-text, #1f2937));
   font: inherit;
   text-align: center;
   padding: 2px 4px;
@@ -883,12 +937,13 @@
   justify-content: center;
   white-space: nowrap;
   font-size: 14px;
-  /* Same --qtype-graph-canvas-text/-bg overrides as .qtype_graph-edge-label above -
-     this is the SAME connection label, just rendered as HTML (via
-     .qtype_graph-edge-label-fo's <foreignObject>) instead of plain SVG text
-     whenever it needs to host an actual <input>/<select> blank
-     (.qtype_graph-blank-input/-select nested inside, styled separately above). */
-  color: var(--qtype-graph-canvas-text, #1f2937);
+  /* Same --item-text-color/--qtype-graph-canvas-text/-bg overrides as
+     .qtype_graph-edge-label above - this is the SAME connection label, just
+     rendered as HTML (via .qtype_graph-edge-label-fo's <foreignObject>)
+     instead of plain SVG text whenever it needs to host an actual
+     <input>/<select> blank (.qtype_graph-blank-input/-select nested inside,
+     styled separately above). */
+  color: var(--item-text-color, var(--qtype-graph-canvas-text, #1f2937));
   background: var(--qtype-graph-canvas-bg, var(--qtype-graph-bg));
   padding: 1px 4px;
   border-radius: 4px;

@@ -46,6 +46,7 @@
     // is always null, so this stub's body never runs.
     var FormChangeChecker = {markFormAsDirty: function() {}};
 
+
     const SVG_NS = 'http://www.w3.org/2000/svg';
     // Each entry is {bg, border} - border is optional: when omitted, the node
     // falls back to a CSS-computed darkened shade of bg (see .qtype_graph-node's
@@ -510,6 +511,9 @@
         const nodeSelectSection = root.querySelector('[data-role="node-select-section"]');
         const nodeSelectInput = root.querySelector('[data-role="node-select-input"]');
         const nodeColorSection = root.querySelector('[data-role="node-color-section"]');
+        const nodeTextColorSection = root.querySelector('[data-role="node-textcolor-section"]');
+        const nodeTextColorInput = root.querySelector('[data-role="node-textcolor-input"]');
+        const nodeTextColorPicker = root.querySelector('[data-role="node-textcolor-picker"]');
         const nodeShapeSection = root.querySelector('[data-role="node-shape-section"]');
         const nodeTextInput = root.querySelector('[data-role="node-text-input"]');
         const colorRow = root.querySelector('[data-role="color-row"]');
@@ -524,6 +528,8 @@
         const floatingLabelTextInput = root.querySelector('[data-role="floatinglabel-text-input"]');
         const floatingLabelSelectSection = root.querySelector('[data-role="floatinglabel-select-section"]');
         const floatingLabelSelectInput = root.querySelector('[data-role="floatinglabel-select-input"]');
+        const floatingLabelTextColorInput = root.querySelector('[data-role="floatinglabel-textcolor-input"]');
+        const floatingLabelTextColorPicker = root.querySelector('[data-role="floatinglabel-textcolor-picker"]');
         const addFloatingLabelInputBtn = root.querySelector('[data-role="add-floatinglabel-input-btn"]');
         const addFloatingLabelSelectBtn = root.querySelector('[data-role="add-floatinglabel-select-btn"]');
         const deleteFloatingLabelBtn = root.querySelector('[data-role="delete-floatinglabel-btn"]');
@@ -533,6 +539,9 @@
         const edgeSelectInput = root.querySelector('[data-role="edge-select-input"]');
         const edgeValueSection = root.querySelector('[data-role="edge-value-section"]');
         const edgeValueSelect = root.querySelector('[data-role="edge-value-select"]');
+        const edgeTextColorSection = root.querySelector('[data-role="edge-textcolor-section"]');
+        const edgeTextColorInput = root.querySelector('[data-role="edge-textcolor-input"]');
+        const edgeTextColorPicker = root.querySelector('[data-role="edge-textcolor-picker"]');
         const addEdgeInputBtn = root.querySelector('[data-role="add-edge-input-btn"]');
         const addEdgeSelectBtn = root.querySelector('[data-role="add-edge-select-btn"]');
         const deleteEdgeBtn = root.querySelector('[data-role="delete-edge-btn"]');
@@ -546,6 +555,71 @@
             addFloatingLabelInputBtn.hidden = false;
             addFloatingLabelSelectBtn.hidden = false;
         }
+
+        /**
+         * Populates a "Color de texto" text+swatch pair (node/edge/floating-label
+         * menu) from a stored value. The text field always shows the raw value
+         * (including '' - "no color of its own"); the swatch only updates when
+         * it's a valid 6-digit hex, since a native <input type=color> can't
+         * represent "unset" and would otherwise just snap to black - same
+         * reasoning as wireColorPair() in initCanvasSettings() below.
+         *
+         * @param {Element} textInput
+         * @param {Element} picker
+         * @param {string} value
+         */
+        function populateColorField(textInput, picker, value) {
+            textInput.value = value || '';
+            if (/^#[0-9a-fA-F]{6}$/.test(value)) {
+                picker.value = value;
+            }
+        }
+
+        /**
+         * Wires a "Color de texto" text+swatch pair so either control updates the
+         * other and calls setColor() with the resulting value - setColor is a
+         * closure that looks up whichever node/edge/floating label is currently
+         * active at the time of the edit (activeNodeId/activeEdge/
+         * activeFloatingLabelNodeId), since this is wired once at editor setup,
+         * long before any specific one is selected.
+         *
+         * @param {Element} textInput
+         * @param {Element} picker
+         * @param {function(string)} setColor
+         */
+        function wireColorField(textInput, picker, setColor) {
+            textInput.addEventListener('input', () => {
+                const value = textInput.value.trim();
+                if (/^#[0-9a-fA-F]{6}$/.test(value)) {
+                    picker.value = value;
+                }
+                setColor(value);
+                notifyChange();
+            });
+            picker.addEventListener('input', () => {
+                textInput.value = picker.value;
+                setColor(picker.value);
+                notifyChange();
+            });
+        }
+
+        wireColorField(nodeTextColorInput, nodeTextColorPicker, (color) => {
+            if (activeNodeId) {
+                applyNodeTextColor(nodes.get(activeNodeId).el, color);
+            }
+        });
+
+        wireColorField(edgeTextColorInput, edgeTextColorPicker, (color) => {
+            if (activeEdge) {
+                applyEdgeTextColor(activeEdge.group, color);
+            }
+        });
+
+        wireColorField(floatingLabelTextColorInput, floatingLabelTextColorPicker, (color) => {
+            if (activeFloatingLabelNodeId) {
+                applyFloatingLabelTextColor(nodes.get(activeFloatingLabelNodeId).floatingLabelWrap, color);
+            }
+        });
 
         // Sibling editors (by container id) this instance pushes fill-in-the-blank
         // clears and layout changes into: starts with addInputTargetContainerId (the
@@ -690,13 +764,13 @@
                 root.dataset.showlevellabels !== '0', root.dataset.textcolor || '');
 
         /**
-         * Set the per-depth level-label overrides (title/subtitle/show, one entry
-         * per tree depth) and re-render them if currently in tree mode. Read
+         * Set the per-depth level-label overrides (title/subtitle/show/color, one
+         * entry per tree depth) and re-render them if currently in tree mode. Read
          * generically off the container's own data-levellabelsjson (same reasoning
          * as setCanvasStyle() above) at setup, and called live from
          * initLevelLabelOverrides() below whenever the teacher edits an override row.
          *
-         * @param {Array} overrides index = depth, each {show, title, subtitle} or absent.
+         * @param {Array} overrides index = depth, each {show, title, subtitle, color} or absent.
          */
         function setLevelLabelOverrides(overrides) {
             levelLabelOverrides = Array.isArray(overrides) ? overrides : [];
@@ -1026,6 +1100,13 @@
                 }
                 const label = document.createElement('div');
                 label.className = 'qtype_graph-levellabel';
+                // --item-text-color read by .qtype_graph-levellabel-title/-subtitle
+                // (styles.css) - same custom property node/edge/floating-label text
+                // color already use (see applyNodeTextColor() etc. above), safe to
+                // reuse here since a level label is never nested inside one of those.
+                if (override && override.color) {
+                    label.style.setProperty('--item-text-color', override.color);
+                }
                 const titleEl = document.createElement('div');
                 titleEl.className = 'qtype_graph-levellabel-title';
                 titleEl.textContent = (override && override.title) ? override.title : `Nivel ${d}`;
@@ -1232,7 +1313,7 @@
             refreshAllFloatingLabelVisibility();
         }
 
-        function createEdge(fromId, toId, label, locked, id) {
+        function createEdge(fromId, toId, label, locked, id, textColor) {
             if (!id) {
                 edgeCounter += 1;
                 id = `edge-${Date.now().toString(36)}-${edgeCounter}`;
@@ -1243,6 +1324,7 @@
             if (locked) {
                 group.classList.add('qtype_graph-edge-group--locked');
             }
+            applyEdgeTextColor(group, textColor || '');
 
             const hitPath = document.createElementNS(SVG_NS, 'path');
             hitPath.classList.add('qtype_graph-edge-hit');
@@ -1442,6 +1524,12 @@
             edgeTextSection.hidden = attemptRestricted || !!selectOptions;
             edgeSelectSection.hidden = !selectOptions;
             edgeValueSection.hidden = !attemptSelect;
+            // Same locked-based visibility as node-color-section (openMenu() below) -
+            // in practice always visible here, since a locked edge never even gets the
+            // click listener that reaches this menu (see createEdge()).
+            edgeTextColorSection.hidden = edge.locked;
+            populateColorField(edgeTextColorInput, edgeTextColorPicker,
+                    edge.group.style.getPropertyValue('--item-text-color').trim());
             edgeLabelInput.value = edge.label;
             edgeLabelInput.readOnly = attemptMode && !edge.locked && newEdgeContentType === 'text';
             // Shown WITH its [[...]] brackets (unlike a plain options list) so text typed
@@ -1664,6 +1752,11 @@
             floatingLabelTextInput.value = text;
             // Shown WITH its [[...]] brackets (see nodeSelectInput above for why).
             floatingLabelSelectInput.value = selectOptions ? text : '';
+            // 'initial' is applyFloatingLabelTextColor()'s own sentinel for "no color
+            // of its own" (see that function's docblock) - never shown as a real value.
+            const rawTextColor = record.floatingLabelWrap.style.getPropertyValue('--item-text-color').trim();
+            populateColorField(floatingLabelTextColorInput, floatingLabelTextColorPicker,
+                    rawTextColor === 'initial' ? '' : rawTextColor);
 
             const wrapRect = record.floatingLabelWrap.getBoundingClientRect();
             const canvasRect = canvas.getBoundingClientRect();
@@ -1774,6 +1867,7 @@
             nodeTextSection.hidden = locked || attemptRestricted || !!selectOptions;
             nodeSelectSection.hidden = locked || !selectOptions;
             nodeColorSection.hidden = locked;
+            nodeTextColorSection.hidden = locked;
             nodeShapeSection.hidden = locked;
             addConnectedBtn.hidden = !allowAddNodes;
 
@@ -1786,12 +1880,29 @@
             addFloatingLabelBtn.hidden = attemptMode || locked || !isLeaf || hasFloatingLabel;
             deleteNodeBtn.hidden = !canDeleteThisNode;
 
+            // A locked (teacher-authored) node with add/delete both disabled offers
+            // nothing here - every section/button above ends up hidden. Rather than
+            // pop open a visibly empty menu, back out of the openMenu() we started
+            // (closeMenus() above already ran, and activeNodeId/menuopen class were
+            // just set) and leave the node non-interactive.
+            const hasVisibleContent = !nodeTextSection.hidden || !nodeSelectSection.hidden ||
+                    !nodeColorSection.hidden || !nodeTextColorSection.hidden || !nodeShapeSection.hidden ||
+                    !addConnectedBtn.hidden || !addInputBtn.hidden || !addSelectBtn.hidden ||
+                    !addFloatingLabelBtn.hidden || !deleteNodeBtn.hidden;
+            if (!hasVisibleContent) {
+                closeMenu();
+                return;
+            }
+
             if (!locked) {
                 if (!attemptRestricted) {
                     nodeTextInput.value = getRecordText(record);
                     // Shown WITH its [[...]] brackets (see edgeSelectInput above for why).
                     nodeSelectInput.value = selectOptions ? getRecordText(record) : '';
                 }
+
+                populateColorField(nodeTextColorInput, nodeTextColorPicker,
+                        record.el.style.getPropertyValue('--item-text-color').trim());
 
                 const currentColor = getComputedStyle(record.el).getPropertyValue('--node-color').trim();
                 colorRow.innerHTML = '';
@@ -2095,7 +2206,59 @@
             }
         }
 
-        function createNode(left, top, text, color, locked, id, shape, borderColor, floatingLabel) {
+        /**
+         * Sets (or clears) one node's own text color, read by .qtype_graph-node
+         * and everything nested inside it (its text/select/blank inputs) via the
+         * shared --item-text-color custom property - see styles.css. Falls back to
+         * --qtype-graph-canvas-text (the question-level default) when cleared.
+         *
+         * @param {Element} el the .qtype_graph-node element.
+         * @param {string} color hex color, or '' to clear.
+         */
+        function applyNodeTextColor(el, color) {
+            if (color) {
+                el.style.setProperty('--item-text-color', color);
+            } else {
+                el.style.removeProperty('--item-text-color');
+            }
+        }
+
+        /**
+         * Sets (or clears) one edge's own label text color, the same
+         * --item-text-color mechanism as applyNodeTextColor() above, set on the
+         * edge's own <g> instead of a node.
+         *
+         * @param {SVGElement} group the edge's .qtype_graph-edge-group <g>.
+         * @param {string} color hex color, or '' to clear.
+         */
+        function applyEdgeTextColor(group, color) {
+            if (color) {
+                group.style.setProperty('--item-text-color', color);
+            } else {
+                group.style.removeProperty('--item-text-color');
+            }
+        }
+
+        /**
+         * Sets (or clears) one floating label's own text color. Unlike
+         * applyNodeTextColor()/applyEdgeTextColor() above, clearing always writes
+         * the literal 'initial' rather than removing the property outright - the
+         * floating label wrap is a CHILD of its node's own element (see
+         * createNode()), so a plain removeProperty() would let --item-text-color
+         * inherit from the node instead, bleeding the node's own text color into
+         * this visually unrelated chip (see styles.css's
+         * .qtype_graph-floatinglabel-text comment). 'initial' resets the
+         * inherited value too, forcing var() back to its own fallback.
+         *
+         * @param {Element} wrap the .qtype_graph-floatinglabel element.
+         * @param {string} color hex color, or '' to clear.
+         */
+        function applyFloatingLabelTextColor(wrap, color) {
+            wrap.style.setProperty('--item-text-color', color || 'initial');
+        }
+
+        function createNode(left, top, text, color, locked, id, shape, borderColor, floatingLabel,
+                textColor, floatingLabelTextColor) {
             if (!id) {
                 nodeCounter += 1;
                 id = `node-${Date.now().toString(36)}-${nodeCounter}`;
@@ -2109,6 +2272,7 @@
             el.style.left = `${left}px`;
             el.style.top = `${top}px`;
             applyNodeColors(el, color, borderColor);
+            applyNodeTextColor(el, textColor || '');
             applyShape(el, shape);
 
             let textEl;
@@ -2198,6 +2362,7 @@
             const floatingLabelText = floatingLabel || '';
             const floatingLabelWrap = document.createElement('div');
             floatingLabelWrap.className = 'qtype_graph-floatinglabel';
+            applyFloatingLabelTextColor(floatingLabelWrap, floatingLabelTextColor || '');
             const floatingLabelEl = document.createElement('span');
             floatingLabelEl.className = 'qtype_graph-floatinglabel-text';
             if (attemptMode && hasBlankTokens(floatingLabelText)) {
@@ -2400,9 +2565,17 @@
                     shape: record.el.dataset.shape || DEFAULT_SHAPE,
                     locked: !!record.locked,
                     floatingLabel: record.floatingLabel || '',
+                    textcolor: record.el.style.getPropertyValue('--item-text-color').trim(),
+                    // 'initial' is applyFloatingLabelTextColor()'s own sentinel for "no color
+                    // of its own" (see that function's docblock) - never a real saved value.
+                    floatingLabelTextColor: (() => {
+                        const raw = record.floatingLabelWrap.style.getPropertyValue('--item-text-color').trim();
+                        return raw === 'initial' ? '' : raw;
+                    })(),
                 })),
                 edges: edges.map((edge) => ({
                     id: edge.id, from: edge.fromId, to: edge.toId, label: edge.label, locked: !!edge.locked,
+                    textcolor: edge.group.style.getPropertyValue('--item-text-color').trim(),
                 })),
             };
         }
@@ -2413,12 +2586,12 @@
             const nodeList = Array.isArray(data.nodes) ? data.nodes : [];
             nodeList.forEach((n) => {
                 createNode(n.left || 0, n.top || 0, n.text, n.color, !!n.locked, n.id, n.shape, n.bordercolor,
-                        n.floatingLabel);
+                        n.floatingLabel, n.textcolor, n.floatingLabelTextColor);
             });
             const edgeList = Array.isArray(data.edges) ? data.edges : [];
             edgeList.forEach((e) => {
                 if (nodes.has(e.from) && nodes.has(e.to)) {
-                    createEdge(e.from, e.to, e.label || '', !!e.locked, e.id);
+                    createEdge(e.from, e.to, e.label || '', !!e.locked, e.id, e.textcolor);
                 }
             });
             if (data.mode === 'tree') {
@@ -2911,8 +3084,10 @@
             const showField = document.getElementById(`id_levellabelshow_${depth}`);
             const titleField = document.getElementById(`id_levellabeltitle_${depth}`);
             const subtitleField = document.getElementById(`id_levellabelsubtitle_${depth}`);
+            const colorField = document.getElementById(`id_levellabelcolor_${depth}`);
+            const colorPicker = document.getElementById(`id_levellabelcolor_${depth}_picker`);
             if (showField && titleField && subtitleField) {
-                rows.push({showField, titleField, subtitleField});
+                rows.push({showField, titleField, subtitleField, colorField, colorPicker});
             }
         }
         if (!rows.length) {
@@ -2930,6 +3105,7 @@
                 show: row.showField.checked,
                 title: row.titleField.value.trim(),
                 subtitle: row.subtitleField.value.trim(),
+                color: row.colorField ? row.colorField.value.trim() : '',
             }));
             hiddenField.value = JSON.stringify(overrides);
             editorRegistry.forEach((editor) => editor.setLevelLabelOverrides(overrides));
@@ -2939,6 +3115,22 @@
             row.showField.addEventListener('change', broadcast);
             row.titleField.addEventListener('input', broadcast);
             row.subtitleField.addEventListener('input', broadcast);
+            // Same hex-text-plus-native-swatch two-way sync as wireColorPair()
+            // (initCanvasSettings() below) and wireColorField() (createGraphEditor()
+            // above) - each context keeps its own small copy of this rather than
+            // sharing one, matching how those two already don't share it either.
+            if (row.colorField && row.colorPicker) {
+                row.colorField.addEventListener('input', () => {
+                    if (/^#[0-9a-fA-F]{6}$/.test(row.colorField.value)) {
+                        row.colorPicker.value = row.colorField.value;
+                    }
+                    broadcast();
+                });
+                row.colorPicker.addEventListener('input', () => {
+                    row.colorField.value = row.colorPicker.value;
+                    broadcast();
+                });
+            }
         });
     }
 

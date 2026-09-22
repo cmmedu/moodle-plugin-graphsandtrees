@@ -139,25 +139,18 @@ class qtype_graph_edit_form extends question_edit_form {
         $mform->setDefault('gridcolor', '#e2e8f0');
         $mform->addHelpButton('gridcolorgroup', 'gridcolor', 'qtype_graph');
 
-        // Same text-field-plus-swatch pattern as bgcolor/gridcolor above, for node label
-        // and connection label text color. Left blank by default (unlike bgcolor/
-        // gridcolor, which always carry a real color) - see .qtype_graph-node/
-        // .qtype_graph-edge-label in styles.css for the default each one falls back to
-        // on its own when this is empty.
-        $textcolorgroup = [
-            $mform->createElement('text', 'textcolor', '', ['id' => 'id_textcolor', 'size' => 10]),
-            $mform->createElement('html', html_writer::empty_tag('input', [
-                'type' => 'color',
-                'id' => 'id_textcolor_picker',
-                'value' => $this->question->options->textcolor ?? '#1f2937',
-                'class' => 'qtype_graph-bgcolorpicker',
-                'aria-label' => get_string('textcolor', 'qtype_graph'),
-            ])),
-        ];
-        $mform->addGroup($textcolorgroup, 'textcolorgroup', get_string('textcolor', 'qtype_graph'), ' ', false);
+        // No longer a visible question-level field - node/edge/floating-label text
+        // color is now set per-item, in that item's own menu on the canvas (see
+        // node-textcolor-section/edge-textcolor-section/floatinglabel-textcolor-section
+        // in classes/editor_ui.php and applyNodeTextColor()/applyEdgeTextColor()/
+        // applyFloatingLabelTextColor() in amd/src/editor.js). Kept as a hidden field
+        // (rather than dropped outright) purely so an EXISTING question's already-saved
+        // value keeps round-tripping through save_question_options() unchanged - see
+        // --qtype-graph-canvas-text in styles.css - instead of being silently wiped to
+        // '' the next time this form is saved; a brand new question just gets ''
+        // (the plugin's hardcoded default) here, same as before.
+        $mform->addElement('hidden', 'textcolor');
         $mform->setType('textcolor', PARAM_TEXT);
-        $mform->setDefault('textcolor', '');
-        $mform->addHelpButton('textcolorgroup', 'textcolor', 'qtype_graph');
 
         // Generated upfront (before either canvas is rendered) so the default graph's
         // initEditor call below can reference the result graph's container id as its
@@ -190,21 +183,36 @@ class qtype_graph_edit_form extends question_edit_form {
 
         $PAGE->requires->js_call_amd('qtype_graph/editor', 'initCanvasSettings',
                 ['id_showgrid', 'id_bgcolor', 'id_bgcolor_picker', 'id_gridcolor', 'id_gridcolor_picker',
-                        'id_showlevellabels', 'id_textcolor', 'id_textcolor_picker']);
+                        'id_showlevellabels']);
 
         // Per-depth overrides for "Show level labels" above: up to MAX_LEVEL_LABELS rows,
-        // each a show/hide checkbox plus a custom title and subtitle for that one tree
-        // depth. Purely UI - the row fields below are never read directly from $formdata
-        // (see save_question_options() in questiontype.php); amd/src/editor.js's
-        // initLevelLabelOverrides() keeps the single levellabelsjson hidden field below
-        // in sync with them on every change, the same way the graph canvas itself keeps
-        // the graphjson hidden field in sync with on-canvas edits. A depth left blank
-        // (title) falls back to "Nivel <depth>"; a blank subtitle shows no subtitle.
+        // each a show/hide checkbox plus a custom title, subtitle, and text color for
+        // that one tree depth. Purely UI - the row fields below are never read directly
+        // from $formdata (see save_question_options() in questiontype.php);
+        // amd/src/editor.js's initLevelLabelOverrides() keeps the single levellabelsjson
+        // hidden field below in sync with them on every change, the same way the graph
+        // canvas itself keeps the graphjson hidden field in sync with on-canvas edits. A
+        // depth left blank falls back to "Nivel <depth>" (title), no subtitle, and
+        // --qtype-graph-muted (color) - see renderLevelLabels()/styles.css.
         // Its own header (collapsed by default, unlike the canvas above it) since these
         // rows are an advanced/optional refinement, not something every teacher needs.
         $mform->addElement('header', 'levellabeloverridesheader', get_string('levellabeloverridesheader', 'qtype_graph'));
         $mform->setExpanded('levellabeloverridesheader', false);
         $mform->addElement('static', 'levellabeloverrideshelp', '', get_string('levellabeloverrideshelp', 'qtype_graph'));
+
+        // Decoded upfront (rather than per-row inside the loop) purely to seed each
+        // row's native color-swatch picker below with its own already-saved color -
+        // the swatch is plain HTML (not a real form field - see 'html' element below),
+        // so it never gets its value from the usual data_preprocessing()/set_data()
+        // path the way levellabelcolor_$depth itself does; same reasoning as the
+        // bgcolor/gridcolor pickers elsewhere in this method.
+        $leveloverrides = [];
+        if (!empty($this->question->options)) {
+            $decoded = json_decode($this->question->options->levellabelsjson ?? '[]', true);
+            if (is_array($decoded)) {
+                $leveloverrides = $decoded;
+            }
+        }
 
         for ($depth = 0; $depth < self::MAX_LEVEL_LABELS; $depth++) {
             $rowgroup = [
@@ -225,11 +233,27 @@ class qtype_graph_edit_form extends question_edit_form {
                     'placeholder' => get_string('levellabeloverride_subtitleplaceholder', 'qtype_graph'),
                     'size' => 22,
                 ]),
+                // Same text-field-plus-swatch pattern as bgcolor/gridcolor above - the
+                // #8a90a0 placeholder/swatch default matches --qtype-graph-muted in
+                // styles.css, this label's own hardcoded default when left blank.
+                $mform->createElement('text', "levellabelcolor_$depth", '', [
+                    'id' => "id_levellabelcolor_$depth",
+                    'placeholder' => '#8a90a0',
+                    'size' => 8,
+                ]),
+                $mform->createElement('html', html_writer::empty_tag('input', [
+                    'type' => 'color',
+                    'id' => "id_levellabelcolor_{$depth}_picker",
+                    'value' => $leveloverrides[$depth]['color'] ?? '#8a90a0',
+                    'class' => 'qtype_graph-bgcolorpicker',
+                    'aria-label' => get_string('textcolor', 'qtype_graph'),
+                ])),
             ];
             $mform->addGroup($rowgroup, "levellabeloverridegroup_$depth",
                     get_string('levellabeloverride_row', 'qtype_graph', $depth), ' ', false);
             $mform->setType("levellabeltitle_$depth", PARAM_TEXT);
             $mform->setType("levellabelsubtitle_$depth", PARAM_TEXT);
+            $mform->setType("levellabelcolor_$depth", PARAM_TEXT);
             $mform->setDefault("levellabelshow_$depth", 1);
         }
 
@@ -351,9 +375,10 @@ class qtype_graph_edit_form extends question_edit_form {
     /**
      * Decode $question->levellabelsjson (already set by data_preprocessing() above)
      * back into the individual levellabelshow_$depth/levellabeltitle_$depth/
-     * levellabelsubtitle_$depth fields definition_inner()'s loop created, so the
-     * per-depth override rows show the previously-saved values when editing an
-     * existing question. The hidden levellabelsjson field itself already carries
+     * levellabelsubtitle_$depth/levellabelcolor_$depth fields definition_inner()'s
+     * loop created, so the per-depth override rows show the previously-saved
+     * values when editing an existing question. The hidden levellabelsjson field
+     * itself already carries
      * the saved JSON verbatim - these per-row fields are UI only (see the comment
      * above that loop in definition_inner()).
      *
@@ -369,6 +394,7 @@ class qtype_graph_edit_form extends question_edit_form {
             $question->{"levellabelshow_$depth"} = array_key_exists('show', $row) ? (!empty($row['show']) ? 1 : 0) : 1;
             $question->{"levellabeltitle_$depth"} = $row['title'] ?? '';
             $question->{"levellabelsubtitle_$depth"} = $row['subtitle'] ?? '';
+            $question->{"levellabelcolor_$depth"} = $row['color'] ?? '';
         }
     }
 
