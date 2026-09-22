@@ -1771,6 +1771,20 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             addFloatingLabelBtn.hidden = attemptMode || locked || !isLeaf || hasFloatingLabel;
             deleteNodeBtn.hidden = !canDeleteThisNode;
 
+            // A locked (teacher-authored) node with add/delete both disabled offers
+            // nothing here - every section/button above ends up hidden. Rather than
+            // pop open a visibly empty menu, back out of the openMenu() we started
+            // (closeMenus() above already ran, and activeNodeId/menuopen class were
+            // just set) and leave the node non-interactive.
+            const hasVisibleContent = !nodeTextSection.hidden || !nodeSelectSection.hidden ||
+                    !nodeColorSection.hidden || !nodeShapeSection.hidden || !addConnectedBtn.hidden ||
+                    !addInputBtn.hidden || !addSelectBtn.hidden || !addFloatingLabelBtn.hidden ||
+                    !deleteNodeBtn.hidden;
+            if (!hasVisibleContent) {
+                closeMenu();
+                return;
+            }
+
             if (!locked) {
                 if (!attemptRestricted) {
                     nodeTextInput.value = getRecordText(record);
