@@ -397,7 +397,12 @@
 
 .qtype_graph-node--locked {
   cursor: pointer;
-  opacity: 0.92;
+  /* No opacity here (a locked/teacher node used to get 0.92) - z-index alone
+     (.qtype_graph-node above .qtype_graph-edges) only controls paint ORDER;
+     any transparency still lets an edge crossing behind the node bleed
+     through its fill, which reads as the line sitting on top of the node -
+     exactly what z-index was meant to prevent. Fully opaque is required for
+     a node to visually cover a connecting line, not merely stack above it. */
 }
 
 .qtype_graph-node--feedback-correct {
