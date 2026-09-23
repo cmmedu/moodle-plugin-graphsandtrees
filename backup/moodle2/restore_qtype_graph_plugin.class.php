@@ -88,6 +88,7 @@ class restore_qtype_graph_plugin extends restore_qtype_plugin {
         $data->shownodetrail = $data->shownodetrail ?? 1;
         $data->showlevellabels = $data->showlevellabels ?? 1;
         $data->levellabelsjson = $data->levellabelsjson ?? '';
+        $data->levellabelsize = $data->levellabelsize ?? 16;
 
         $newitemid = $DB->insert_record('qtype_graph_options', $data);
         $this->set_mapping('qtype_graph_options', $oldid, $newitemid);

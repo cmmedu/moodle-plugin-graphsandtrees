@@ -719,8 +719,12 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
          * @param {string} [textColor] a CSS color for node text and connection labels, or ''
          *                  to fall back to each one's own default (white / dark respectively -
          *                  see .qtype_graph-node/.qtype_graph-edge-label in styles.css).
+         * @param {number|string} [levelLabelSize] font size (px) of every level label's
+         *                  title (and, proportionally, its subtitle - see styles.css), or ''
+         *                  to fall back to the default 16px. Applies uniformly to every
+         *                  depth - see levelLabelOverrides above for per-depth color only.
          */
-        function setCanvasStyle(showGrid, bgColor, gridColor, showLevelLabelsFlag, textColor) {
+        function setCanvasStyle(showGrid, bgColor, gridColor, showLevelLabelsFlag, textColor, levelLabelSize) {
             canvas.classList.toggle('qtype_graph-canvas--nogrid', !showGrid);
             if (bgColor) {
                 canvas.style.setProperty('--qtype-graph-canvas-bg', bgColor);
@@ -737,6 +741,11 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             } else {
                 canvas.style.removeProperty('--qtype-graph-canvas-text');
             }
+            if (levelLabelSize) {
+                canvas.style.setProperty('--qtype-graph-levellabel-size', `${parseInt(levelLabelSize, 10)}px`);
+            } else {
+                canvas.style.removeProperty('--qtype-graph-levellabel-size');
+            }
             showLevelLabels = !!showLevelLabelsFlag;
             if (mode === 'tree') {
                 relayoutTree();
@@ -745,7 +754,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             }
         }
         setCanvasStyle(root.dataset.showgrid !== '0', root.dataset.bgcolor || '', root.dataset.gridcolor || '',
-                root.dataset.showlevellabels !== '0', root.dataset.textcolor || '');
+                root.dataset.showlevellabels !== '0', root.dataset.textcolor || '', root.dataset.levellabelsize || '');
 
         /**
          * Set the per-depth level-label overrides (title/subtitle/show/color, one
@@ -2984,14 +2993,16 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * @param {string} [showLevelLabelsFieldId] id of the "show level labels" checkbox.
      * @param {string} [textColorFieldId] id of the node/connection text color text field.
      * @param {string} [textColorPickerId] id of its paired <input type="color"> swatch.
+     * @param {string} [levelLabelSizeFieldId] id of the level-label font-size number field.
      */
     function initCanvasSettings(showGridFieldId, bgColorFieldId, bgColorPickerId, gridColorFieldId, gridColorPickerId,
-            showLevelLabelsFieldId, textColorFieldId, textColorPickerId) {
+            showLevelLabelsFieldId, textColorFieldId, textColorPickerId, levelLabelSizeFieldId) {
         const showGridField = document.getElementById(showGridFieldId);
         const bgColorField = document.getElementById(bgColorFieldId);
         const gridColorField = document.getElementById(gridColorFieldId);
         const showLevelLabelsField = document.getElementById(showLevelLabelsFieldId);
         const textColorField = document.getElementById(textColorFieldId);
+        const levelLabelSizeField = document.getElementById(levelLabelSizeFieldId);
         if (!showGridField || !bgColorField) {
             return;
         }
@@ -3002,8 +3013,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const gridColor = gridColorField ? gridColorField.value : '';
             const showLevelLabels = showLevelLabelsField ? showLevelLabelsField.checked : true;
             const textColor = textColorField ? textColorField.value : '';
+            const levelLabelSize = levelLabelSizeField ? levelLabelSizeField.value : '';
             editorRegistry.forEach((editor) =>
-                    editor.setCanvasStyle(showGrid, bgColor, gridColor, showLevelLabels, textColor));
+                    editor.setCanvasStyle(showGrid, bgColor, gridColor, showLevelLabels, textColor, levelLabelSize));
         }
 
         /**
@@ -3040,6 +3052,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         }
         if (textColorField) {
             wireColorPair(textColorField, document.getElementById(textColorPickerId));
+        }
+        if (levelLabelSizeField) {
+            levelLabelSizeField.addEventListener('input', broadcast);
         }
     }
 

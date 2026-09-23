@@ -295,5 +295,22 @@ function xmldb_qtype_graph_upgrade(int $oldversion): bool {
         upgrade_plugin_savepoint(true, 2026091006, 'qtype', 'graph');
     }
 
+    if ($oldversion < 2026092300) {
+        $table = new xmldb_table('qtype_graph_options');
+
+        // Global font size (px) for every level label's title, applying uniformly
+        // to all depths - a simpler alternative to setting levellabelsjson's
+        // per-depth "color" overrides one by one. Defaults to 16, matching the
+        // hardcoded font-size .qtype_graph-levellabel-title had before this field
+        // existed (styles.css), so every existing question renders unchanged.
+        $field = new xmldb_field('levellabelsize', XMLDB_TYPE_INTEGER, '4', null,
+                XMLDB_NOTNULL, null, '16', 'levellabelsjson');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026092300, 'qtype', 'graph');
+    }
+
     return true;
 }

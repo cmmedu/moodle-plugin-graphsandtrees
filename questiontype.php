@@ -79,6 +79,7 @@ class qtype_graph extends question_type {
         $options->shownodetrail = !empty($formdata->shownodetrail) ? 1 : 0;
         $options->showlevellabels = !empty($formdata->showlevellabels) ? 1 : 0;
         $options->levellabelsjson = $formdata->levellabelsjson ?? '';
+        $options->levellabelsize = $formdata->levellabelsize ?? 16;
         $options = $this->save_combined_feedback_helper($options, $formdata, $formdata->context, true);
         $DB->update_record('qtype_graph_options', $options);
 
@@ -145,6 +146,7 @@ class qtype_graph extends question_type {
         $question->shownodetrail = (bool) ($questiondata->options->shownodetrail ?? 1);
         $question->showlevellabels = (bool) ($questiondata->options->showlevellabels ?? 1);
         $question->levellabelsjson = $questiondata->options->levellabelsjson ?? '';
+        $question->levellabelsize = (int) ($questiondata->options->levellabelsize ?? 16);
         $question->altresultgraphs = array_map(function($altanswer) {
             return $altanswer->graphjson;
         }, $questiondata->options->altanswers ?? []);
@@ -214,6 +216,7 @@ class qtype_graph extends question_type {
         $expout .= "    <showlevellabels>{$options->showlevellabels}</showlevellabels>\n";
         $expout .= '    <levellabelsjson>' . $format->xml_escape($options->levellabelsjson ?? '') .
                 "</levellabelsjson>\n";
+        $expout .= "    <levellabelsize>{$options->levellabelsize}</levellabelsize>\n";
         $expout .= $format->write_combined_feedback($options, $question->id, $question->contextid);
 
         $expout .= "    <altanswers>\n";
@@ -264,6 +267,7 @@ class qtype_graph extends question_type {
         $qo->shownodetrail = $format->getpath($data, ['#', 'shownodetrail', 0, '#'], 1);
         $qo->showlevellabels = $format->getpath($data, ['#', 'showlevellabels', 0, '#'], 1);
         $qo->levellabelsjson = $format->getpath($data, ['#', 'levellabelsjson', 0, '#'], '', true);
+        $qo->levellabelsize = $format->getpath($data, ['#', 'levellabelsize', 0, '#'], 16);
 
         $format->import_combined_feedback($qo, $data, true);
 

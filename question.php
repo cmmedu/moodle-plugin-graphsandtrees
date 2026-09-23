@@ -96,6 +96,12 @@ class qtype_graph_question extends question_graded_automatically {
      */
     public $levellabelsjson = '';
 
+    /** @var int font size (px) of every level label's title on every canvas for this
+     *  question - applies uniformly across all depths; use levellabelsjson's per-depth
+     *  "color" override for anything finer-grained. See styles.css's
+     *  --qtype-graph-levellabel-size custom property. */
+    public $levellabelsize = 16;
+
     /** @var string feedback shown for a fully correct response. */
     public $correctfeedback;
     /** @var int format of $correctfeedback. */

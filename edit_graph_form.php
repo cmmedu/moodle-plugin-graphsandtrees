@@ -171,6 +171,7 @@ class qtype_graph_edit_form extends question_edit_form {
             'showlevellabels' =>
                     (!empty($this->question->options) ? (int) $this->question->options->showlevellabels : 1) ? '1' : '0',
             'levellabelsjson' => !empty($this->question->options) ? ($this->question->options->levellabelsjson ?? '') : '',
+            'levellabelsize' => !empty($this->question->options) ? ($this->question->options->levellabelsize ?? 16) : 16,
         ];
 
         $mform->addElement('html', \qtype_graph\editor_ui::render($containerid, $canvasstyleattrs));
@@ -183,7 +184,7 @@ class qtype_graph_edit_form extends question_edit_form {
 
         $PAGE->requires->js_call_amd('qtype_graph/editor', 'initCanvasSettings',
                 ['id_showgrid', 'id_bgcolor', 'id_bgcolor_picker', 'id_gridcolor', 'id_gridcolor_picker',
-                        'id_showlevellabels']);
+                        'id_showlevellabels', null, null, 'id_levellabelsize']);
 
         // Per-depth overrides for "Show level labels" above: up to MAX_LEVEL_LABELS rows,
         // each a show/hide checkbox plus a custom title, subtitle, and text color for
@@ -199,6 +200,16 @@ class qtype_graph_edit_form extends question_edit_form {
         $mform->addElement('header', 'levellabeloverridesheader', get_string('levellabeloverridesheader', 'qtype_graph'));
         $mform->setExpanded('levellabeloverridesheader', false);
         $mform->addElement('static', 'levellabeloverrideshelp', '', get_string('levellabeloverrideshelp', 'qtype_graph'));
+
+        // Single global font-size control for every level label's title, applying
+        // uniformly to all depths at once - a simpler alternative to setting a color
+        // per depth below for teachers who just want every label bigger/smaller. See
+        // --qtype-graph-levellabel-size in styles.css.
+        $mform->addElement('text', 'levellabelsize', get_string('levellabelsize', 'qtype_graph'),
+                ['id' => 'id_levellabelsize', 'type' => 'number', 'min' => 8, 'max' => 72, 'size' => 4]);
+        $mform->setType('levellabelsize', PARAM_INT);
+        $mform->setDefault('levellabelsize', 16);
+        $mform->addHelpButton('levellabelsize', 'levellabelsize', 'qtype_graph');
 
         // Decoded upfront (rather than per-row inside the loop) purely to seed each
         // row's native color-swatch picker below with its own already-saved color -
@@ -359,6 +370,7 @@ class qtype_graph_edit_form extends question_edit_form {
             $question->shownodetrail = $question->options->shownodetrail ?? 1;
             $question->showlevellabels = $question->options->showlevellabels ?? 1;
             $question->levellabelsjson = $question->options->levellabelsjson ?? '';
+            $question->levellabelsize = $question->options->levellabelsize ?? 16;
             $this->data_preprocessing_level_label_overrides($question);
             $question->altresultgraphsjson = json_encode(array_map(
                     function($altanswer) {

@@ -80,6 +80,7 @@ class qtype_graph_renderer extends qtype_with_combined_feedback_renderer {
             'textcolor' => $question->textcolor,
             'showlevellabels' => $question->showlevellabels ? '1' : '0',
             'levellabelsjson' => $question->levellabelsjson,
+            'levellabelsize' => $question->levellabelsize,
         ]);
 
         $fieldname = $qa->get_qt_field_name('nodesjson');
