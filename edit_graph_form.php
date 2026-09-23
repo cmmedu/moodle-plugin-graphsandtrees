@@ -170,8 +170,18 @@ class qtype_graph_edit_form extends question_edit_form {
             'textcolor' => !empty($this->question->options) ? ($this->question->options->textcolor ?? '') : '',
             'showlevellabels' =>
                     (!empty($this->question->options) ? (int) $this->question->options->showlevellabels : 1) ? '1' : '0',
-            'levellabelsjson' => !empty($this->question->options) ? ($this->question->options->levellabelsjson ?? '') : '',
-            'levellabelsize' => !empty($this->question->options) ? ($this->question->options->levellabelsize ?? 16) : 16,
+            // A brand new question (no saved options yet) defaults depth 0's label to
+            // hidden - matching the "levellabelshow_0" checkbox default set on the
+            // per-depth override row below - since the root label is redundant for
+            // most of this organization's trees and left unchecked was the single
+            // most common first edit anyway. An existing question keeps whatever it
+            // already has saved, untouched by this default.
+            'levellabelsjson' => !empty($this->question->options) ? ($this->question->options->levellabelsjson ?? '')
+                    : json_encode([['show' => false]]),
+            // A brand new question defaults to 24px (bigger than the 16px legacy/
+            // pre-field baseline below) - the organization's usual starting size.
+            // An existing question keeps whatever it already has saved.
+            'levellabelsize' => !empty($this->question->options) ? ($this->question->options->levellabelsize ?? 16) : 24,
         ];
 
         $mform->addElement('html', \qtype_graph\editor_ui::render($containerid, $canvasstyleattrs));
@@ -193,7 +203,7 @@ class qtype_graph_edit_form extends question_edit_form {
         // amd/src/editor.js's initLevelLabelOverrides() keeps the single levellabelsjson
         // hidden field below in sync with them on every change, the same way the graph
         // canvas itself keeps the graphjson hidden field in sync with on-canvas edits. A
-        // depth left blank falls back to "Nivel <depth>" (title), no subtitle, and
+        // depth left blank falls back to "Etapa <depth>" (title), no subtitle, and
         // --qtype-graph-muted (color) - see renderLevelLabels()/styles.css.
         // Its own header (collapsed by default, unlike the canvas above it) since these
         // rows are an advanced/optional refinement, not something every teacher needs.
@@ -208,7 +218,7 @@ class qtype_graph_edit_form extends question_edit_form {
         $mform->addElement('text', 'levellabelsize', get_string('levellabelsize', 'qtype_graph'),
                 ['id' => 'id_levellabelsize', 'type' => 'number', 'min' => 8, 'max' => 72, 'size' => 4]);
         $mform->setType('levellabelsize', PARAM_INT);
-        $mform->setDefault('levellabelsize', 16);
+        $mform->setDefault('levellabelsize', 24);
         $mform->addHelpButton('levellabelsize', 'levellabelsize', 'qtype_graph');
 
         // Decoded upfront (rather than per-row inside the loop) purely to seed each
@@ -236,7 +246,7 @@ class qtype_graph_edit_form extends question_edit_form {
                 // changes with the Moodle UI language.
                 $mform->createElement('text', "levellabeltitle_$depth", '', [
                     'id' => "id_levellabeltitle_$depth",
-                    'placeholder' => "Nivel $depth",
+                    'placeholder' => "Etapa $depth",
                     'size' => 18,
                 ]),
                 $mform->createElement('text', "levellabelsubtitle_$depth", '', [
@@ -265,7 +275,12 @@ class qtype_graph_edit_form extends question_edit_form {
             $mform->setType("levellabeltitle_$depth", PARAM_TEXT);
             $mform->setType("levellabelsubtitle_$depth", PARAM_TEXT);
             $mform->setType("levellabelcolor_$depth", PARAM_TEXT);
-            $mform->setDefault("levellabelshow_$depth", 1);
+            // Depth 0 (the root) starts unchecked on a brand new question - matches
+            // the 'levellabelsjson' seed above so the canvas preview and this
+            // checkbox agree from the very first render. An existing question's
+            // saved value (via data_preprocessing_level_label_overrides() below)
+            // always overrides this default, so this only affects new questions.
+            $mform->setDefault("levellabelshow_$depth", $depth === 0 ? 0 : 1);
         }
 
         $mform->addElement('hidden', 'levellabelsjson', '', ['id' => 'id_levellabelsjson']);

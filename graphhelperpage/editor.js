@@ -95,7 +95,7 @@
     // 0 to MAX_LEVEL_LABEL_OVERRIDES - 1) - see initLevelLabelOverrides() below.
     // Kept in sync by hand with qtype_graph_edit_form::MAX_LEVEL_LABELS
     // (edit_graph_form.php). A depth at or beyond this always falls back to the
-    // default "Nivel <depth>" title with no subtitle - there is no row to
+    // default "Etapa <depth>" title with no subtitle - there is no row to
     // override it with.
     const MAX_LEVEL_LABEL_OVERRIDES = 10;
     const ZOOM_MIN = 0.4;
@@ -702,7 +702,7 @@
         // qtype_graph_options.levellabelsjson - see setLevelLabelOverrides() below.
         // Applies uniformly like showLevelLabels above, same reasoning.
         let levelLabelOverrides = [];
-        // Level-label DOM layer ("Nivel 0", "Nivel 1", ...), created lazily on first
+        // Level-label DOM layer ("Etapa 0", "Etapa 1", ...), created lazily on first
         // use since the shared editor_ui.php markup (used by every graph canvas -
         // default, result, every alternate, and the attempt canvas) has no dedicated
         // slot for it, unlike edgesLayer above. Lives inside graphContent so it pans
@@ -730,7 +730,7 @@
          * @param {boolean} showGrid
          * @param {string} bgColor a CSS color, or '' to fall back to the default theme color.
          * @param {string} [gridColor] a CSS color, or '' to fall back to the default theme color.
-         * @param {boolean} [showLevelLabelsFlag] whether tree mode's "Nivel 0"/"Nivel 1"/...
+         * @param {boolean} [showLevelLabelsFlag] whether tree mode's "Etapa 0"/"Etapa 1"/...
          *                  depth labels are shown - see renderLevelLabels() below.
          * @param {string} [textColor] a CSS color for node text and connection labels, or ''
          *                  to fall back to each one's own default (white / dark respectively -
@@ -1072,10 +1072,10 @@
         }
 
         /**
-         * Render "Nivel 0"/"Nivel 1"/... labels along the tree's depth axis - one
+         * Render "Etapa 0"/"Etapa 1"/... labels along the tree's depth axis - one
          * per level, positioned above each column in horizontal orientation, or to
          * the left of each row in vertical orientation (the root, depth 0, is
-         * always "Nivel 0" unless overridden - see levelLabelOverrides above). A
+         * always "Etapa 0" unless overridden - see levelLabelOverrides above). A
          * depth whose override has show === false is skipped entirely. Only ever
          * called from relayoutTree() below, once every node's final position for
          * this layout pass is known.
@@ -1118,7 +1118,7 @@
                 }
                 const titleEl = document.createElement('div');
                 titleEl.className = 'qtype_graph-levellabel-title';
-                titleEl.textContent = (override && override.title) ? override.title : `Nivel ${d}`;
+                titleEl.textContent = (override && override.title) ? override.title : `Etapa ${d}`;
                 label.appendChild(titleEl);
                 if (override && override.subtitle) {
                     const subtitleEl = document.createElement('div');

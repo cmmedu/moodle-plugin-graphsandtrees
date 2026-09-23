@@ -84,7 +84,7 @@ class qtype_graph_question extends question_graded_automatically {
     /** @var bool whether clicking a node during the attempt highlights the path back to its origin node. */
     public $shownodetrail = true;
 
-    /** @var bool whether every canvas for this question shows tree-mode depth labels ("Nivel 0", "Nivel 1", ...). */
+    /** @var bool whether every canvas for this question shows tree-mode depth labels ("Etapa 0", "Etapa 1", ...). */
     public $showlevellabels = true;
 
     /**
@@ -92,7 +92,7 @@ class qtype_graph_question extends question_graded_automatically {
      *      {show, title, subtitle} overrides for that depth's level label - see
      *      edit_graph_form.php's "levellabeloverride" fields and amd/src/editor.js's
      *      renderLevelLabels(). Empty string/unset means every depth uses the
-     *      default "Nivel <depth>" title, shown, with no subtitle.
+     *      default "Etapa <depth>" title, shown, with no subtitle.
      */
     public $levellabelsjson = '';
 
