@@ -176,6 +176,13 @@
 }
 
 .qtype_graph-exporttextarea {
+  /* A <textarea> sizes itself from its cols/rows attributes by default, which
+     wins over flex stretch alignment in a Moodle form page (Boost/Bootstrap's
+     own textarea rules interact with that intrinsic sizing) - width: 100% +
+     border-box makes it fill .qtype_graph-exportpanel's width regardless of
+     surrounding page CSS. */
+  width: 100%;
+  box-sizing: border-box;
   background: var(--qtype-graph-bg);
   border: 1px solid var(--qtype-graph-border);
   border-radius: 6px;

@@ -190,28 +190,6 @@
       background: #f3f4f6;
     }
 
-    .export-panel {
-      background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      padding: 16px;
-    }
-
-    .export-panel textarea {
-      width: 100%;
-      min-height: 160px;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      font-size: 12px;
-      border: 1px solid #d1d5db;
-      border-radius: 6px;
-      padding: 8px;
-    }
-
-    .export-status {
-      font-size: 13px;
-      margin: 8px 0;
-      min-height: 18px;
-    }
   </style>
 </head>
 
@@ -308,12 +286,10 @@
         <h2>Exportar el grafo</h2>
         <ul>
           <li>El botón <strong>"JSON"</strong> (en la barra superior del editor) abre un panel para copiar/pegar el JSON
-            del grafo directamente.</li>
-          <li>Más abajo en esta página, <strong>"Copiar al portapapeles"</strong> y <strong>"Guardar como
-              .json"</strong> hacen lo mismo con el grafo completo, listo para el script de montaje del curso.</li>
-          <li><strong>"Descargar captura (PNG)"</strong> y <strong>"Descargar SVG"</strong> generan una imagen del
-            grafo tal como se ve (todo el grafo completo, no solo lo visible en pantalla) - el PNG es un mapa de
-            píxeles, el SVG queda editable en un programa de diseño vectorial.</li>
+            del grafo directamente, listo para el script de montaje del curso.</li>
+          <li>El botón de imagen (icono de foto, junto al de JSON) abre un panel para descargar una imagen del grafo
+            tal como se ve (todo el grafo completo, no solo lo visible en pantalla), en formato PNG (mapa de píxeles)
+            o SVG (editable en un programa de diseño vectorial) - elige el formato antes de descargar.</li>
         </ul>
 
         <h3>Qué queda para el montaje en la plataforma</h3>
@@ -345,18 +321,6 @@
       </p>
       <div id="qtype_graph_editor"></div>
       <input type="hidden" id="id_graphjson">
-    </section>
-
-    <section class="export-panel">
-      <h2 style="margin-top:0; font-size:16px;">Exportar</h2>
-      <div class="action-row">
-        <button type="button" id="btn-copy" class="btn">Copiar al portapapeles</button>
-        <button type="button" id="btn-download" class="btn">Guardar como .json</button>
-        <button type="button" id="btn-screenshot" class="btn">Descargar captura (PNG)</button>
-        <button type="button" id="btn-svg" class="btn">Descargar SVG</button>
-      </div>
-      <div class="export-status" id="export-status"></div>
-      <textarea id="export-json" readonly></textarea>
     </section>
 
   </main>
@@ -641,308 +605,14 @@
       // the sync itself just silently finds no matching editor and no-ops.
       QtypeGraphEditor.initEditor('qtype_graph_editor', 'id_graphjson', null, null, 'qtype_graph_editor_no_sync_target');
 
-      var exportField = document.getElementById('export-json');
-      var statusField = document.getElementById('export-status');
-
-      function currentJson() {
-        return document.getElementById('id_graphjson').value || '';
-      }
-
-      document.getElementById('btn-copy').addEventListener('click', function () {
-        exportField.value = currentJson();
-        var restore = function () {
-          statusField.textContent = 'Copiado al portapapeles.';
-        };
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(exportField.value).then(restore, function () {
-            exportField.focus();
-            exportField.select();
-          });
-          return;
-        }
-        exportField.focus();
-        exportField.select();
-        try {
-          document.execCommand('copy');
-          restore();
-        } catch (e) {
-          statusField.textContent = 'No se pudo copiar automáticamente - selecciona y copia manualmente.';
-        }
-      });
-
-      document.getElementById('btn-download').addEventListener('click', function () {
-        exportField.value = currentJson();
-        var blob = new Blob([exportField.value], { type: 'application/json' });
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = 'grafo.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        statusField.textContent = 'Descarga iniciada (grafo.json).';
-      });
-
-      // Nodes/labels are plain HTML+SVG (not a <canvas>), so an export is built by
-      // wrapping the whole graph through an SVG <foreignObject>: clone the canvas
-      // DOM, resolve every element's live computed style onto its clone (see
-      // inlineComputedStyles below - a foreignObject image can't apply the page's
-      // own stylesheet, and on a page opened directly as file:// Chrome throws a
-      // SecurityError just reading a linked stylesheet's cssRules, so that text
-      // can't be embedded either), serialize with XMLSerializer (unlike
-      // string-concatenated outerHTML, it self-closes void elements like <input>
-      // so the SVG stays valid XML). That markup (buildGraphSvg() below) is the
-      // shared starting point for both export buttons: the SVG button downloads it
-      // as-is, the PNG button additionally draws it onto a real <canvas> to
-      // rasterize.
-      var XHTML_NS = 'http://www.w3.org/1999/xhtml';
-      var SVG_NS_URI = 'http://www.w3.org/2000/svg';
-
-      // getComputedStyle() also resolves CSS custom properties (--qtype-graph-*)
-      // to their concrete values, so the clone renders correctly even though it's
-      // detached from the page's cascade once dropped inside the foreignObject.
-      function inlineComputedStyles(sourceRoot, cloneRoot) {
-        var sourceEls = [sourceRoot].concat(Array.prototype.slice.call(sourceRoot.querySelectorAll('*')));
-        var cloneEls = [cloneRoot].concat(Array.prototype.slice.call(cloneRoot.querySelectorAll('*')));
-        for (var i = 0; i < sourceEls.length; i++) {
-          var computed = window.getComputedStyle(sourceEls[i]);
-          var cssText = '';
-          for (var j = 0; j < computed.length; j++) {
-            var prop = computed[j];
-            cssText += prop + ':' + computed.getPropertyValue(prop) + ';';
-          }
-          cloneEls[i].setAttribute('style', cssText);
-        }
-      }
-
-      // cloneNode(true) copies DOM attributes, not live JS properties, so a blank
-      // node rendered as <input>/<select> (its .value is set via JS - see
-      // editor.js) would otherwise clone back to empty. Both trees have identical
-      // structure right after cloning, so matching form controls positionally is
-      // safe.
-      function copyLiveFormState(sourceRoot, cloneRoot) {
-        var sourceControls = sourceRoot.querySelectorAll('input, select, textarea');
-        var cloneControls = cloneRoot.querySelectorAll('input, select, textarea');
-        for (var i = 0; i < sourceControls.length; i++) {
-          cloneControls[i].value = sourceControls[i].value;
-        }
-      }
-
-      // How much of the graph's own untransformed (zoom 1, pan 0) coordinate space the
-      // canvas's current CSS transform represents - lets computeContentBounds() below
-      // convert each element's on-screen rect back to that fixed space, regardless of
-      // whatever zoom/pan the user has left the live view at.
-      function readContentTransform(contentEl) {
-        var transform = window.getComputedStyle(contentEl).transform;
-        // Only ever translate()+scale() (see setZoom()/panning above) - never rotation or
-        // skew - so a 2D matrix(a, b, c, d, e, f) always has a === d (uniform zoom) and
-        // b === c === 0; 'none' (identity) happens before the first pan/zoom interaction.
-        var match = /^matrix\(([^,]+),[^,]+,[^,]+,[^,]+,([^,]+),([^)]+)\)$/.exec(transform || '');
-        if (!match) {
-          return {zoom: 1, panX: 0, panY: 0};
-        }
-        return {
-          zoom: parseFloat(match[1]) || 1,
-          panX: parseFloat(match[2]) || 0,
-          panY: parseFloat(match[3]) || 0,
-        };
-      }
-
-      // Union of every node/edge/label's rendered extent, in the canvas's own
-      // untransformed coordinate space - i.e. what the graph's full bounding box is at
-      // zoom 1, pan 0, independent of whether some of it is currently scrolled/zoomed out
-      // of the visible canvas viewport. Nodes/floating labels/level labels are plain
-      // positioned HTML, read via getBoundingClientRect() (accurate even while clipped by
-      // the live canvas's overflow:hidden, since that only affects paint, not layout) and
-      // converted back through readContentTransform()'s pan/zoom; each edge's <g> (path +
-      // label) is read via SVG getBBox() instead, which is already in that same
-      // untransformed space with no conversion needed - see createEdge() in editor.js.
-      function computeContentBounds(canvasEl, contentEl) {
-        var canvasRect = canvasEl.getBoundingClientRect();
-        var t = readContentTransform(contentEl);
-        var minX = Infinity;
-        var minY = Infinity;
-        var maxX = -Infinity;
-        var maxY = -Infinity;
-
-        function includeRect(left, top, width, height) {
-          if (width <= 0 && height <= 0) {
-            return;
-          }
-          minX = Math.min(minX, left);
-          minY = Math.min(minY, top);
-          maxX = Math.max(maxX, left + width);
-          maxY = Math.max(maxY, top + height);
-        }
-
-        var htmlEls = contentEl.querySelectorAll(
-                '.qtype_graph-node, .qtype_graph-floatinglabel, .qtype_graph-levellabel');
-        for (var i = 0; i < htmlEls.length; i++) {
-          var r = htmlEls[i].getBoundingClientRect();
-          includeRect((r.left - canvasRect.left - t.panX) / t.zoom, (r.top - canvasRect.top - t.panY) / t.zoom,
-                  r.width / t.zoom, r.height / t.zoom);
-        }
-
-        var edgeGroups = contentEl.querySelectorAll('[data-role="edges"] > g');
-        for (var j = 0; j < edgeGroups.length; j++) {
-          var bbox = edgeGroups[j].getBBox();
-          includeRect(bbox.x, bbox.y, bbox.width, bbox.height);
-        }
-
-        if (!isFinite(minX)) {
-          // Nothing on the canvas yet - fall back to whatever the viewport itself shows.
-          return {left: 0, top: 0, width: Math.max(1, canvasRect.width), height: Math.max(1, canvasRect.height)};
-        }
-        return {left: minX, top: minY, width: maxX - minX, height: maxY - minY};
-      }
-
-      // Builds the same standalone SVG (nodes/labels inlined into a <foreignObject>)
-      // that both the PNG capture and the plain SVG download start from - see the
-      // big comment above about why a <foreignObject> is needed at all. Returns
-      // null if there's no canvas to capture yet.
-      function buildGraphSvg() {
-        var canvasEl = document.querySelector('#qtype_graph_editor .qtype_graph-canvas');
-        var contentEl = canvasEl && canvasEl.querySelector('[data-role="content"]');
-        if (!canvasEl || !contentEl) {
-          return null;
-        }
-
-        // Capture the WHOLE graph, not just whatever fits in the canvas viewport at the
-        // current pan/zoom - see computeContentBounds() above.
-        var PADDING = 40;
-        var bounds = computeContentBounds(canvasEl, contentEl);
-        var width = Math.max(1, Math.round(bounds.width + PADDING * 2));
-        var height = Math.max(1, Math.round(bounds.height + PADDING * 2));
-
-        var clone = canvasEl.cloneNode(true);
-        copyLiveFormState(canvasEl, clone);
-        inlineComputedStyles(canvasEl, clone);
-        clone.style.transition = 'none';
-        // The editing grid is a drawing aid, not part of the graph - never exported,
-        // regardless of whether "Mostrar cuadrícula" is currently on.
-        clone.style.backgroundImage = 'none';
-        // Chrome that lives inside .qtype_graph-canvas alongside the graph itself
-        // (the JSON panel, node/edge/floating-label menus) but has no place in a
-        // snapshot of it - stripped outright rather than relied upon to already be
-        // hidden (e.g. a menu left open when the export button is clicked).
-        var chrome = clone.querySelectorAll(
-                '[data-role="json-panel"], [data-role="image-panel"], [data-role="node-menu"], ' +
-                '[data-role="floatinglabel-menu"], [data-role="edge-menu"]');
-        for (var c = 0; c < chrome.length; c++) {
-          chrome[c].parentNode.removeChild(chrome[c]);
-        }
-        // Override the baked-in (live) viewport size/clipping and pan/zoom transform that
-        // inlineComputedStyles() just copied, so the clone renders the full bounds
-        // computed above instead of reproducing the live view's crop.
-        clone.style.overflow = 'visible';
-        clone.style.width = width + 'px';
-        clone.style.height = height + 'px';
-        var cloneContent = clone.querySelector('[data-role="content"]');
-        if (cloneContent) {
-          cloneContent.style.transition = 'none';
-          cloneContent.style.transform = 'translate(' + (PADDING - bounds.left) + 'px, '
-                  + (PADDING - bounds.top) + 'px) scale(1)';
-        }
-
-        var wrapper = document.createElementNS(XHTML_NS, 'div');
-        wrapper.setAttribute('style', 'width:' + width + 'px;height:' + height + 'px;overflow:hidden;');
-        wrapper.appendChild(clone);
-
-        var svgRoot = document.createElementNS(SVG_NS_URI, 'svg');
-        svgRoot.setAttribute('xmlns', SVG_NS_URI);
-        svgRoot.setAttribute('width', String(width));
-        svgRoot.setAttribute('height', String(height));
-        var foreignObject = document.createElementNS(SVG_NS_URI, 'foreignObject');
-        foreignObject.setAttribute('width', '100%');
-        foreignObject.setAttribute('height', '100%');
-        foreignObject.appendChild(wrapper);
-        svgRoot.appendChild(foreignObject);
-
-        var svgMarkup = new XMLSerializer().serializeToString(svgRoot);
-        return {markup: svgMarkup, width: width, height: height};
-      }
-
-      function downloadBlob(blob, filename) {
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }
-
-      function captureCanvasScreenshot() {
-        var svg = buildGraphSvg();
-        if (!svg) {
-          return Promise.reject(new Error('No se encontró el lienzo del editor.'));
-        }
-        var svgUrl = URL.createObjectURL(new Blob([svg.markup], { type: 'image/svg+xml;charset=utf-8' }));
-
-        return new Promise(function (resolve, reject) {
-          var img = new Image();
-          img.onload = function () {
-            var scale = window.devicePixelRatio || 1;
-            var outCanvas = document.createElement('canvas');
-            outCanvas.width = Math.round(svg.width * scale);
-            outCanvas.height = Math.round(svg.height * scale);
-            var ctx = outCanvas.getContext('2d');
-            ctx.scale(scale, scale);
-            ctx.drawImage(img, 0, 0, svg.width, svg.height);
-            URL.revokeObjectURL(svgUrl);
-            outCanvas.toBlob(function (blob) {
-              if (!blob) {
-                reject(new Error('No se pudo generar el PNG.'));
-                return;
-              }
-              downloadBlob(blob, 'grafo.png');
-              resolve();
-            }, 'image/png');
-          };
-          img.onerror = function () {
-            URL.revokeObjectURL(svgUrl);
-            reject(new Error('No se pudo generar la imagen intermedia del lienzo.'));
-          };
-          img.src = svgUrl;
-        });
-      }
-
-      function downloadCanvasSvg() {
-        var svg = buildGraphSvg();
-        if (!svg) {
-          return Promise.reject(new Error('No se encontró el lienzo del editor.'));
-        }
-        downloadBlob(new Blob([svg.markup], { type: 'image/svg+xml;charset=utf-8' }), 'grafo.svg');
-        return Promise.resolve();
-      }
-
-      document.getElementById('btn-screenshot').addEventListener('click', function () {
-        statusField.textContent = 'Generando captura...';
-        captureCanvasScreenshot().then(function () {
-          statusField.textContent = 'Captura descargada (grafo.png).';
-        }, function (err) {
-          console.error(err);
-          statusField.textContent = 'No se pudo generar la captura del grafo.';
-        });
-      });
-
-      document.getElementById('btn-svg').addEventListener('click', function () {
-        statusField.textContent = 'Generando SVG...';
-        downloadCanvasSvg().then(function () {
-          statusField.textContent = 'SVG descargado (grafo.svg).';
-        }, function (err) {
-          console.error(err);
-          statusField.textContent = 'No se pudo generar el SVG del grafo.';
-        });
-      });
-
-      // The image-export button/panel on the editor's own toolbar (data-role=
-      // "image-btn"/"image-panel" in renderGraphEditorSkeleton() above) is already
-      // wired by createGraphEditor() inside editor.js - nothing to do here, this
-      // page's own btn-screenshot/btn-svg below the canvas are a separate,
-      // independently-wired pair of buttons for the same export.
+      // JSON copy/paste and PNG/SVG image export used to have their own separate
+      // controls below the canvas here (btn-copy/btn-download/btn-screenshot/
+      // btn-svg, an #export-json textarea, an #export-status line) - all of that
+      // is now redundant with the editor's own in-canvas panels (the toolbar's
+      // "JSON" button - data-role="json-btn"/"json-panel" - and image-export
+      // button - data-role="image-btn"/"image-panel", both wired by
+      // createGraphEditor() inside editor.js), so those controls and the
+      // duplicate SVG/PNG-building code that served them were removed.
 
       var instructionsModal = document.getElementById('instructions-modal');
       var openInstructions = function () {
