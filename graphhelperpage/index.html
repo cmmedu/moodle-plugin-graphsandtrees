@@ -311,6 +311,9 @@
             del grafo directamente.</li>
           <li>Más abajo en esta página, <strong>"Copiar al portapapeles"</strong> y <strong>"Guardar como
               .json"</strong> hacen lo mismo con el grafo completo, listo para el script de montaje del curso.</li>
+          <li><strong>"Descargar captura (PNG)"</strong> y <strong>"Descargar SVG"</strong> generan una imagen del
+            grafo tal como se ve (todo el grafo completo, no solo lo visible en pantalla) - el PNG es un mapa de
+            píxeles, el SVG queda editable en un programa de diseño vectorial.</li>
         </ul>
 
         <h3>Qué queda para el montaje en la plataforma</h3>
@@ -350,6 +353,7 @@
         <button type="button" id="btn-copy" class="btn">Copiar al portapapeles</button>
         <button type="button" id="btn-download" class="btn">Guardar como .json</button>
         <button type="button" id="btn-screenshot" class="btn">Descargar captura (PNG)</button>
+        <button type="button" id="btn-svg" class="btn">Descargar SVG</button>
       </div>
       <div class="export-status" id="export-status"></div>
       <textarea id="export-json" readonly></textarea>
@@ -389,6 +393,15 @@
           '      <button type="button" class="qtype_graph-menubtn qtype_graph-exportbtn" data-role="json-btn" hidden>' +
           '        JSON' +
           '      </button>' +
+          '      <button type="button" class="qtype_graph-menubtn qtype_graph-exportbtn qtype_graph-exportbtn--icon"' +
+          '          data-role="image-btn" hidden aria-label="Exportar imagen" title="Exportar imagen">' +
+          '        <svg class="qtype_graph-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"' +
+          '            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+          '          <rect x="3" y="3" width="18" height="18" rx="2"></rect>' +
+          '          <circle cx="8.5" cy="8.5" r="1.5"></circle>' +
+          '          <path d="M21 15l-5-5L5 21"></path>' +
+          '        </svg>' +
+          '      </button>' +
           '    </div>' +
           '  </div>' +
           '  <div class="qtype_graph-canvas" data-role="canvas">' +
@@ -406,6 +419,22 @@
           '        </button>' +
           '        <button type="button" class="qtype_graph-menubtn" data-role="json-copy-btn">Copiar al portapapeles</button>' +
           '        <button type="button" class="qtype_graph-menubtn" data-role="json-close-btn">Cerrar</button>' +
+          '      </div>' +
+          '    </div>' +
+          '    <div class="qtype_graph-exportpanel" data-role="image-panel" hidden>' +
+          '      <div class="qtype_graph-menulabel">Exportar imagen</div>' +
+          '      <div class="qtype_graph-formatrow" data-role="image-format-toggle">' +
+          '        <button type="button" class="qtype_graph-shapebtn qtype_graph-shapebtn--selected" data-format="png">' +
+          '          PNG' +
+          '        </button>' +
+          '        <button type="button" class="qtype_graph-shapebtn" data-format="svg">' +
+          '          SVG' +
+          '        </button>' +
+          '      </div>' +
+          '      <div class="qtype_graph-jsonstatus" data-role="image-status" hidden></div>' +
+          '      <div class="qtype_graph-exportactions">' +
+          '        <button type="button" class="qtype_graph-menubtn" data-role="image-download-btn">Descargar</button>' +
+          '        <button type="button" class="qtype_graph-menubtn" data-role="image-close-btn">Cerrar</button>' +
           '      </div>' +
           '    </div>' +
           '    <div class="qtype_graph-nodemenu" data-role="node-menu" hidden>' +
@@ -558,16 +587,18 @@
         statusField.textContent = 'Descarga iniciada (grafo.json).';
       });
 
-      // Nodes/labels are plain HTML+SVG (not a <canvas>), so a screenshot is built
-      // by rasterizing the visible canvas viewport through an SVG <foreignObject>:
-      // clone the canvas DOM, resolve every element's live computed style onto its
-      // clone (see inlineComputedStyles below - a foreignObject image can't apply
-      // the page's own stylesheet, and on a page opened directly as file:// Chrome
-      // throws a SecurityError just reading a linked stylesheet's cssRules, so
-      // that text can't be embedded either), serialize with XMLSerializer (unlike
+      // Nodes/labels are plain HTML+SVG (not a <canvas>), so an export is built by
+      // wrapping the whole graph through an SVG <foreignObject>: clone the canvas
+      // DOM, resolve every element's live computed style onto its clone (see
+      // inlineComputedStyles below - a foreignObject image can't apply the page's
+      // own stylesheet, and on a page opened directly as file:// Chrome throws a
+      // SecurityError just reading a linked stylesheet's cssRules, so that text
+      // can't be embedded either), serialize with XMLSerializer (unlike
       // string-concatenated outerHTML, it self-closes void elements like <input>
-      // so the SVG stays valid XML), then draw the resulting image onto a real
-      // <canvas> and export that as a PNG.
+      // so the SVG stays valid XML). That markup (buildGraphSvg() below) is the
+      // shared starting point for both export buttons: the SVG button downloads it
+      // as-is, the PNG button additionally draws it onto a real <canvas> to
+      // rasterize.
       var XHTML_NS = 'http://www.w3.org/1999/xhtml';
       var SVG_NS_URI = 'http://www.w3.org/2000/svg';
 
@@ -669,11 +700,15 @@
         return {left: minX, top: minY, width: maxX - minX, height: maxY - minY};
       }
 
-      function captureCanvasScreenshot() {
+      // Builds the same standalone SVG (nodes/labels inlined into a <foreignObject>)
+      // that both the PNG capture and the plain SVG download start from - see the
+      // big comment above about why a <foreignObject> is needed at all. Returns
+      // null if there's no canvas to capture yet.
+      function buildGraphSvg() {
         var canvasEl = document.querySelector('#qtype_graph_editor .qtype_graph-canvas');
         var contentEl = canvasEl && canvasEl.querySelector('[data-role="content"]');
         if (!canvasEl || !contentEl) {
-          return Promise.reject(new Error('No se encontró el lienzo del editor.'));
+          return null;
         }
 
         // Capture the WHOLE graph, not just whatever fits in the canvas viewport at the
@@ -687,6 +722,19 @@
         copyLiveFormState(canvasEl, clone);
         inlineComputedStyles(canvasEl, clone);
         clone.style.transition = 'none';
+        // The editing grid is a drawing aid, not part of the graph - never exported,
+        // regardless of whether "Mostrar cuadrícula" is currently on.
+        clone.style.backgroundImage = 'none';
+        // Chrome that lives inside .qtype_graph-canvas alongside the graph itself
+        // (the JSON panel, node/edge/floating-label menus) but has no place in a
+        // snapshot of it - stripped outright rather than relied upon to already be
+        // hidden (e.g. a menu left open when the export button is clicked).
+        var chrome = clone.querySelectorAll(
+                '[data-role="json-panel"], [data-role="image-panel"], [data-role="node-menu"], ' +
+                '[data-role="floatinglabel-menu"], [data-role="edge-menu"]');
+        for (var c = 0; c < chrome.length; c++) {
+          chrome[c].parentNode.removeChild(chrome[c]);
+        }
         // Override the baked-in (live) viewport size/clipping and pan/zoom transform that
         // inlineComputedStyles() just copied, so the clone renders the full bounds
         // computed above instead of reproducing the live view's crop.
@@ -715,32 +763,44 @@
         svgRoot.appendChild(foreignObject);
 
         var svgMarkup = new XMLSerializer().serializeToString(svgRoot);
-        var svgUrl = URL.createObjectURL(new Blob([svgMarkup], { type: 'image/svg+xml;charset=utf-8' }));
+        return {markup: svgMarkup, width: width, height: height};
+      }
+
+      function downloadBlob(blob, filename) {
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+
+      function captureCanvasScreenshot() {
+        var svg = buildGraphSvg();
+        if (!svg) {
+          return Promise.reject(new Error('No se encontró el lienzo del editor.'));
+        }
+        var svgUrl = URL.createObjectURL(new Blob([svg.markup], { type: 'image/svg+xml;charset=utf-8' }));
 
         return new Promise(function (resolve, reject) {
           var img = new Image();
           img.onload = function () {
             var scale = window.devicePixelRatio || 1;
             var outCanvas = document.createElement('canvas');
-            outCanvas.width = Math.round(width * scale);
-            outCanvas.height = Math.round(height * scale);
+            outCanvas.width = Math.round(svg.width * scale);
+            outCanvas.height = Math.round(svg.height * scale);
             var ctx = outCanvas.getContext('2d');
             ctx.scale(scale, scale);
-            ctx.drawImage(img, 0, 0, width, height);
+            ctx.drawImage(img, 0, 0, svg.width, svg.height);
             URL.revokeObjectURL(svgUrl);
             outCanvas.toBlob(function (blob) {
               if (!blob) {
                 reject(new Error('No se pudo generar el PNG.'));
                 return;
               }
-              var pngUrl = URL.createObjectURL(blob);
-              var a = document.createElement('a');
-              a.href = pngUrl;
-              a.download = 'grafo.png';
-              document.body.appendChild(a);
-              a.click();
-              document.body.removeChild(a);
-              URL.revokeObjectURL(pngUrl);
+              downloadBlob(blob, 'grafo.png');
               resolve();
             }, 'image/png');
           };
@@ -752,6 +812,15 @@
         });
       }
 
+      function downloadCanvasSvg() {
+        var svg = buildGraphSvg();
+        if (!svg) {
+          return Promise.reject(new Error('No se encontró el lienzo del editor.'));
+        }
+        downloadBlob(new Blob([svg.markup], { type: 'image/svg+xml;charset=utf-8' }), 'grafo.svg');
+        return Promise.resolve();
+      }
+
       document.getElementById('btn-screenshot').addEventListener('click', function () {
         statusField.textContent = 'Generando captura...';
         captureCanvasScreenshot().then(function () {
@@ -761,6 +830,22 @@
           statusField.textContent = 'No se pudo generar la captura del grafo.';
         });
       });
+
+      document.getElementById('btn-svg').addEventListener('click', function () {
+        statusField.textContent = 'Generando SVG...';
+        downloadCanvasSvg().then(function () {
+          statusField.textContent = 'SVG descargado (grafo.svg).';
+        }, function (err) {
+          console.error(err);
+          statusField.textContent = 'No se pudo generar el SVG del grafo.';
+        });
+      });
+
+      // The image-export button/panel on the editor's own toolbar (data-role=
+      // "image-btn"/"image-panel" in renderGraphEditorSkeleton() above) is already
+      // wired by createGraphEditor() inside editor.js - nothing to do here, this
+      // page's own btn-screenshot/btn-svg below the canvas are a separate,
+      // independently-wired pair of buttons for the same export.
 
       var instructionsModal = document.getElementById('instructions-modal');
       var openInstructions = function () {

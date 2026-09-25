@@ -68,6 +68,15 @@ class editor_ui {
       <button type="button" class="qtype_graph-menubtn qtype_graph-exportbtn" data-role="json-btn" hidden>
         JSON
       </button>
+      <button type="button" class="qtype_graph-menubtn qtype_graph-exportbtn qtype_graph-exportbtn--icon"
+          data-role="image-btn" hidden aria-label="Exportar imagen" title="Exportar imagen">
+        <svg class="qtype_graph-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <path d="M21 15l-5-5L5 21"></path>
+        </svg>
+      </button>
     </div>
   </div>
   <div class="qtype_graph-canvas" data-role="canvas">
@@ -85,6 +94,22 @@ class editor_ui {
         </button>
         <button type="button" class="qtype_graph-menubtn" data-role="json-copy-btn">Copiar al portapapeles</button>
         <button type="button" class="qtype_graph-menubtn" data-role="json-close-btn">Cerrar</button>
+      </div>
+    </div>
+    <div class="qtype_graph-exportpanel" data-role="image-panel" hidden>
+      <div class="qtype_graph-menulabel">Exportar imagen</div>
+      <div class="qtype_graph-formatrow" data-role="image-format-toggle">
+        <button type="button" class="qtype_graph-shapebtn qtype_graph-shapebtn--selected" data-format="png">
+          PNG
+        </button>
+        <button type="button" class="qtype_graph-shapebtn" data-format="svg">
+          SVG
+        </button>
+      </div>
+      <div class="qtype_graph-jsonstatus" data-role="image-status" hidden></div>
+      <div class="qtype_graph-exportactions">
+        <button type="button" class="qtype_graph-menubtn" data-role="image-download-btn">Descargar</button>
+        <button type="button" class="qtype_graph-menubtn" data-role="image-close-btn">Cerrar</button>
       </div>
     </div>
     <div class="qtype_graph-nodemenu" data-role="node-menu" hidden>

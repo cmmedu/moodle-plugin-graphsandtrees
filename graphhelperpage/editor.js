@@ -473,6 +473,273 @@
         return typeof value === 'string' ? value.trim().toLowerCase() : '';
     }
 
+    // XML namespace for the plain HTML wrapper a graph snapshot's foreignObject
+    // holds - see buildGraphSvgMarkup() below. SVG_NS (declared at the top of this
+    // module) is reused for the SVG side of that same markup.
+    const XHTML_NS = 'http://www.w3.org/1999/xhtml';
+
+    /**
+     * Resolves every element's live computed style onto its clone, in document
+     * order, so a detached clone (e.g. inside an SVG <foreignObject>, which can't
+     * apply this page's own stylesheet) still renders identically to the live
+     * element - including CSS custom properties (--qtype-graph-*), which
+     * getComputedStyle() resolves to their concrete values same as everything
+     * else.
+     *
+     * @param {Element} sourceRoot
+     * @param {Element} cloneRoot
+     */
+    function inlineComputedStyles(sourceRoot, cloneRoot) {
+        const sourceEls = [sourceRoot, ...sourceRoot.querySelectorAll('*')];
+        const cloneEls = [cloneRoot, ...cloneRoot.querySelectorAll('*')];
+        sourceEls.forEach((sourceEl, i) => {
+            const computed = window.getComputedStyle(sourceEl);
+            let cssText = '';
+            for (let j = 0; j < computed.length; j++) {
+                const prop = computed[j];
+                cssText += `${prop}:${computed.getPropertyValue(prop)};`;
+            }
+            cloneEls[i].setAttribute('style', cssText);
+        });
+    }
+
+    /**
+     * cloneNode(true) copies DOM attributes, not live JS properties, so a blank
+     * node rendered as <input>/<select> (its .value is set via JS, not an
+     * attribute) would otherwise clone back to empty. Both trees have identical
+     * structure right after cloning, so matching form controls positionally is
+     * safe.
+     *
+     * @param {Element} sourceRoot
+     * @param {Element} cloneRoot
+     */
+    function copyLiveFormState(sourceRoot, cloneRoot) {
+        const sourceControls = sourceRoot.querySelectorAll('input, select, textarea');
+        const cloneControls = cloneRoot.querySelectorAll('input, select, textarea');
+        sourceControls.forEach((sourceControl, i) => {
+            cloneControls[i].value = sourceControl.value;
+        });
+    }
+
+    /**
+     * How much of the graph's own untransformed (zoom 1, pan 0) coordinate space
+     * a canvas's current CSS transform represents - lets computeGraphContentBounds()
+     * below convert each element's on-screen rect back to that fixed space,
+     * regardless of whatever zoom/pan the user has left the live view at.
+     *
+     * @param {Element} contentEl the .qtype_graph-content element.
+     * @return {{zoom: number, panX: number, panY: number}}
+     */
+    function readContentTransform(contentEl) {
+        const transform = window.getComputedStyle(contentEl).transform;
+        // Only ever translate()+scale() (see setZoom()/panning in createGraphEditor) -
+        // never rotation or skew - so a 2D matrix(a, b, c, d, e, f) always has a === d
+        // (uniform zoom) and b === c === 0; 'none' (identity) happens before the first
+        // pan/zoom interaction.
+        const match = /^matrix\(([^,]+),[^,]+,[^,]+,[^,]+,([^,]+),([^)]+)\)$/.exec(transform || '');
+        if (!match) {
+            return {zoom: 1, panX: 0, panY: 0};
+        }
+        return {
+            zoom: parseFloat(match[1]) || 1,
+            panX: parseFloat(match[2]) || 0,
+            panY: parseFloat(match[3]) || 0,
+        };
+    }
+
+    /**
+     * Union of every node/edge/label's rendered extent, in the canvas's own
+     * untransformed coordinate space - i.e. what the graph's full bounding box is
+     * at zoom 1, pan 0, independent of whether some of it is currently
+     * scrolled/zoomed out of the visible canvas viewport. Nodes/floating
+     * labels/level labels are plain positioned HTML, read via
+     * getBoundingClientRect() (accurate even while clipped by the live canvas's
+     * overflow:hidden, since that only affects paint, not layout) and converted
+     * back through readContentTransform()'s pan/zoom; each edge's <g> (path +
+     * label) is read via SVG getBBox() instead, which is already in that same
+     * untransformed space with no conversion needed - see createEdge() above.
+     *
+     * @param {Element} canvasEl the .qtype_graph-canvas element.
+     * @param {Element} contentEl its .qtype_graph-content child.
+     * @return {{left: number, top: number, width: number, height: number}}
+     */
+    function computeGraphContentBounds(canvasEl, contentEl) {
+        const canvasRect = canvasEl.getBoundingClientRect();
+        const t = readContentTransform(contentEl);
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+
+        const includeRect = (left, top, width, height) => {
+            if (width <= 0 && height <= 0) {
+                return;
+            }
+            minX = Math.min(minX, left);
+            minY = Math.min(minY, top);
+            maxX = Math.max(maxX, left + width);
+            maxY = Math.max(maxY, top + height);
+        };
+
+        contentEl.querySelectorAll('.qtype_graph-node, .qtype_graph-floatinglabel, .qtype_graph-levellabel')
+                .forEach((el) => {
+                    const r = el.getBoundingClientRect();
+                    includeRect((r.left - canvasRect.left - t.panX) / t.zoom, (r.top - canvasRect.top - t.panY) / t.zoom,
+                            r.width / t.zoom, r.height / t.zoom);
+                });
+
+        contentEl.querySelectorAll('[data-role="edges"] > g').forEach((g) => {
+            const bbox = g.getBBox();
+            includeRect(bbox.x, bbox.y, bbox.width, bbox.height);
+        });
+
+        if (!isFinite(minX)) {
+            // Nothing on the canvas yet - fall back to whatever the viewport itself shows.
+            return {left: 0, top: 0, width: Math.max(1, canvasRect.width), height: Math.max(1, canvasRect.height)};
+        }
+        return {left: minX, top: minY, width: maxX - minX, height: maxY - minY};
+    }
+
+    /**
+     * Builds a standalone SVG snapshot of one graph canvas's current content -
+     * the WHOLE graph (see computeGraphContentBounds() above), never just what's
+     * visible in the viewport at the current pan/zoom, and never the editing
+     * grid or any UI chrome (menus, the JSON panel, the export buttons
+     * themselves) - only the graph itself. Shared by both export buttons: the
+     * SVG button downloads this markup as-is, the PNG button additionally draws
+     * it onto a real <canvas> to rasterize - see exportCanvasAsSvg()/
+     * exportCanvasAsPng() below.
+     *
+     * Works by cloning the canvas DOM and resolving every element's live
+     * computed style onto its clone, since a <foreignObject> can't apply this
+     * page's own stylesheet, then wrapping the clone in an SVG <foreignObject>
+     * and serializing with XMLSerializer (unlike string-concatenated outerHTML,
+     * it self-closes void elements like <input> so the SVG stays valid XML).
+     *
+     * @param {Element} canvasEl the .qtype_graph-canvas element.
+     * @param {Element} contentEl its .qtype_graph-content child.
+     * @return {{markup: string, width: number, height: number}}
+     */
+    function buildGraphSvgMarkup(canvasEl, contentEl) {
+        const PADDING = 40;
+        const bounds = computeGraphContentBounds(canvasEl, contentEl);
+        const width = Math.max(1, Math.round(bounds.width + PADDING * 2));
+        const height = Math.max(1, Math.round(bounds.height + PADDING * 2));
+
+        const clone = canvasEl.cloneNode(true);
+        copyLiveFormState(canvasEl, clone);
+        inlineComputedStyles(canvasEl, clone);
+        clone.style.transition = 'none';
+        // The editing grid is a drawing aid, not part of the graph - never exported,
+        // regardless of whether this question has it turned on (setCanvasStyle()).
+        clone.style.backgroundImage = 'none';
+        // Chrome that lives inside .qtype_graph-canvas alongside the graph itself
+        // (see editor_ui.php) but has no place in a snapshot of it - stripped
+        // outright rather than relied upon to already be hidden (e.g. a menu the
+        // teacher happened to leave open).
+        clone.querySelectorAll(
+                '[data-role="json-panel"], [data-role="image-panel"], [data-role="node-menu"], ' +
+                '[data-role="floatinglabel-menu"], [data-role="edge-menu"]'
+        ).forEach((el) => el.remove());
+        // Override the baked-in (live) viewport size/clipping and pan/zoom transform
+        // that inlineComputedStyles() just copied, so the clone renders the full
+        // bounds computed above instead of reproducing the live view's crop.
+        clone.style.overflow = 'visible';
+        clone.style.width = `${width}px`;
+        clone.style.height = `${height}px`;
+        const cloneContent = clone.querySelector('[data-role="content"]');
+        if (cloneContent) {
+            cloneContent.style.transition = 'none';
+            cloneContent.style.transform = `translate(${PADDING - bounds.left}px, ${PADDING - bounds.top}px) scale(1)`;
+        }
+
+        const wrapper = document.createElementNS(XHTML_NS, 'div');
+        wrapper.setAttribute('style', `width:${width}px;height:${height}px;overflow:hidden;`);
+        wrapper.appendChild(clone);
+
+        const svgRoot = document.createElementNS(SVG_NS, 'svg');
+        svgRoot.setAttribute('xmlns', SVG_NS);
+        svgRoot.setAttribute('width', String(width));
+        svgRoot.setAttribute('height', String(height));
+        const foreignObject = document.createElementNS(SVG_NS, 'foreignObject');
+        foreignObject.setAttribute('width', '100%');
+        foreignObject.setAttribute('height', '100%');
+        foreignObject.appendChild(wrapper);
+        svgRoot.appendChild(foreignObject);
+
+        return {markup: new XMLSerializer().serializeToString(svgRoot), width, height};
+    }
+
+    /**
+     * Triggers a browser download of a Blob.
+     *
+     * @param {Blob} blob
+     * @param {string} filename
+     */
+    function downloadBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    /**
+     * Downloads a PNG snapshot of one graph canvas - see buildGraphSvgMarkup().
+     * The SVG is rasterized at devicePixelRatio so the download is crisp on
+     * HiDPI screens, not just a 1:1 copy of CSS pixels.
+     *
+     * @param {Element} canvasEl the .qtype_graph-canvas element.
+     * @param {Element} contentEl its .qtype_graph-content child.
+     * @return {Promise}
+     */
+    function exportCanvasAsPng(canvasEl, contentEl) {
+        const svg = buildGraphSvgMarkup(canvasEl, contentEl);
+        const svgUrl = URL.createObjectURL(new Blob([svg.markup], {type: 'image/svg+xml;charset=utf-8'}));
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                const scale = window.devicePixelRatio || 1;
+                const outCanvas = document.createElement('canvas');
+                outCanvas.width = Math.round(svg.width * scale);
+                outCanvas.height = Math.round(svg.height * scale);
+                const ctx = outCanvas.getContext('2d');
+                ctx.scale(scale, scale);
+                ctx.drawImage(img, 0, 0, svg.width, svg.height);
+                URL.revokeObjectURL(svgUrl);
+                outCanvas.toBlob((blob) => {
+                    if (!blob) {
+                        reject(new Error('No se pudo generar el PNG.'));
+                        return;
+                    }
+                    downloadBlob(blob, 'grafo.png');
+                    resolve();
+                }, 'image/png');
+            };
+            img.onerror = () => {
+                URL.revokeObjectURL(svgUrl);
+                reject(new Error('No se pudo generar la imagen intermedia del lienzo.'));
+            };
+            img.src = svgUrl;
+        });
+    }
+
+    /**
+     * Downloads an SVG snapshot of one graph canvas - see buildGraphSvgMarkup().
+     *
+     * @param {Element} canvasEl the .qtype_graph-canvas element.
+     * @param {Element} contentEl its .qtype_graph-content child.
+     * @return {Promise}
+     */
+    function exportCanvasAsSvg(canvasEl, contentEl) {
+        const svg = buildGraphSvgMarkup(canvasEl, contentEl);
+        downloadBlob(new Blob([svg.markup], {type: 'image/svg+xml;charset=utf-8'}), 'grafo.svg');
+        return Promise.resolve();
+    }
+
     /**
      * Create one graph editor instance bound to a container element.
      *
@@ -665,6 +932,12 @@
         const jsonBuildBtn = root.querySelector('[data-role="json-build-btn"]');
         const jsonCopyBtn = root.querySelector('[data-role="json-copy-btn"]');
         const jsonCloseBtn = root.querySelector('[data-role="json-close-btn"]');
+        const imageBtn = root.querySelector('[data-role="image-btn"]');
+        const imagePanel = root.querySelector('[data-role="image-panel"]');
+        const imageFormatButtons = [...root.querySelectorAll('[data-role="image-format-toggle"] button')];
+        const imageStatus = root.querySelector('[data-role="image-status"]');
+        const imageDownloadBtn = root.querySelector('[data-role="image-download-btn"]');
+        const imageCloseBtn = root.querySelector('[data-role="image-close-btn"]');
 
         if (lockLayout) {
             [...modeToggle.children, ...orientationToggle.children].forEach((btn) => {
@@ -861,12 +1134,13 @@
         zoomOutBtn.addEventListener('click', () => setZoom(zoom - ZOOM_STEP));
         zoomResetBtn.addEventListener('click', () => resetView());
 
-        // The JSON panel (export + import combined) is only offered on the teacher
-        // authoring canvases (both the default graph and the result graph use
-        // opts.mode = 'editor', see initEditor()), never on the student attempt
-        // canvas (opts.mode = 'attempt').
+        // The JSON panel (export + import combined) and the image export panel are
+        // only offered on the teacher authoring canvases (both the default graph
+        // and the result graph use opts.mode = 'editor', see initEditor()), never
+        // on the student attempt canvas (opts.mode = 'attempt').
         if (opts.mode === 'editor') {
             jsonBtn.hidden = false;
+            imageBtn.hidden = false;
         }
 
         function showJsonStatus(message, isError) {
@@ -875,7 +1149,11 @@
             jsonStatus.classList.toggle('qtype_graph-jsonstatus--error', !!isError);
         }
 
+        // The JSON panel and the image export panel share the same fixed spot over
+        // the canvas (see .qtype_graph-exportpanel in styles.css), so opening one
+        // closes the other rather than letting them stack on top of each other.
         function openJsonPanel() {
+            imagePanel.hidden = true;
             jsonPanel.hidden = false;
             showJsonStatus('', false);
         }
@@ -936,6 +1214,54 @@
                 // Selection is left in place so the user can still copy manually.
                 // Silently ignored: no execCommand support and no Clipboard API.
             }
+        });
+
+        // Which format the image panel's "Descargar" button currently produces -
+        // toggled by the PNG/SVG buttons below, PNG first by default (matches
+        // whichever button carries qtype_graph-shapebtn--selected in the markup).
+        let imageFormat = 'png';
+
+        /**
+         * @param {string} message
+         * @param {boolean} isError
+         */
+        function showImageStatus(message, isError) {
+            imageStatus.textContent = message;
+            imageStatus.hidden = !message;
+            imageStatus.classList.toggle('qtype_graph-jsonstatus--error', !!isError);
+        }
+
+        /**
+         * See openJsonPanel() above - same fixed-spot-over-the-canvas reasoning,
+         * mirrored the other way.
+         */
+        function openImagePanel() {
+            jsonPanel.hidden = true;
+            imagePanel.hidden = false;
+            showImageStatus('', false);
+        }
+
+        imageBtn.addEventListener('click', () => {
+            openImagePanel();
+        });
+        imageCloseBtn.addEventListener('click', () => {
+            imagePanel.hidden = true;
+        });
+        imageFormatButtons.forEach((btn) => {
+            btn.addEventListener('click', () => {
+                imageFormat = btn.dataset.format;
+                imageFormatButtons.forEach((b) =>
+                        b.classList.toggle('qtype_graph-shapebtn--selected', b === btn));
+            });
+        });
+        imageDownloadBtn.addEventListener('click', () => {
+            showImageStatus('Generando...', false);
+            const exportFn = imageFormat === 'svg' ? exportCanvasAsSvg : exportCanvasAsPng;
+            exportFn(canvas, graphContent).then(() => {
+                showImageStatus(imageFormat === 'svg' ? 'SVG descargado.' : 'PNG descargado.', false);
+            }, () => {
+                showImageStatus('No se pudo generar la imagen.', true);
+            });
         });
 
         canvas.addEventListener('wheel', (e) => {

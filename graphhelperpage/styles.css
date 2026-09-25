@@ -129,6 +129,23 @@
   background: var(--qtype-graph-toolbar-active);
 }
 
+/* The image-export toolbar button carries no text (an icon only, see
+   editor_ui.php) - .qtype_graph-exportbtn's own padding is tuned for the "JSON"
+   label next to it, so this centers a small square icon in the same button shape
+   instead. */
+.qtype_graph-exportbtn--icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+}
+
+.qtype_graph-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
 .qtype_graph-exportpanel[hidden] {
   display: none;
 }
@@ -659,6 +676,20 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* The image-panel's PNG/SVG format choice (classes/editor_ui.php) - a row
+   instead of shaperow's column, reusing .qtype_graph-shapebtn/
+   --selected for the two option "chips" rather than inventing a new
+   toggle look. */
+.qtype_graph-formatrow {
+  display: flex;
+  gap: 8px;
+}
+
+.qtype_graph-formatrow .qtype_graph-shapebtn {
+  flex: 1;
+  justify-content: center;
 }
 
 .qtype_graph-shapebtn {
