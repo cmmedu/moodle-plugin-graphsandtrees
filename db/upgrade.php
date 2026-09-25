@@ -312,5 +312,60 @@ function xmldb_qtype_graph_upgrade(int $oldversion): bool {
         upgrade_plugin_savepoint(true, 2026092300, 'qtype', 'graph');
     }
 
+    if ($oldversion < 2026092500) {
+        $table = new xmldb_table('qtype_graph_options');
+
+        // Defaults to 0 (off) - the image-export button on the attempt canvas's
+        // toolbar (amd/src/editor.js's initAttempt()) stays hidden for every
+        // existing question until a teacher opts in, same reasoning as
+        // allowdeletenodes defaulting to 0 above.
+        $field = new xmldb_field('allowdownloadimage', XMLDB_TYPE_INTEGER, '1', null,
+                XMLDB_NOTNULL, null, '0', 'levellabelsize');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026092500, 'qtype', 'graph');
+    }
+
+    if ($oldversion < 2026092501) {
+        $table = new xmldb_table('qtype_graph_options');
+
+        // Both default to 0 (off), same reasoning as allowdownloadimage above - the
+        // orientation/line-style toolbar toggles stay hidden on the attempt canvas
+        // for every existing question until a teacher opts in (amd/src/editor.js's
+        // createGraphEditor(): allowChangeOrientation/allowChangeLineStyle).
+        $field = new xmldb_field('allowchangeorientation', XMLDB_TYPE_INTEGER, '1', null,
+                XMLDB_NOTNULL, null, '0', 'allowdownloadimage');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        $field = new xmldb_field('allowchangelinestyle', XMLDB_TYPE_INTEGER, '1', null,
+                XMLDB_NOTNULL, null, '0', 'allowchangeorientation');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026092501, 'qtype', 'graph');
+    }
+
+    if ($oldversion < 2026092502) {
+        $table = new xmldb_table('qtype_graph_options');
+
+        // Defaults to 0 (off), same reasoning as allowchangeorientation/
+        // allowchangelinestyle above - the graph/tree mode toolbar toggle stays
+        // hidden on the attempt canvas for every existing question until a
+        // teacher opts in (amd/src/editor.js's createGraphEditor():
+        // allowChangeGraphType).
+        $field = new xmldb_field('allowchangegraphtype', XMLDB_TYPE_INTEGER, '1', null,
+                XMLDB_NOTNULL, null, '0', 'allowchangelinestyle');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+
+        upgrade_plugin_savepoint(true, 2026092502, 'qtype', 'graph');
+    }
+
     return true;
 }

@@ -757,6 +757,15 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const allowDeleteNodes = opts.allowDeleteNodes !== false;
         const onChange = opts.onChange || function() {};
         const attemptMode = opts.mode === 'attempt';
+        // Teacher-authored canvases (mode: 'editor') always keep full control over
+        // layout - these three only ever restrict the STUDENT attempt canvas, gated
+        // on qtype_graph_options.allowchangegraphtype/allowchangeorientation/
+        // allowchangelinestyle (off by default - see edit_graph_form.php), and hide
+        // the matching toolbar button outright rather than merely disabling it
+        // (setMode()/the hideLayoutControls block below).
+        const allowChangeGraphType = !attemptMode || !!opts.allowChangeGraphType;
+        const allowChangeOrientation = !attemptMode || !!opts.allowChangeOrientation;
+        const allowChangeLineStyle = !attemptMode || !!opts.allowChangeLineStyle;
         const enableAddInput = !!opts.enableAddInput;
         const addInputTargetContainerId = opts.addInputTargetContainerId || null;
         // What a STUDENT's own new node/connection looks like (attempt mode only) -
@@ -1075,6 +1084,13 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             modeToggle.hidden = true;
             orientationToggle.hidden = true;
             lineStyleToggle.hidden = true;
+        } else {
+            if (!allowChangeGraphType) {
+                modeToggle.hidden = true;
+            }
+            if (!allowChangeLineStyle) {
+                lineStyleToggle.hidden = true;
+            }
         }
 
         function notifyChange() {
@@ -1137,12 +1153,20 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         zoomOutBtn.addEventListener('click', () => setZoom(zoom - ZOOM_STEP));
         zoomResetBtn.addEventListener('click', () => resetView());
 
-        // The JSON panel (export + import combined) and the image export panel are
-        // only offered on the teacher authoring canvases (both the default graph
-        // and the result graph use opts.mode = 'editor', see initEditor()), never
-        // on the student attempt canvas (opts.mode = 'attempt').
+        // The JSON panel (export + import combined) is only offered on the teacher
+        // authoring canvases (both the default graph and the result graph use
+        // opts.mode = 'editor', see initEditor()) - never on the student attempt
+        // canvas (opts.mode = 'attempt'), since "Construir grafo" lets you replace
+        // the whole graph from pasted JSON, which a student could use to cheat.
+        // The image export panel is read-only (just a PNG/SVG download), so it's
+        // safe to also offer on the attempt canvas - gated on the teacher's own
+        // "Allow students to download their graph as an image" setting
+        // (qtype_graph_options.allowdownloadimage, opts.allowDownloadImage here -
+        // see initAttempt() below), off by default.
         if (opts.mode === 'editor') {
             jsonBtn.hidden = false;
+            imageBtn.hidden = false;
+        } else if (attemptMode && opts.allowDownloadImage) {
             imageBtn.hidden = false;
         }
 
@@ -2371,7 +2395,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             }
             mode = nextMode;
             canvas.classList.toggle('qtype_graph-canvas--tree', mode === 'tree');
-            orientationToggle.hidden = hideLayoutControls || mode !== 'tree';
+            orientationToggle.hidden = hideLayoutControls || mode !== 'tree' || !allowChangeOrientation;
             [...modeToggle.children].forEach((btn) => {
                 btn.classList.toggle('active', btn.dataset.mode === mode);
             });
@@ -3602,6 +3626,13 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * @param {boolean} [opts.showNodeTrail] true if clicking a node should highlight the
      *                  path (nodes/edges) back to its origin node - see showTrailFrom() in
      *                  createGraphEditor().
+     * @param {boolean} [opts.allowDownloadImage] true to show the image-export (PNG/SVG)
+     *                  button on this canvas's toolbar.
+     * @param {boolean} [opts.allowChangeGraphType] true to show the graph/tree mode toggle.
+     * @param {boolean} [opts.allowChangeOrientation] true to show the tree-mode orientation
+     *                  (V/H) toggle.
+     * @param {boolean} [opts.allowChangeLineStyle] true to show the connection line-style
+     *                  (straight/orthogonal) toggle.
      * @param {string} [opts.initialResponseJson] a previously-saved response to seed from.
      * @param {Function} [opts.onResponseChange] (response) => void, called whenever the
      *                    response changes as a result of user interaction (never for the
@@ -3697,6 +3728,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             allowAddNodes: opts.allowAddNodes !== false,
             allowDeleteNodes: opts.allowDeleteNodes !== false,
             showNodeTrail: !!opts.showNodeTrail,
+            allowDownloadImage: !!opts.allowDownloadImage,
+            allowChangeGraphType: !!opts.allowChangeGraphType,
+            allowChangeOrientation: !!opts.allowChangeOrientation,
+            allowChangeLineStyle: !!opts.allowChangeLineStyle,
             newNodeContentType: opts.newNodeContentType,
             newNodeContentValue: opts.newNodeContentValue,
             newEdgeContentType: opts.newEdgeContentType,
@@ -3736,8 +3771,13 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * @param {boolean} allowDeleteNodes true if the student may delete the teacher-authored nodes.
      * @param {boolean} showNodeTrail true if clicking a node should highlight the path
      *                  (nodes/edges) back to its origin node.
+     * @param {boolean} allowDownloadImage true to show the image-export (PNG/SVG) button.
+     * @param {boolean} allowChangeGraphType true to show the graph/tree mode toggle.
+     * @param {boolean} allowChangeOrientation true to show the tree-mode orientation toggle.
+     * @param {boolean} allowChangeLineStyle true to show the connection line-style toggle.
      */
-    function initAttempt(containerId, hiddenFieldId, readOnly, allowAddNodes, allowDeleteNodes, showNodeTrail) {
+    function initAttempt(containerId, hiddenFieldId, readOnly, allowAddNodes, allowDeleteNodes, showNodeTrail,
+            allowDownloadImage, allowChangeGraphType, allowChangeOrientation, allowChangeLineStyle) {
         const root = document.getElementById(containerId);
         const hidden = document.getElementById(hiddenFieldId);
         if (!root || !hidden) {
@@ -3749,6 +3789,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             allowAddNodes,
             allowDeleteNodes,
             showNodeTrail,
+            allowDownloadImage,
+            allowChangeGraphType,
+            allowChangeOrientation,
+            allowChangeLineStyle,
             newNodeContentType: root.dataset.newnodecontenttype,
             newNodeContentValue: root.dataset.newnodecontentvalue,
             newEdgeContentType: root.dataset.newedgecontenttype,

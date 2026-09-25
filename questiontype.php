@@ -77,6 +77,10 @@ class qtype_graph extends question_type {
         $options->gridcolor = $formdata->gridcolor ?? '#1b1f27';
         $options->textcolor = $formdata->textcolor ?? '';
         $options->shownodetrail = !empty($formdata->shownodetrail) ? 1 : 0;
+        $options->allowdownloadimage = !empty($formdata->allowdownloadimage) ? 1 : 0;
+        $options->allowchangeorientation = !empty($formdata->allowchangeorientation) ? 1 : 0;
+        $options->allowchangelinestyle = !empty($formdata->allowchangelinestyle) ? 1 : 0;
+        $options->allowchangegraphtype = !empty($formdata->allowchangegraphtype) ? 1 : 0;
         $options->showlevellabels = !empty($formdata->showlevellabels) ? 1 : 0;
         $options->levellabelsjson = $formdata->levellabelsjson ?? '';
         $options->levellabelsize = $formdata->levellabelsize ?? 16;
@@ -144,6 +148,10 @@ class qtype_graph extends question_type {
         $question->gridcolor = $questiondata->options->gridcolor ?? '#1b1f27';
         $question->textcolor = $questiondata->options->textcolor ?? '';
         $question->shownodetrail = (bool) ($questiondata->options->shownodetrail ?? 1);
+        $question->allowdownloadimage = (bool) ($questiondata->options->allowdownloadimage ?? 0);
+        $question->allowchangeorientation = (bool) ($questiondata->options->allowchangeorientation ?? 0);
+        $question->allowchangelinestyle = (bool) ($questiondata->options->allowchangelinestyle ?? 0);
+        $question->allowchangegraphtype = (bool) ($questiondata->options->allowchangegraphtype ?? 0);
         $question->showlevellabels = (bool) ($questiondata->options->showlevellabels ?? 1);
         $question->levellabelsjson = $questiondata->options->levellabelsjson ?? '';
         $question->levellabelsize = (int) ($questiondata->options->levellabelsize ?? 16);
@@ -213,6 +221,10 @@ class qtype_graph extends question_type {
         $expout .= '    <gridcolor>' . $format->xml_escape($options->gridcolor) . "</gridcolor>\n";
         $expout .= '    <textcolor>' . $format->xml_escape($options->textcolor ?? '') . "</textcolor>\n";
         $expout .= "    <shownodetrail>{$options->shownodetrail}</shownodetrail>\n";
+        $expout .= "    <allowdownloadimage>{$options->allowdownloadimage}</allowdownloadimage>\n";
+        $expout .= "    <allowchangeorientation>{$options->allowchangeorientation}</allowchangeorientation>\n";
+        $expout .= "    <allowchangelinestyle>{$options->allowchangelinestyle}</allowchangelinestyle>\n";
+        $expout .= "    <allowchangegraphtype>{$options->allowchangegraphtype}</allowchangegraphtype>\n";
         $expout .= "    <showlevellabels>{$options->showlevellabels}</showlevellabels>\n";
         $expout .= '    <levellabelsjson>' . $format->xml_escape($options->levellabelsjson ?? '') .
                 "</levellabelsjson>\n";
@@ -265,6 +277,10 @@ class qtype_graph extends question_type {
         $qo->gridcolor = $format->getpath($data, ['#', 'gridcolor', 0, '#'], '#1b1f27', true);
         $qo->textcolor = $format->getpath($data, ['#', 'textcolor', 0, '#'], '', true);
         $qo->shownodetrail = $format->getpath($data, ['#', 'shownodetrail', 0, '#'], 1);
+        $qo->allowdownloadimage = $format->getpath($data, ['#', 'allowdownloadimage', 0, '#'], 0);
+        $qo->allowchangeorientation = $format->getpath($data, ['#', 'allowchangeorientation', 0, '#'], 0);
+        $qo->allowchangelinestyle = $format->getpath($data, ['#', 'allowchangelinestyle', 0, '#'], 0);
+        $qo->allowchangegraphtype = $format->getpath($data, ['#', 'allowchangegraphtype', 0, '#'], 0);
         $qo->showlevellabels = $format->getpath($data, ['#', 'showlevellabels', 0, '#'], 1);
         $qo->levellabelsjson = $format->getpath($data, ['#', 'levellabelsjson', 0, '#'], '', true);
         $qo->levellabelsize = $format->getpath($data, ['#', 'levellabelsize', 0, '#'], 16);

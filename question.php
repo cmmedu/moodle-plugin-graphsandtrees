@@ -84,6 +84,18 @@ class qtype_graph_question extends question_graded_automatically {
     /** @var bool whether clicking a node during the attempt highlights the path back to its origin node. */
     public $shownodetrail = true;
 
+    /** @var bool whether the student sees an image-export (PNG/SVG) button on the attempt canvas. */
+    public $allowdownloadimage = false;
+
+    /** @var bool whether the student sees the tree-mode orientation toggle on the attempt canvas. */
+    public $allowchangeorientation = false;
+
+    /** @var bool whether the student sees the connection line-style toggle on the attempt canvas. */
+    public $allowchangelinestyle = false;
+
+    /** @var bool whether the student sees the graph/tree mode toggle on the attempt canvas. */
+    public $allowchangegraphtype = false;
+
     /** @var bool whether every canvas for this question shows tree-mode depth labels ("Etapa 0", "Etapa 1", ...). */
     public $showlevellabels = true;
 

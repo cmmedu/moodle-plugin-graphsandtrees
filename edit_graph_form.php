@@ -65,6 +65,22 @@ class qtype_graph_edit_form extends question_edit_form {
         $mform->setDefault('shownodetrail', 1);
         $mform->addHelpButton('shownodetrail', 'shownodetrail', 'qtype_graph');
 
+        $mform->addElement('advcheckbox', 'allowdownloadimage', get_string('allowdownloadimage', 'qtype_graph'));
+        $mform->setDefault('allowdownloadimage', 0);
+        $mform->addHelpButton('allowdownloadimage', 'allowdownloadimage', 'qtype_graph');
+
+        $mform->addElement('advcheckbox', 'allowchangeorientation', get_string('allowchangeorientation', 'qtype_graph'));
+        $mform->setDefault('allowchangeorientation', 0);
+        $mform->addHelpButton('allowchangeorientation', 'allowchangeorientation', 'qtype_graph');
+
+        $mform->addElement('advcheckbox', 'allowchangelinestyle', get_string('allowchangelinestyle', 'qtype_graph'));
+        $mform->setDefault('allowchangelinestyle', 0);
+        $mform->addHelpButton('allowchangelinestyle', 'allowchangelinestyle', 'qtype_graph');
+
+        $mform->addElement('advcheckbox', 'allowchangegraphtype', get_string('allowchangegraphtype', 'qtype_graph'));
+        $mform->setDefault('allowchangegraphtype', 0);
+        $mform->addHelpButton('allowchangegraphtype', 'allowchangegraphtype', 'qtype_graph');
+
         $newcontenttypeoptions = [
             'input' => get_string('contenttype_input', 'qtype_graph'),
             'select' => get_string('contenttype_select', 'qtype_graph'),
@@ -383,6 +399,10 @@ class qtype_graph_edit_form extends question_edit_form {
             $question->gridcolor = $question->options->gridcolor ?? '#1b1f27';
             $question->textcolor = $question->options->textcolor ?? '';
             $question->shownodetrail = $question->options->shownodetrail ?? 1;
+            $question->allowdownloadimage = $question->options->allowdownloadimage ?? 0;
+            $question->allowchangeorientation = $question->options->allowchangeorientation ?? 0;
+            $question->allowchangelinestyle = $question->options->allowchangelinestyle ?? 0;
+            $question->allowchangegraphtype = $question->options->allowchangegraphtype ?? 0;
             $question->showlevellabels = $question->options->showlevellabels ?? 1;
             $question->levellabelsjson = $question->options->levellabelsjson ?? '';
             $question->levellabelsize = $question->options->levellabelsize ?? 16;
