@@ -187,6 +187,26 @@
   border-color: var(--qtype-graph-accent);
 }
 
+/* The image panel's "Fondo"/"Cuadrícula" toggles (classes/editor_ui.php). */
+.qtype_graph-checkboxrow {
+  display: flex;
+  gap: 16px;
+}
+
+.qtype_graph-checkboxlabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--qtype-graph-text);
+  cursor: pointer;
+}
+
+.qtype_graph-checkboxlabel input[type="checkbox"] {
+  accent-color: var(--qtype-graph-accent);
+  cursor: pointer;
+}
+
 .qtype_graph-jsonstatus[hidden] {
   display: none;
 }

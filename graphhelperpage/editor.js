@@ -603,12 +603,12 @@
     /**
      * Builds a standalone SVG snapshot of one graph canvas's current content -
      * the WHOLE graph (see computeGraphContentBounds() above), never just what's
-     * visible in the viewport at the current pan/zoom, and never the editing
-     * grid or any UI chrome (menus, the JSON panel, the export buttons
-     * themselves) - only the graph itself. Shared by both export buttons: the
-     * SVG button downloads this markup as-is, the PNG button additionally draws
-     * it onto a real <canvas> to rasterize - see exportCanvasAsSvg()/
-     * exportCanvasAsPng() below.
+     * visible in the viewport at the current pan/zoom, and never any UI chrome
+     * (menus, the JSON/image panels) - the editing grid and background color are
+     * each stripped or kept per options (see below). Shared by both export
+     * formats: the SVG path downloads this markup as-is, the PNG path
+     * additionally draws it onto a real <canvas> to rasterize - see
+     * exportCanvasAsSvg()/exportCanvasAsPng() below.
      *
      * Works by cloning the canvas DOM and resolving every element's live
      * computed style onto its clone, since a <foreignObject> can't apply this
@@ -618,9 +618,17 @@
      *
      * @param {Element} canvasEl the .qtype_graph-canvas element.
      * @param {Element} contentEl its .qtype_graph-content child.
+     * @param {Object} [options]
+     * @param {boolean} [options.includeBackground] false makes the canvas's own
+     *                  background color transparent instead (still doesn't affect
+     *                  the grid - see includeGrid). Defaults to true.
+     * @param {boolean} [options.includeGrid] true keeps the editing grid pattern
+     *                  in the export instead of stripping it. Defaults to false.
      * @return {{markup: string, width: number, height: number}}
      */
-    function buildGraphSvgMarkup(canvasEl, contentEl) {
+    function buildGraphSvgMarkup(canvasEl, contentEl, options) {
+        const includeBackground = !options || options.includeBackground !== false;
+        const includeGrid = !!(options && options.includeGrid);
         const PADDING = 40;
         const bounds = computeGraphContentBounds(canvasEl, contentEl);
         const width = Math.max(1, Math.round(bounds.width + PADDING * 2));
@@ -630,9 +638,16 @@
         copyLiveFormState(canvasEl, clone);
         inlineComputedStyles(canvasEl, clone);
         clone.style.transition = 'none';
-        // The editing grid is a drawing aid, not part of the graph - never exported,
-        // regardless of whether this question has it turned on (setCanvasStyle()).
-        clone.style.backgroundImage = 'none';
+        // The editing grid and the canvas's own background color are each only
+        // exported when their matching image-panel checkbox (see editor_ui.php) is
+        // on - both default to what "just the graph" means: no grid, but the
+        // background kept (a fully transparent PNG is the opt-in, not the default).
+        if (!includeGrid) {
+            clone.style.backgroundImage = 'none';
+        }
+        if (!includeBackground) {
+            clone.style.backgroundColor = 'transparent';
+        }
         // Chrome that lives inside .qtype_graph-canvas alongside the graph itself
         // (see editor_ui.php) but has no place in a snapshot of it - stripped
         // outright rather than relied upon to already be hidden (e.g. a menu the
@@ -694,10 +709,11 @@
      *
      * @param {Element} canvasEl the .qtype_graph-canvas element.
      * @param {Element} contentEl its .qtype_graph-content child.
+     * @param {Object} [options] see buildGraphSvgMarkup().
      * @return {Promise}
      */
-    function exportCanvasAsPng(canvasEl, contentEl) {
-        const svg = buildGraphSvgMarkup(canvasEl, contentEl);
+    function exportCanvasAsPng(canvasEl, contentEl, options) {
+        const svg = buildGraphSvgMarkup(canvasEl, contentEl, options);
         const svgUrl = URL.createObjectURL(new Blob([svg.markup], {type: 'image/svg+xml;charset=utf-8'}));
         return new Promise((resolve, reject) => {
             const img = new Image();
@@ -732,10 +748,11 @@
      *
      * @param {Element} canvasEl the .qtype_graph-canvas element.
      * @param {Element} contentEl its .qtype_graph-content child.
+     * @param {Object} [options] see buildGraphSvgMarkup().
      * @return {Promise}
      */
-    function exportCanvasAsSvg(canvasEl, contentEl) {
-        const svg = buildGraphSvgMarkup(canvasEl, contentEl);
+    function exportCanvasAsSvg(canvasEl, contentEl, options) {
+        const svg = buildGraphSvgMarkup(canvasEl, contentEl, options);
         downloadBlob(new Blob([svg.markup], {type: 'image/svg+xml;charset=utf-8'}), 'grafo.svg');
         return Promise.resolve();
     }
@@ -935,6 +952,8 @@
         const imageBtn = root.querySelector('[data-role="image-btn"]');
         const imagePanel = root.querySelector('[data-role="image-panel"]');
         const imageFormatButtons = [...root.querySelectorAll('[data-role="image-format-toggle"] button')];
+        const imageBgCheckbox = root.querySelector('[data-role="image-bg-checkbox"]');
+        const imageGridCheckbox = root.querySelector('[data-role="image-grid-checkbox"]');
         const imageStatus = root.querySelector('[data-role="image-status"]');
         const imageDownloadBtn = root.querySelector('[data-role="image-download-btn"]');
         const imageCloseBtn = root.querySelector('[data-role="image-close-btn"]');
@@ -1257,7 +1276,8 @@
         imageDownloadBtn.addEventListener('click', () => {
             showImageStatus('Generando...', false);
             const exportFn = imageFormat === 'svg' ? exportCanvasAsSvg : exportCanvasAsPng;
-            exportFn(canvas, graphContent).then(() => {
+            const options = {includeBackground: imageBgCheckbox.checked, includeGrid: imageGridCheckbox.checked};
+            exportFn(canvas, graphContent, options).then(() => {
                 showImageStatus(imageFormat === 'svg' ? 'SVG descargado.' : 'PNG descargado.', false);
             }, () => {
                 showImageStatus('No se pudo generar la imagen.', true);

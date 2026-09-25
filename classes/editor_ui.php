@@ -106,6 +106,16 @@ class editor_ui {
           SVG
         </button>
       </div>
+      <div class="qtype_graph-checkboxrow">
+        <label class="qtype_graph-checkboxlabel">
+          <input type="checkbox" data-role="image-bg-checkbox" checked>
+          Fondo
+        </label>
+        <label class="qtype_graph-checkboxlabel">
+          <input type="checkbox" data-role="image-grid-checkbox">
+          Cuadrícula
+        </label>
+      </div>
       <div class="qtype_graph-jsonstatus" data-role="image-status" hidden></div>
       <div class="qtype_graph-exportactions">
         <button type="button" class="qtype_graph-menubtn" data-role="image-download-btn">Descargar</button>
