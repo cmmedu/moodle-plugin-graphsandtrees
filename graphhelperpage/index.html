@@ -370,7 +370,13 @@
       // ever changes.
       function renderGraphEditorSkeleton(id) {
         return (
-          '<div id="' + id + '" class="qtype_graph-container">' +
+          // data-levellabelsize matches edit_graph_form.php's own brand-new-
+          // question default (24px, bigger than the 16px CSS/legacy fallback -
+          // see --qtype-graph-levellabel-size in styles.css) - every other
+          // canvas style setting already coincides with its CSS default
+          // (bgcolor/gridcolor) so doesn't need a matching data-* attribute
+          // here, but this one doesn't, so it's the one exception.
+          '<div id="' + id + '" class="qtype_graph-container" data-levellabelsize="24">' +
           '  <div class="qtype_graph-toolbar">' +
           '    <div class="qtype_graph-modecontrols">' +
           '      <div class="qtype_graph-segmented" data-role="mode-toggle">' +
