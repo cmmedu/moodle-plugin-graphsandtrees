@@ -312,27 +312,59 @@
   text-align: center;
 }
 
-/* Default "Nivel <depth>" title, or the edit form's "levellabeltitle_<depth>"
-   override - see renderLevelLabels() in amd/src/editor.js. --item-text-color
-   (set inline on the parent .qtype_graph-levellabel from that same depth's
-   "levellabelcolor_<depth>" override) is the SAME custom property
-   applyNodeTextColor()/applyEdgeTextColor()/applyFloatingLabelTextColor()
-   use elsewhere - safe to share since a level label is never nested inside a
-   node/edge/floating label, so there's no risk of inheriting one of theirs. */
+/* Only present on the canvas that owns this question's shared level-label
+   settings (isCanvasSettingsOwner in amd/src/editor.js) - lets a click reach
+   the label despite .qtype_graph-levellabels/.qtype_graph-levellabel
+   themselves staying pointer-events: none everywhere else (a child's own
+   pointer-events: auto still receives events regardless of an ancestor's
+   none). See openLevelLabelMenu(). */
+.qtype_graph-levellabel--clickable {
+  pointer-events: auto;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.qtype_graph-levellabel--clickable:hover {
+  background: var(--qtype-graph-accent-soft);
+}
+
+/* A depth hidden via its own "Mostrar etiqueta" toggle (levellabel-menu),
+   rendered only on the owning canvas above - a dimmed ghost placeholder
+   rather than nothing at all, since a label that renders nothing has no
+   on-canvas element left to click to turn it back on. Every other canvas
+   (result graph, an alternate, the student attempt) skips a hidden depth
+   entirely instead - see renderLevelLabels(). */
+.qtype_graph-levellabel--hidden {
+  opacity: 0.35;
+}
+
+.qtype_graph-levellabel--hidden:hover {
+  opacity: 0.7;
+}
+
+/* Default "Etapa <depth>" title, or the level-label menu's own title
+   override - see renderLevelLabels() in amd/src/editor.js. Always
+   --qtype-graph-muted - unlike node/edge/floating-label text, a level
+   label's color isn't teacher-customizable. --qtype-graph-levellabel-size
+   (set on the canvas by setCanvasStyle(), from the canvas gear panel's
+   "Tamaño de etiquetas de nivel") applies uniformly across every depth. */
 .qtype_graph-levellabel-title {
-  font-size: 16px;
+  font-size: var(--qtype-graph-levellabel-size, 16px);
   font-weight: 600;
-  color: var(--item-text-color, var(--qtype-graph-muted));
+  color: var(--qtype-graph-muted);
   white-space: nowrap;
 }
 
-/* The edit form's "levellabelsubtitle_<depth>" override - empty (not rendered
-   at all) by default. Same --item-text-color as .qtype_graph-levellabel-title
-   above - a level label has one text color, not a separate one per line. */
+/* The level-label menu's own subtitle override - empty (not rendered at all)
+   by default. Scaled proportionally (0.8125 = the original fixed 13px/16px
+   ratio) off the same --qtype-graph-levellabel-size custom property, so the
+   subtitle grows/shrinks together with the title instead of needing its own
+   size control. */
 .qtype_graph-levellabel-subtitle {
-  font-size: 13px;
+  font-size: calc(var(--qtype-graph-levellabel-size, 16px) * 0.8125);
   font-weight: 400;
-  color: var(--item-text-color, var(--qtype-graph-muted));
+  color: var(--qtype-graph-muted);
   opacity: 0.75;
   white-space: nowrap;
 }

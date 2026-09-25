@@ -75,13 +75,6 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     // (vertical orientation) / column (horizontal orientation) - see
     // renderLevelLabels() below.
     const LEVEL_LABEL_GAP = 28;
-    // Number of per-depth level-label override rows the edit form offers (depths
-    // 0 to MAX_LEVEL_LABEL_OVERRIDES - 1) - see initLevelLabelOverrides() below.
-    // Kept in sync by hand with qtype_graph_edit_form::MAX_LEVEL_LABELS
-    // (edit_graph_form.php). A depth at or beyond this always falls back to the
-    // default "Etapa <depth>" title with no subtitle - there is no row to
-    // override it with.
-    const MAX_LEVEL_LABEL_OVERRIDES = 10;
     const ZOOM_MIN = 0.4;
     const ZOOM_MAX = 2;
     const ZOOM_STEP = 0.1;
@@ -781,6 +774,11 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         // else, where the panel doesn't exist. hydrate() below and the "Construir
         // grafo" button both need to call this from outside that block.
         let applyCanvasSettings = null;
+        // Same reasoning as applyCanvasSettings above, but for level-label
+        // overrides - persists levelLabelOverrides (mutated directly by clicking a
+        // label on the canvas, see openLevelLabelMenu() below) into the hidden
+        // levellabelsjson mform field and broadcasts it to editorRegistry.
+        let applyLevelLabelOverrides = null;
         const allowAddNodes = opts.allowAddNodes !== false;
         const allowDeleteNodes = opts.allowDeleteNodes !== false;
         const onChange = opts.onChange || function() {};
@@ -838,6 +836,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const addFloatingLabelInputBtn = root.querySelector('[data-role="add-floatinglabel-input-btn"]');
         const addFloatingLabelSelectBtn = root.querySelector('[data-role="add-floatinglabel-select-btn"]');
         const deleteFloatingLabelBtn = root.querySelector('[data-role="delete-floatinglabel-btn"]');
+        const levelLabelMenu = root.querySelector('[data-role="levellabel-menu"]');
+        const levelLabelShowCheckbox = root.querySelector('[data-role="levellabel-show-checkbox"]');
+        const levelLabelTitleInput = root.querySelector('[data-role="levellabel-title-input"]');
+        const levelLabelSubtitleInput = root.querySelector('[data-role="levellabel-subtitle-input"]');
         const edgeMenu = root.querySelector('[data-role="edge-menu"]');
         const edgeTextSection = root.querySelector('[data-role="edge-text-section"]');
         const edgeSelectSection = root.querySelector('[data-role="edge-select-section"]');
@@ -985,6 +987,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const canvasBgColorPicker = root.querySelector('[data-role="canvas-bgcolor-picker"]');
         const canvasGridColorInput = root.querySelector('[data-role="canvas-gridcolor-input"]');
         const canvasGridColorPicker = root.querySelector('[data-role="canvas-gridcolor-picker"]');
+        const canvasLevelLabelSizeInput = root.querySelector('[data-role="canvas-levellabelsize-input"]');
         const canvasSettingsCloseBtn = root.querySelector('[data-role="canvas-settings-close-btn"]');
 
         if (lockLayout) {
@@ -1009,6 +1012,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         // separate from activeNodeId (the node-menu's own state) since either menu can be
         // open independently, and openFloatingLabelMenu() below never touches activeNodeId.
         let activeFloatingLabelNodeId = null;
+        // The tree depth whose level-label popup (levelLabelMenu) is currently
+        // open - same reasoning as activeFloatingLabelNodeId above. 0 is a valid
+        // depth, so null (not falsy-0) means "none".
+        let activeLevelLabelDepth = null;
         // "Show node trail" (qtype_graph_options.shownodetrail) - only ever true in
         // attempt mode (opts.showNodeTrail is not even passed by initEditor()'s editor
         // canvases). See showTrailFrom()/clearTrail() below.
@@ -1115,13 +1122,14 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         });
 
         /**
-         * Set the per-depth level-label overrides (title/subtitle/show/color, one
-         * entry per tree depth) and re-render them if currently in tree mode. Read
+         * Set the per-depth level-label overrides (show/title/subtitle, one entry
+         * per tree depth) and re-render them if currently in tree mode. Read
          * generically off the container's own data-levellabelsjson (same reasoning
-         * as setCanvasStyle() above) at setup, and called live from
-         * initLevelLabelOverrides() below whenever the teacher edits an override row.
+         * as setCanvasStyle() above) at setup, and called live via editorRegistry
+         * broadcast (applyLevelLabelOverrides() above) whenever the teacher clicks
+         * a level label open and edits it (openLevelLabelMenu() below).
          *
-         * @param {Array} overrides index = depth, each {show, title, subtitle, color} or absent.
+         * @param {Array} overrides index = depth, each {show, title, subtitle} or absent.
          */
         function setLevelLabelOverrides(overrides) {
             levelLabelOverrides = Array.isArray(overrides) ? overrides : [];
@@ -1274,13 +1282,17 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 return;
             }
             hydrate(data);
-            // hydrate() above only ever applies an embedded showGrid/bgColor/
-            // gridColor visually (see its own comment) - pasting JSON here is a
-            // real, user-initiated change, so also persist whatever it just
-            // applied into the hidden mform fields, same as if the teacher had
-            // set it from the gear panel directly.
+            // hydrate() above only ever applies embedded showGrid/bgColor/
+            // gridColor/levelLabelSize/levelLabelOverrides visually (see its own
+            // comment) - pasting JSON here is a real, user-initiated change, so
+            // also persist whatever it just applied into the hidden mform fields,
+            // same as if the teacher had set it from the gear panel or the
+            // level-label click-menu directly.
             if (applyCanvasSettings) {
                 applyCanvasSettings();
+            }
+            if (applyLevelLabelOverrides) {
+                applyLevelLabelOverrides();
             }
             notifyChange();
             const form = root.closest('form');
@@ -1375,6 +1387,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const showGridField = canvasSettingsFieldIds && document.getElementById(canvasSettingsFieldIds.showGrid);
             const bgColorField = canvasSettingsFieldIds && document.getElementById(canvasSettingsFieldIds.bgColor);
             const gridColorField = canvasSettingsFieldIds && document.getElementById(canvasSettingsFieldIds.gridColor);
+            const levelLabelSizeField = canvasSettingsFieldIds &&
+                    document.getElementById(canvasSettingsFieldIds.levelLabelSize);
 
             // Seeded from this editor's already-resolved initial canvasStyle state
             // (see setCanvasStyle() above), not by re-reading the hidden mform
@@ -1390,27 +1404,30 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             if (/^#[0-9a-fA-F]{6}$/.test(canvasStyle.gridColor)) {
                 canvasGridColorPicker.value = canvasStyle.gridColor;
             }
+            canvasLevelLabelSizeInput.value = canvasStyle.levelLabelSize;
 
             /**
-             * Applies the panel's current showgrid/bgcolor/gridcolor controls:
-             * restyles every canvas belonging to this question (same broadcast
-             * reasoning as initCanvasSettings() above) - always, live preview or
-             * not. On the Moodle edit form (showGridField/bgColorField/
-             * gridColorField non-null) it also writes the resolved values into
-             * the hidden mform fields so they're what actually gets submitted on
-             * save, and marks the form dirty - the same two things editing the
-             * graph itself does via notifyChange(), just for these settings
-             * instead of graphjson. On the standalone helper page (no form at
-             * all) those three are null, so this is preview-only there. Assigns
-             * the outer applyCanvasSettings binding (declared above, before this
-             * block) rather than a local const, since hydrate() and the "Construir
-             * grafo" button need to call this too - see there.
+             * Applies the panel's current showgrid/bgcolor/gridcolor/level-label-size
+             * controls: restyles every canvas belonging to this question (same
+             * broadcast reasoning as initCanvasSettings() above) - always, live
+             * preview or not. On the Moodle edit form (showGridField/bgColorField/
+             * gridColorField/levelLabelSizeField non-null) it also writes the
+             * resolved values into the hidden mform fields so they're what actually
+             * gets submitted on save, and marks the form dirty - the same two
+             * things editing the graph itself does via notifyChange(), just for
+             * these settings instead of graphjson. On the standalone helper page
+             * (no form at all) those four are null, so this is preview-only there.
+             * Assigns the outer applyCanvasSettings binding (declared above, before
+             * this block) rather than a local const, since hydrate() and the
+             * "Construir grafo" button need to call this too - see there.
              */
             applyCanvasSettings = () => {
                 const showGrid = canvasShowGridCheckbox.checked;
                 const bgColor = canvasBgColorInput.value;
                 const gridColor = canvasGridColorInput.value;
-                editorRegistry.forEach((editor) => editor.setCanvasStyle({showGrid, bgColor, gridColor}));
+                const levelLabelSize = canvasLevelLabelSizeInput.value;
+                editorRegistry.forEach((editor) =>
+                        editor.setCanvasStyle({showGrid, bgColor, gridColor, levelLabelSize}));
                 if (showGridField) {
                     showGridField.value = showGrid ? '1' : '0';
                 }
@@ -1419,6 +1436,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 }
                 if (gridColorField) {
                     gridColorField.value = gridColor;
+                }
+                if (levelLabelSizeField) {
+                    levelLabelSizeField.value = levelLabelSize;
                 }
                 const form = root.closest('form');
                 if (form) {
@@ -1451,6 +1471,31 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             canvasShowGridCheckbox.addEventListener('change', applyCanvasSettings);
             wireCanvasColorField(canvasBgColorInput, canvasBgColorPicker);
             wireCanvasColorField(canvasGridColorInput, canvasGridColorPicker);
+            canvasLevelLabelSizeInput.addEventListener('input', applyCanvasSettings);
+
+            const levelLabelOverridesField = canvasSettingsFieldIds &&
+                    document.getElementById(canvasSettingsFieldIds.levelLabelOverrides);
+
+            /**
+             * Persists the current levelLabelOverrides state (mutated directly by
+             * openLevelLabelMenu()'s controls, see below) - broadcasts it to every
+             * canvas belonging to this question via editorRegistry (same reasoning
+             * as applyCanvasSettings() above), writes it into the hidden
+             * levellabelsjson mform field so it's what actually gets submitted on
+             * save, and marks the form dirty. Assigns the outer
+             * applyLevelLabelOverrides binding for the same reason
+             * applyCanvasSettings does.
+             */
+            applyLevelLabelOverrides = () => {
+                editorRegistry.forEach((editor) => editor.setLevelLabelOverrides(levelLabelOverrides));
+                if (levelLabelOverridesField) {
+                    levelLabelOverridesField.value = JSON.stringify(levelLabelOverrides);
+                }
+                const form = root.closest('form');
+                if (form) {
+                    FormChangeChecker.markFormAsDirty(form);
+                }
+            };
         }
 
         /**
@@ -1606,10 +1651,22 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
          * Render "Etapa 0"/"Etapa 1"/... labels along the tree's depth axis - one
          * per level, positioned above each column in horizontal orientation, or to
          * the left of each row in vertical orientation (the root, depth 0, is
-         * always "Etapa 0" unless overridden - see levelLabelOverrides above). A
-         * depth whose override has show === false is skipped entirely. Only ever
-         * called from relayoutTree() below, once every node's final position for
-         * this layout pass is known.
+         * always "Etapa 0" unless overridden - see levelLabelOverrides above).
+         *
+         * A depth whose override has show === false is skipped ENTIRELY on any
+         * canvas that isn't isCanvasSettingsOwner (result graph, an alternate, or
+         * the student attempt) - unchanged from before. On the owning canvas,
+         * that depth instead gets a dimmed "ghost" placeholder
+         * (.qtype_graph-levellabel--hidden) that's still clickable - otherwise,
+         * once a label is hidden, there would be no on-canvas element left to
+         * click to un-hide it again. Every rendered label on the owning canvas is
+         * clickable (openLevelLabelMenu() below); elsewhere labels stay
+         * read-only, same as before (see styles.css for how --clickable alone
+         * grants pointer-events, since the wrapping .qtype_graph-levellabels
+         * layer itself stays pointer-events: none).
+         *
+         * Only ever called from relayoutTree() below, once every node's final
+         * position for this layout pass is known.
          *
          * @param {number[]} depthPixelPos depthPixelPos[d] is that depth's shared
          *                    top (vertical orientation) or left (horizontal) pixel
@@ -1635,23 +1692,20 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 Math.min(...positions.map((p) => p.top)) - LEVEL_LABEL_GAP;
             for (let d = 0; d <= maxDepth; d++) {
                 const override = levelLabelOverrides[d];
-                if (override && override.show === false) {
+                const hidden = !!(override && override.show === false);
+                if (hidden && !isCanvasSettingsOwner) {
                     continue;
                 }
                 const label = document.createElement('div');
                 label.className = 'qtype_graph-levellabel';
-                // --item-text-color read by .qtype_graph-levellabel-title/-subtitle
-                // (styles.css) - same custom property node/edge/floating-label text
-                // color already use (see applyNodeTextColor() etc. above), safe to
-                // reuse here since a level label is never nested inside one of those.
-                if (override && override.color) {
-                    label.style.setProperty('--item-text-color', override.color);
+                if (hidden) {
+                    label.classList.add('qtype_graph-levellabel--hidden');
                 }
                 const titleEl = document.createElement('div');
                 titleEl.className = 'qtype_graph-levellabel-title';
                 titleEl.textContent = (override && override.title) ? override.title : `Etapa ${d}`;
                 label.appendChild(titleEl);
-                if (override && override.subtitle) {
+                if (!hidden && override && override.subtitle) {
                     const subtitleEl = document.createElement('div');
                     subtitleEl.className = 'qtype_graph-levellabel-subtitle';
                     subtitleEl.textContent = override.subtitle;
@@ -1665,6 +1719,17 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                     label.classList.add('qtype_graph-levellabel--horizontal');
                     label.style.left = `${center}px`;
                     label.style.top = `${edge}px`;
+                }
+                if (isCanvasSettingsOwner) {
+                    label.classList.add('qtype_graph-levellabel--clickable');
+                    // Same mousedown/click stopPropagation as the floating-label
+                    // wrap above - without it, the mousedown would also start a
+                    // canvas pan (see canvas's own mousedown listener below).
+                    label.addEventListener('mousedown', (e) => e.stopPropagation());
+                    label.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        openLevelLabelMenu(d, label);
+                    });
                 }
                 layer.appendChild(label);
             }
@@ -1980,10 +2045,21 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             activeFloatingLabelNodeId = null;
         }
 
+        /**
+         * Hide the level-label popup (openLevelLabelMenu()) and clear its own
+         * active-depth tracking - the level-label counterpart of
+         * closeFloatingLabelMenu() above.
+         */
+        function closeLevelLabelMenu() {
+            levelLabelMenu.hidden = true;
+            activeLevelLabelDepth = null;
+        }
+
         function closeMenus() {
             closeMenu();
             closeEdgeMenu();
             closeFloatingLabelMenu();
+            closeLevelLabelMenu();
             clearTrail();
         }
 
@@ -2316,6 +2392,86 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             floatingLabelMenu.style.left = `${left}px`;
             floatingLabelMenu.style.top = `${top}px`;
         }
+
+        /**
+         * Open the popup for editing one tree depth's level label (shown/text/
+         * subtitle), positioned next to the label itself on the canvas - the
+         * level-label counterpart of openFloatingLabelMenu() above. Only ever
+         * reachable on the canvas that owns these settings
+         * (isCanvasSettingsOwner - see renderLevelLabels(), the only place this
+         * is called from).
+         *
+         * @param {number} depth
+         * @param {Element} labelEl the clicked .qtype_graph-levellabel element.
+         */
+        function openLevelLabelMenu(depth, labelEl) {
+            closeMenus();
+            activeLevelLabelDepth = depth;
+            const override = levelLabelOverrides[depth] || {};
+            levelLabelShowCheckbox.checked = override.show !== false;
+            levelLabelTitleInput.value = override.title || '';
+            levelLabelTitleInput.placeholder = `Etapa ${depth}`;
+            levelLabelSubtitleInput.value = override.subtitle || '';
+
+            const labelRect = labelEl.getBoundingClientRect();
+            const canvasRect = canvas.getBoundingClientRect();
+            let left = labelRect.right - canvasRect.left + 12;
+            let top = labelRect.top - canvasRect.top;
+            levelLabelMenu.style.left = `${left}px`;
+            levelLabelMenu.style.top = `${top}px`;
+            levelLabelMenu.hidden = false;
+
+            const menuRect = levelLabelMenu.getBoundingClientRect();
+            if (menuRect.right > canvasRect.right) {
+                left = labelRect.left - canvasRect.left - menuRect.width - 12;
+            }
+            if (menuRect.bottom > canvasRect.bottom) {
+                top = Math.max(0, canvasRect.height - menuRect.height - 8);
+            }
+            levelLabelMenu.style.left = `${left}px`;
+            levelLabelMenu.style.top = `${top}px`;
+        }
+
+        /**
+         * Applies the level-label popup's current show/title/subtitle controls
+         * to the depth it's currently open for: updates
+         * levelLabelOverrides[depth] in place (a sparse entry - only the keys
+         * that differ from "no override at all" are stored, same shape the old
+         * edit-form rows produced), re-renders (relayoutTree(), the only path
+         * to renderLevelLabels()), and persists via applyLevelLabelOverrides()
+         * - always non-null here, since this popup is only ever reachable on
+         * the canvas that owns these settings, the same canvas that assigns
+         * applyLevelLabelOverrides (see its declaration above).
+         */
+        function applyActiveLevelLabelChange() {
+            if (activeLevelLabelDepth === null) {
+                return;
+            }
+            const depth = activeLevelLabelDepth;
+            const entry = {};
+            if (!levelLabelShowCheckbox.checked) {
+                entry.show = false;
+            }
+            const title = levelLabelTitleInput.value.trim();
+            if (title) {
+                entry.title = title;
+            }
+            const subtitle = levelLabelSubtitleInput.value.trim();
+            if (subtitle) {
+                entry.subtitle = subtitle;
+            }
+            levelLabelOverrides[depth] = entry;
+            if (mode === 'tree') {
+                relayoutTree();
+            }
+            if (applyLevelLabelOverrides) {
+                applyLevelLabelOverrides();
+            }
+        }
+
+        levelLabelShowCheckbox.addEventListener('change', applyActiveLevelLabelChange);
+        levelLabelTitleInput.addEventListener('input', applyActiveLevelLabelChange);
+        levelLabelSubtitleInput.addEventListener('input', applyActiveLevelLabelChange);
 
         addFloatingLabelInputBtn.addEventListener('click', () => {
             if (!activeFloatingLabelNodeId) {
@@ -3099,14 +3255,24 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 // "Copiar al portapapeles"/"Guardar como .json", or Moodle's own
                 // JSON panel "Construir grafo" - see hydrate() below), never as a
                 // second source of truth: the Moodle edit form's hidden
-                // showgrid/bgcolor/gridcolor fields (written by the gear panel)
+                // showgrid/bgcolor/gridcolor/levellabelsize/levellabelsjson fields
+                // (written by the gear panel and the level-label click-menu)
                 // remain what actually gets saved. Irrelevant to grading -
                 // classes/grading.php and answer_matcher.php only ever read
-                // nodes/edges off this object, never these three.
+                // nodes/edges off this object, never these.
+                // showLevelLabels (the global on/off toggle) is deliberately NOT
+                // embedded here - unlike the others, it's still a plain visible
+                // mform checkbox (initCanvasSettings() below), not yet migrated to
+                // the gear panel, so there's no hidden field for hydrate() to write
+                // it back into - embedding it would visually apply on paste, then
+                // silently revert on save since nothing persists it. Add it here
+                // once it gets the same gear-panel treatment as the rest.
                 ...(isCanvasSettingsOwner ? {
                     showGrid: canvasStyle.showGrid,
                     bgColor: canvasStyle.bgColor,
                     gridColor: canvasStyle.gridColor,
+                    levelLabelSize: canvasStyle.levelLabelSize,
+                    levelLabelOverrides,
                 } : {}),
                 nodes: [...nodes.values()].map((record) => ({
                     id: record.id,
@@ -3196,8 +3362,23 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                         }
                     }
                 }
+                if (typeof data.levelLabelSize === 'number' || typeof data.levelLabelSize === 'string') {
+                    stylePatch.levelLabelSize = data.levelLabelSize;
+                    if (canvasLevelLabelSizeInput) {
+                        canvasLevelLabelSizeInput.value = data.levelLabelSize;
+                    }
+                }
                 if (Object.keys(stylePatch).length) {
                     editorRegistry.forEach((editor) => editor.setCanvasStyle(stylePatch));
+                }
+                // levelLabelOverrides isn't part of setCanvasStyle()'s patch (a
+                // separate editor API method, setLevelLabelOverrides() above) -
+                // same visual-only, broadcast-but-don't-persist treatment as the
+                // rest of this block; applyLevelLabelOverrides() (see its
+                // declaration above) is what the "Construir grafo" button calls
+                // afterward to persist it.
+                if (Array.isArray(data.levelLabelOverrides)) {
+                    editorRegistry.forEach((editor) => editor.setLevelLabelOverrides(data.levelLabelOverrides));
                 }
             }
             applyTransform();
@@ -3574,36 +3755,33 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     }
 
     /**
-     * Wires the edit form's remaining "Mostrar etiquetas de nivel"/text
-     * color/level-label-size controls so changing them immediately restyles
-     * every canvas belonging to this question (default graph, result graph,
-     * and every alternate answer graph, including ones added later via
-     * initAltAnswers) - not just the one saved to the DB on next submit.
-     * Broadcasts to every editor currently in editorRegistry rather than
-     * tracking specific container ids, since alternates are created and
-     * removed dynamically after this runs. Show grid/background color/grid
-     * color moved off the edit form into the canvas's own gear panel (see
+     * Wires the edit form's remaining "Mostrar etiquetas de nivel"/text color
+     * controls so changing them immediately restyles every canvas belonging
+     * to this question (default graph, result graph, and every alternate
+     * answer graph, including ones added later via initAltAnswers) - not
+     * just the one saved to the DB on next submit. Broadcasts to every editor
+     * currently in editorRegistry rather than tracking specific container
+     * ids, since alternates are created and removed dynamically after this
+     * runs. Show grid/background color/grid color/level-label size moved off
+     * the edit form into the canvas's own gear panel (see
      * canvasSettingsFieldIds in createGraphEditor()) - each side only ever
      * patches the setCanvasStyle() keys it owns, see that function's docblock.
      *
      * @param {string} [showLevelLabelsFieldId] id of the "show level labels" checkbox.
      * @param {string} [textColorFieldId] id of the node/connection text color text field.
      * @param {string} [textColorPickerId] id of its paired <input type="color"> swatch.
-     * @param {string} [levelLabelSizeFieldId] id of the level-label font-size number field.
      */
-    function initCanvasSettings(showLevelLabelsFieldId, textColorFieldId, textColorPickerId, levelLabelSizeFieldId) {
+    function initCanvasSettings(showLevelLabelsFieldId, textColorFieldId, textColorPickerId) {
         const showLevelLabelsField = document.getElementById(showLevelLabelsFieldId);
         const textColorField = document.getElementById(textColorFieldId);
-        const levelLabelSizeField = document.getElementById(levelLabelSizeFieldId);
-        if (!showLevelLabelsField && !textColorField && !levelLabelSizeField) {
+        if (!showLevelLabelsField && !textColorField) {
             return;
         }
 
         function broadcast() {
             const showLevelLabels = showLevelLabelsField ? showLevelLabelsField.checked : true;
             const textColor = textColorField ? textColorField.value : '';
-            const levelLabelSize = levelLabelSizeField ? levelLabelSizeField.value : '';
-            editorRegistry.forEach((editor) => editor.setCanvasStyle({showLevelLabels, textColor, levelLabelSize}));
+            editorRegistry.forEach((editor) => editor.setCanvasStyle({showLevelLabels, textColor}));
         }
 
         /**
@@ -3636,84 +3814,6 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         if (textColorField) {
             wireColorPair(textColorField, document.getElementById(textColorPickerId));
         }
-        if (levelLabelSizeField) {
-            levelLabelSizeField.addEventListener('input', broadcast);
-        }
-    }
-
-    /**
-     * Wires the edit form's MAX_LEVEL_LABEL_OVERRIDES per-depth override rows
-     * (each a "levellabelshow_$depth"/"levellabeltitle_$depth"/
-     * "levellabelsubtitle_$depth" trio - see the loop in edit_graph_form.php's
-     * definition_inner()) so editing any of them immediately re-renders tree-mode
-     * level labels on every canvas belonging to this question, the same way
-     * initCanvasSettings() above does for the grid/color/showlevellabels
-     * controls - and keeps the single levellabelsjson hidden field (the value
-     * actually submitted - see questiontype.php's save_question_options()) in
-     * sync, mirroring how the graph canvas itself keeps its own hidden field in
-     * sync with on-canvas edits.
-     *
-     * @param {string} hiddenFieldId id of the levellabelsjson hidden field.
-     */
-    function initLevelLabelOverrides(hiddenFieldId) {
-        const hiddenField = document.getElementById(hiddenFieldId);
-        if (!hiddenField) {
-            return;
-        }
-
-        const rows = [];
-        for (let depth = 0; depth < MAX_LEVEL_LABEL_OVERRIDES; depth++) {
-            const showField = document.getElementById(`id_levellabelshow_${depth}`);
-            const titleField = document.getElementById(`id_levellabeltitle_${depth}`);
-            const subtitleField = document.getElementById(`id_levellabelsubtitle_${depth}`);
-            const colorField = document.getElementById(`id_levellabelcolor_${depth}`);
-            const colorPicker = document.getElementById(`id_levellabelcolor_${depth}_picker`);
-            if (showField && titleField && subtitleField) {
-                rows.push({showField, titleField, subtitleField, colorField, colorPicker});
-            }
-        }
-        if (!rows.length) {
-            return;
-        }
-
-        /**
-         * Read every row's current values, write them into the hidden field, and
-         * push them to every registered editor (default, result, every alternate,
-         * and the attempt canvas is never present here since this only runs in the
-         * edit form).
-         */
-        function broadcast() {
-            const overrides = rows.map((row) => ({
-                show: row.showField.checked,
-                title: row.titleField.value.trim(),
-                subtitle: row.subtitleField.value.trim(),
-                color: row.colorField ? row.colorField.value.trim() : '',
-            }));
-            hiddenField.value = JSON.stringify(overrides);
-            editorRegistry.forEach((editor) => editor.setLevelLabelOverrides(overrides));
-        }
-
-        rows.forEach((row) => {
-            row.showField.addEventListener('change', broadcast);
-            row.titleField.addEventListener('input', broadcast);
-            row.subtitleField.addEventListener('input', broadcast);
-            // Same hex-text-plus-native-swatch two-way sync as wireColorPair()
-            // (initCanvasSettings() below) and wireColorField() (createGraphEditor()
-            // above) - each context keeps its own small copy of this rather than
-            // sharing one, matching how those two already don't share it either.
-            if (row.colorField && row.colorPicker) {
-                row.colorField.addEventListener('input', () => {
-                    if (/^#[0-9a-fA-F]{6}$/.test(row.colorField.value)) {
-                        row.colorPicker.value = row.colorField.value;
-                    }
-                    broadcast();
-                });
-                row.colorPicker.addEventListener('input', () => {
-                    row.colorField.value = row.colorPicker.value;
-                    broadcast();
-                });
-            }
-        });
     }
 
     /**
@@ -3731,8 +3831,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      *                 Whenever the mode/orientation/line-style toggles change here, the same values are
      *                 also pushed onto this sibling (see setLayout()), which is how the result graph
      *                 stays in lockstep with the default graph despite never exposing its own controls.
-     * @param {Object} [canvasSettingsFieldIds] {showGrid, bgColor, gridColor} mform hidden-field ids
-     *                 (edit_graph_form.php) - only ever passed on the default graph's own initEditor()
+     * @param {Object} [canvasSettingsFieldIds] {showGrid, bgColor, gridColor, levelLabelSize} mform
+     *                 hidden-field ids (edit_graph_form.php) - only ever passed on the default graph's own initEditor()
      *                 call (never the result graph's, which already sets hasLayoutSource below), since
      *                 these are one shared setting for the whole question, edited from the canvas gear
      *                 panel and broadcast to every canvas via editorRegistry - see
@@ -4235,6 +4335,5 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         initValidation,
         initAltAnswers,
         initCanvasSettings,
-        initLevelLabelOverrides,
     };
 });
