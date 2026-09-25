@@ -653,7 +653,8 @@
         // outright rather than relied upon to already be hidden (e.g. a menu the
         // teacher happened to leave open).
         clone.querySelectorAll(
-                '[data-role="json-panel"], [data-role="image-panel"], [data-role="node-menu"], ' +
+                '[data-role="json-panel"], [data-role="image-panel"], [data-role="canvas-settings-panel"], ' +
+                '[data-role="node-menu"], ' +
                 '[data-role="floatinglabel-menu"], [data-role="edge-menu"]'
         ).forEach((el) => el.remove());
         // Override the baked-in (live) viewport size/clipping and pan/zoom transform
@@ -769,6 +770,33 @@
         const editable = !!opts.editable;
         const lockLayout = !!opts.lockLayout;
         const hideLayoutControls = !!opts.hideLayoutControls;
+        // The one EDITOR-mode canvas that owns this question's shared style
+        // settings (the default graph's initEditor() call; never the result
+        // graph or an alternate, both of which already set hideLayoutControls
+        // for the same "mirrors the default, doesn't own its own" reason - and
+        // never an attempt-mode canvas, which is always styled from the DB via
+        // renderer.php's data-* attributes, never from embedded JSON or its own
+        // gear panel) - gates the canvas gear button/panel below, and whether
+        // hydrate()/serialize() read or write showGrid/bgColor/gridColor at all.
+        // True on the standalone helper page too (its single canvas has no
+        // sibling to mirror), even though that page has no form to persist the
+        // choice into - see canvasSettingsFieldIds below.
+        const isCanvasSettingsOwner = opts.mode === 'editor' && !hideLayoutControls;
+        // {showGrid, bgColor, gridColor} mform hidden-field ids (see
+        // edit_graph_form.php) - only ever passed by the Moodle edit form, never
+        // the standalone helper page (index.html's own initEditor() call has no
+        // form to write into). The gear panel still shows and live-restyles every
+        // canvas via editorRegistry either way (isCanvasSettingsOwner above); this
+        // only gates the extra step of also writing the resolved value into a
+        // hidden field so it round-trips through a real save.
+        const canvasSettingsFieldIds = (isCanvasSettingsOwner && opts.canvasSettingsFieldIds) || null;
+        // Assigned inside the isCanvasSettingsOwner block below (see there for why
+        // it isn't just a local const) - applies the gear panel's current
+        // showgrid/bgcolor/gridcolor controls AND persists them (hidden mform
+        // fields + form-dirty), unlike setCanvasStyle() alone. null everywhere
+        // else, where the panel doesn't exist. hydrate() below and the "Construir
+        // grafo" button both need to call this from outside that block.
+        let applyCanvasSettings = null;
         const allowAddNodes = opts.allowAddNodes !== false;
         const allowDeleteNodes = opts.allowDeleteNodes !== false;
         const onChange = opts.onChange || function() {};
@@ -966,6 +994,14 @@
         const imageStatus = root.querySelector('[data-role="image-status"]');
         const imageDownloadBtn = root.querySelector('[data-role="image-download-btn"]');
         const imageCloseBtn = root.querySelector('[data-role="image-close-btn"]');
+        const canvasSettingsBtn = root.querySelector('[data-role="canvas-settings-btn"]');
+        const canvasSettingsPanel = root.querySelector('[data-role="canvas-settings-panel"]');
+        const canvasShowGridCheckbox = root.querySelector('[data-role="canvas-showgrid-checkbox"]');
+        const canvasBgColorInput = root.querySelector('[data-role="canvas-bgcolor-input"]');
+        const canvasBgColorPicker = root.querySelector('[data-role="canvas-bgcolor-picker"]');
+        const canvasGridColorInput = root.querySelector('[data-role="canvas-gridcolor-input"]');
+        const canvasGridColorPicker = root.querySelector('[data-role="canvas-gridcolor-picker"]');
+        const canvasSettingsCloseBtn = root.querySelector('[data-role="canvas-settings-close-btn"]');
 
         if (lockLayout) {
             [...modeToggle.children, ...orientationToggle.children].forEach((btn) => {
@@ -1018,60 +1054,81 @@
         let panY = 0;
         let suppress = false;
 
+        // Persistent per-editor canvas style state, merged into by setCanvasStyle()
+        // below rather than replaced outright - each caller only ever owns, and
+        // only ever patches, a subset of these keys (the canvas gear panel owns
+        // showGrid/bgColor/gridColor, initCanvasSettings() in the edit form still
+        // owns showLevelLabels/textColor/levelLabelSize - see each call site), so
+        // one side patching its keys can never reset the other's.
+        let canvasStyle = {
+            showGrid: true,
+            bgColor: '',
+            gridColor: '',
+            showLevelLabels: true,
+            textColor: '',
+            levelLabelSize: '',
+        };
+
         /**
-         * Show/hide the canvas's background grid and set its background/grid-line
-         * colors. Read generically off the container's own data-showgrid/data-bgcolor/
-         * data-gridcolor (set by editor_ui::render()'s $dataattrs - see renderer.php and
-         * edit_graph_form.php) rather than threaded through opts, so it applies
-         * uniformly to every canvas this question has (default, result, every
-         * alternate answer, and the student attempt canvas) with no per-entry-point
-         * wiring. Also called live from initCanvasSettings() below whenever the
-         * teacher toggles the grid checkbox or picks a new color in the edit form.
+         * Show/hide the canvas's background grid and set its background/grid-line/
+         * text colors and level-label size, merging `patch` into this editor's
+         * persistent canvasStyle state (see above) instead of requiring every
+         * caller to know the current value of every other setting. Called live
+         * from the canvas gear panel and initCanvasSettings() below whenever the
+         * teacher changes any of these.
          *
-         * @param {boolean} showGrid
-         * @param {string} bgColor a CSS color, or '' to fall back to the default theme color.
-         * @param {string} [gridColor] a CSS color, or '' to fall back to the default theme color.
-         * @param {boolean} [showLevelLabelsFlag] whether tree mode's "Etapa 0"/"Etapa 1"/...
+         * @param {Object} patch
+         * @param {boolean} [patch.showGrid]
+         * @param {string} [patch.bgColor] a CSS color, or '' to fall back to the default theme color.
+         * @param {string} [patch.gridColor] a CSS color, or '' to fall back to the default theme color.
+         * @param {boolean} [patch.showLevelLabels] whether tree mode's "Etapa 0"/"Etapa 1"/...
          *                  depth labels are shown - see renderLevelLabels() below.
-         * @param {string} [textColor] a CSS color for node text and connection labels, or ''
+         * @param {string} [patch.textColor] a CSS color for node text and connection labels, or ''
          *                  to fall back to each one's own default (white / dark respectively -
          *                  see .qtype_graph-node/.qtype_graph-edge-label in styles.css).
-         * @param {number|string} [levelLabelSize] font size (px) of every level label's
+         * @param {number|string} [patch.levelLabelSize] font size (px) of every level label's
          *                  title (and, proportionally, its subtitle - see styles.css), or ''
          *                  to fall back to the default 16px. Applies uniformly to every
          *                  depth - see levelLabelOverrides above for per-depth color only.
          */
-        function setCanvasStyle(showGrid, bgColor, gridColor, showLevelLabelsFlag, textColor, levelLabelSize) {
-            canvas.classList.toggle('qtype_graph-canvas--nogrid', !showGrid);
-            if (bgColor) {
-                canvas.style.setProperty('--qtype-graph-canvas-bg', bgColor);
+        function setCanvasStyle(patch) {
+            Object.assign(canvasStyle, patch);
+            canvas.classList.toggle('qtype_graph-canvas--nogrid', !canvasStyle.showGrid);
+            if (canvasStyle.bgColor) {
+                canvas.style.setProperty('--qtype-graph-canvas-bg', canvasStyle.bgColor);
             } else {
                 canvas.style.removeProperty('--qtype-graph-canvas-bg');
             }
-            if (gridColor) {
-                canvas.style.setProperty('--qtype-graph-grid', gridColor);
+            if (canvasStyle.gridColor) {
+                canvas.style.setProperty('--qtype-graph-grid', canvasStyle.gridColor);
             } else {
                 canvas.style.removeProperty('--qtype-graph-grid');
             }
-            if (textColor) {
-                canvas.style.setProperty('--qtype-graph-canvas-text', textColor);
+            if (canvasStyle.textColor) {
+                canvas.style.setProperty('--qtype-graph-canvas-text', canvasStyle.textColor);
             } else {
                 canvas.style.removeProperty('--qtype-graph-canvas-text');
             }
-            if (levelLabelSize) {
-                canvas.style.setProperty('--qtype-graph-levellabel-size', `${parseInt(levelLabelSize, 10)}px`);
+            if (canvasStyle.levelLabelSize) {
+                canvas.style.setProperty('--qtype-graph-levellabel-size', `${parseInt(canvasStyle.levelLabelSize, 10)}px`);
             } else {
                 canvas.style.removeProperty('--qtype-graph-levellabel-size');
             }
-            showLevelLabels = !!showLevelLabelsFlag;
+            showLevelLabels = !!canvasStyle.showLevelLabels;
             if (mode === 'tree') {
                 relayoutTree();
             } else {
                 clearLevelLabels();
             }
         }
-        setCanvasStyle(root.dataset.showgrid !== '0', root.dataset.bgcolor || '', root.dataset.gridcolor || '',
-                root.dataset.showlevellabels !== '0', root.dataset.textcolor || '', root.dataset.levellabelsize || '');
+        setCanvasStyle({
+            showGrid: root.dataset.showgrid !== '0',
+            bgColor: root.dataset.bgcolor || '',
+            gridColor: root.dataset.gridcolor || '',
+            showLevelLabels: root.dataset.showlevellabels !== '0',
+            textColor: root.dataset.textcolor || '',
+            levelLabelSize: root.dataset.levellabelsize || '',
+        });
 
         /**
          * Set the per-depth level-label overrides (title/subtitle/show/color, one
@@ -1182,6 +1239,11 @@
         if (opts.mode === 'editor') {
             jsonBtn.hidden = false;
             imageBtn.hidden = false;
+            // Only the canvas that owns this question's shared grid/background
+            // settings gets the gear button - see isCanvasSettingsOwner above.
+            if (isCanvasSettingsOwner) {
+                canvasSettingsBtn.hidden = false;
+            }
         } else if (attemptMode && opts.allowDownloadImage) {
             imageBtn.hidden = false;
         }
@@ -1192,11 +1254,13 @@
             jsonStatus.classList.toggle('qtype_graph-jsonstatus--error', !!isError);
         }
 
-        // The JSON panel and the image export panel share the same fixed spot over
-        // the canvas (see .qtype_graph-exportpanel in styles.css), so opening one
-        // closes the other rather than letting them stack on top of each other.
+        // The JSON panel, the image export panel, and the canvas settings panel
+        // all share the same fixed spot over the canvas (see .qtype_graph-exportpanel
+        // in styles.css), so opening any one of them closes the other two rather
+        // than letting them stack on top of each other.
         function openJsonPanel() {
             imagePanel.hidden = true;
+            canvasSettingsPanel.hidden = true;
             jsonPanel.hidden = false;
             showJsonStatus('', false);
         }
@@ -1226,6 +1290,14 @@
                 return;
             }
             hydrate(data);
+            // hydrate() above only ever applies an embedded showGrid/bgColor/
+            // gridColor visually (see its own comment) - pasting JSON here is a
+            // real, user-initiated change, so also persist whatever it just
+            // applied into the hidden mform fields, same as if the teacher had
+            // set it from the gear panel directly.
+            if (applyCanvasSettings) {
+                applyCanvasSettings();
+            }
             notifyChange();
             const form = root.closest('form');
             if (form) {
@@ -1275,11 +1347,11 @@
         }
 
         /**
-         * See openJsonPanel() above - same fixed-spot-over-the-canvas reasoning,
-         * mirrored the other way.
+         * See openJsonPanel() above - same fixed-spot-over-the-canvas reasoning.
          */
         function openImagePanel() {
             jsonPanel.hidden = true;
+            canvasSettingsPanel.hidden = true;
             imagePanel.hidden = false;
             showImageStatus('', false);
         }
@@ -1306,6 +1378,111 @@
             }, () => {
                 showImageStatus('No se pudo generar la imagen.', true);
             });
+        });
+
+        // Only the canvas that owns this question's shared style settings
+        // (isCanvasSettingsOwner - see its declaration above) actually drives
+        // them; every other canvas's gear button stays permanently hidden, so
+        // its copy of this panel's controls is never reachable and needs no
+        // wiring. Live-restyling every canvas works the same way whether or not
+        // there's a form to also persist into (canvasSettingsFieldIds, null on
+        // the standalone helper page) - see applyCanvasSettings() below.
+        if (isCanvasSettingsOwner) {
+            const showGridField = canvasSettingsFieldIds && document.getElementById(canvasSettingsFieldIds.showGrid);
+            const bgColorField = canvasSettingsFieldIds && document.getElementById(canvasSettingsFieldIds.bgColor);
+            const gridColorField = canvasSettingsFieldIds && document.getElementById(canvasSettingsFieldIds.gridColor);
+
+            // Seeded from this editor's already-resolved initial canvasStyle state
+            // (see setCanvasStyle() above), not by re-reading the hidden mform
+            // fields directly - both start out equal, since that initial call was
+            // itself seeded from the same server-rendered data-* attributes those
+            // hidden fields carry.
+            canvasShowGridCheckbox.checked = canvasStyle.showGrid;
+            canvasBgColorInput.value = canvasStyle.bgColor;
+            if (/^#[0-9a-fA-F]{6}$/.test(canvasStyle.bgColor)) {
+                canvasBgColorPicker.value = canvasStyle.bgColor;
+            }
+            canvasGridColorInput.value = canvasStyle.gridColor;
+            if (/^#[0-9a-fA-F]{6}$/.test(canvasStyle.gridColor)) {
+                canvasGridColorPicker.value = canvasStyle.gridColor;
+            }
+
+            /**
+             * Applies the panel's current showgrid/bgcolor/gridcolor controls:
+             * restyles every canvas belonging to this question (same broadcast
+             * reasoning as initCanvasSettings() above) - always, live preview or
+             * not. On the Moodle edit form (showGridField/bgColorField/
+             * gridColorField non-null) it also writes the resolved values into
+             * the hidden mform fields so they're what actually gets submitted on
+             * save, and marks the form dirty - the same two things editing the
+             * graph itself does via notifyChange(), just for these settings
+             * instead of graphjson. On the standalone helper page (no form at
+             * all) those three are null, so this is preview-only there. Assigns
+             * the outer applyCanvasSettings binding (declared above, before this
+             * block) rather than a local const, since hydrate() and the "Construir
+             * grafo" button need to call this too - see there.
+             */
+            applyCanvasSettings = () => {
+                const showGrid = canvasShowGridCheckbox.checked;
+                const bgColor = canvasBgColorInput.value;
+                const gridColor = canvasGridColorInput.value;
+                editorRegistry.forEach((editor) => editor.setCanvasStyle({showGrid, bgColor, gridColor}));
+                if (showGridField) {
+                    showGridField.value = showGrid ? '1' : '0';
+                }
+                if (bgColorField) {
+                    bgColorField.value = bgColor;
+                }
+                if (gridColorField) {
+                    gridColorField.value = gridColor;
+                }
+                const form = root.closest('form');
+                if (form) {
+                    FormChangeChecker.markFormAsDirty(form);
+                }
+            };
+
+            /**
+             * Two-way-syncs a plain hex text field with its paired native
+             * color-swatch picker, same pattern as wireColorField() above but
+             * without notifyChange() - these aren't part of the graph itself,
+             * see applyCanvasSettings() instead.
+             *
+             * @param {Element} textField
+             * @param {Element} picker
+             */
+            const wireCanvasColorField = (textField, picker) => {
+                textField.addEventListener('input', () => {
+                    if (/^#[0-9a-fA-F]{6}$/.test(textField.value)) {
+                        picker.value = textField.value;
+                    }
+                    applyCanvasSettings();
+                });
+                picker.addEventListener('input', () => {
+                    textField.value = picker.value;
+                    applyCanvasSettings();
+                });
+            };
+
+            canvasShowGridCheckbox.addEventListener('change', applyCanvasSettings);
+            wireCanvasColorField(canvasBgColorInput, canvasBgColorPicker);
+            wireCanvasColorField(canvasGridColorInput, canvasGridColorPicker);
+        }
+
+        /**
+         * See openJsonPanel() above - same fixed-spot-over-the-canvas reasoning.
+         */
+        function openCanvasSettingsPanel() {
+            jsonPanel.hidden = true;
+            imagePanel.hidden = true;
+            canvasSettingsPanel.hidden = false;
+        }
+
+        canvasSettingsBtn.addEventListener('click', () => {
+            openCanvasSettingsPanel();
+        });
+        canvasSettingsCloseBtn.addEventListener('click', () => {
+            canvasSettingsPanel.hidden = true;
         });
 
         canvas.addEventListener('wheel', (e) => {
@@ -2931,6 +3108,22 @@
                 mode,
                 orientation,
                 lineStyle,
+                // Only the canvas that owns this question's shared style settings
+                // (isCanvasSettingsOwner - see its declaration above) embeds them
+                // here - purely so they travel along when this JSON is copy/pasted
+                // or exported/imported elsewhere (the standalone helper page's
+                // "Copiar al portapapeles"/"Guardar como .json", or Moodle's own
+                // JSON panel "Construir grafo" - see hydrate() below), never as a
+                // second source of truth: the Moodle edit form's hidden
+                // showgrid/bgcolor/gridcolor fields (written by the gear panel)
+                // remain what actually gets saved. Irrelevant to grading -
+                // classes/grading.php and answer_matcher.php only ever read
+                // nodes/edges off this object, never these three.
+                ...(isCanvasSettingsOwner ? {
+                    showGrid: canvasStyle.showGrid,
+                    bgColor: canvasStyle.bgColor,
+                    gridColor: canvasStyle.gridColor,
+                } : {}),
                 nodes: [...nodes.values()].map((record) => ({
                     id: record.id,
                     left: parseFloat(record.el.style.left) || 0,
@@ -2981,6 +3174,47 @@
             }
             if (data.lineStyle === 'orthogonal') {
                 setLineStyle('orthogonal', true);
+            }
+            // Embedded showGrid/bgColor/gridColor (see serialize() above) - only
+            // read on the one canvas that owns these settings, and only ever
+            // applied visually here (broadcast to every canvas via
+            // editorRegistry, same as applyCanvasSettings() below, but never the
+            // hidden-field write or form-dirty mark that function also does).
+            // Deliberately inert that way, since hydrate() also runs on plain
+            // page load (initEditor()'s initial hydrate(), which must never mark
+            // the form dirty just from loading) - the "Construir grafo" button,
+            // the only caller where a user actually asked to apply pasted JSON,
+            // explicitly calls applyCanvasSettings() itself right after hydrate()
+            // to persist what this just applied visually.
+            if (isCanvasSettingsOwner) {
+                const stylePatch = {};
+                if (typeof data.showGrid === 'boolean') {
+                    stylePatch.showGrid = data.showGrid;
+                    if (canvasShowGridCheckbox) {
+                        canvasShowGridCheckbox.checked = data.showGrid;
+                    }
+                }
+                if (typeof data.bgColor === 'string') {
+                    stylePatch.bgColor = data.bgColor;
+                    if (canvasBgColorInput) {
+                        canvasBgColorInput.value = data.bgColor;
+                        if (canvasBgColorPicker && /^#[0-9a-fA-F]{6}$/.test(data.bgColor)) {
+                            canvasBgColorPicker.value = data.bgColor;
+                        }
+                    }
+                }
+                if (typeof data.gridColor === 'string') {
+                    stylePatch.gridColor = data.gridColor;
+                    if (canvasGridColorInput) {
+                        canvasGridColorInput.value = data.gridColor;
+                        if (canvasGridColorPicker && /^#[0-9a-fA-F]{6}$/.test(data.gridColor)) {
+                            canvasGridColorPicker.value = data.gridColor;
+                        }
+                    }
+                }
+                if (Object.keys(stylePatch).length) {
+                    editorRegistry.forEach((editor) => editor.setCanvasStyle(stylePatch));
+                }
             }
             applyTransform();
             suppress = false;
@@ -3356,52 +3590,36 @@
     }
 
     /**
-     * Wires the edit form's "Mostrar cuadrícula"/"Color de fondo" controls so
-     * toggling them immediately restyles every canvas belonging to this question
-     * (default graph, result graph, and every alternate answer graph, including
-     * ones added later via initAltAnswers) - not just the one saved to the DB on
-     * next submit. Broadcasts to every editor currently in editorRegistry rather
-     * than tracking specific container ids, since alternates are created and
-     * removed dynamically after this runs.
+     * Wires the edit form's remaining "Mostrar etiquetas de nivel"/text
+     * color/level-label-size controls so changing them immediately restyles
+     * every canvas belonging to this question (default graph, result graph,
+     * and every alternate answer graph, including ones added later via
+     * initAltAnswers) - not just the one saved to the DB on next submit.
+     * Broadcasts to every editor currently in editorRegistry rather than
+     * tracking specific container ids, since alternates are created and
+     * removed dynamically after this runs. Show grid/background color/grid
+     * color moved off the edit form into the canvas's own gear panel (see
+     * canvasSettingsFieldIds in createGraphEditor()) - each side only ever
+     * patches the setCanvasStyle() keys it owns, see that function's docblock.
      *
-     * The color is a plain mform text field (bgColorFieldId) - the one actually
-     * submitted - so a hex value can still be typed/pasted directly; the native
-     * color-swatch picker (bgColorPickerId) is a separate, non-submitted element
-     * kept in sync with it in both directions: picking a color writes its hex
-     * into the text field, and typing a valid 6-digit hex into the text field
-     * updates the swatch to match.
-     *
-     * @param {string} showGridFieldId id of the "show grid" checkbox.
-     * @param {string} bgColorFieldId id of the background color text field.
-     * @param {string} bgColorPickerId id of the paired <input type="color"> swatch.
-     * @param {string} [gridColorFieldId] id of the grid line color text field.
-     * @param {string} [gridColorPickerId] id of its paired <input type="color"> swatch.
      * @param {string} [showLevelLabelsFieldId] id of the "show level labels" checkbox.
      * @param {string} [textColorFieldId] id of the node/connection text color text field.
      * @param {string} [textColorPickerId] id of its paired <input type="color"> swatch.
      * @param {string} [levelLabelSizeFieldId] id of the level-label font-size number field.
      */
-    function initCanvasSettings(showGridFieldId, bgColorFieldId, bgColorPickerId, gridColorFieldId, gridColorPickerId,
-            showLevelLabelsFieldId, textColorFieldId, textColorPickerId, levelLabelSizeFieldId) {
-        const showGridField = document.getElementById(showGridFieldId);
-        const bgColorField = document.getElementById(bgColorFieldId);
-        const gridColorField = document.getElementById(gridColorFieldId);
+    function initCanvasSettings(showLevelLabelsFieldId, textColorFieldId, textColorPickerId, levelLabelSizeFieldId) {
         const showLevelLabelsField = document.getElementById(showLevelLabelsFieldId);
         const textColorField = document.getElementById(textColorFieldId);
         const levelLabelSizeField = document.getElementById(levelLabelSizeFieldId);
-        if (!showGridField || !bgColorField) {
+        if (!showLevelLabelsField && !textColorField && !levelLabelSizeField) {
             return;
         }
 
         function broadcast() {
-            const showGrid = showGridField.checked;
-            const bgColor = bgColorField.value;
-            const gridColor = gridColorField ? gridColorField.value : '';
             const showLevelLabels = showLevelLabelsField ? showLevelLabelsField.checked : true;
             const textColor = textColorField ? textColorField.value : '';
             const levelLabelSize = levelLabelSizeField ? levelLabelSizeField.value : '';
-            editorRegistry.forEach((editor) =>
-                    editor.setCanvasStyle(showGrid, bgColor, gridColor, showLevelLabels, textColor, levelLabelSize));
+            editorRegistry.forEach((editor) => editor.setCanvasStyle({showLevelLabels, textColor, levelLabelSize}));
         }
 
         /**
@@ -3428,11 +3646,6 @@
             }
         }
 
-        showGridField.addEventListener('change', broadcast);
-        wireColorPair(bgColorField, document.getElementById(bgColorPickerId));
-        if (gridColorField) {
-            wireColorPair(gridColorField, document.getElementById(gridColorPickerId));
-        }
         if (showLevelLabelsField) {
             showLevelLabelsField.addEventListener('change', broadcast);
         }
@@ -3534,8 +3747,15 @@
      *                 Whenever the mode/orientation/line-style toggles change here, the same values are
      *                 also pushed onto this sibling (see setLayout()), which is how the result graph
      *                 stays in lockstep with the default graph despite never exposing its own controls.
+     * @param {Object} [canvasSettingsFieldIds] {showGrid, bgColor, gridColor} mform hidden-field ids
+     *                 (edit_graph_form.php) - only ever passed on the default graph's own initEditor()
+     *                 call (never the result graph's, which already sets hasLayoutSource below), since
+     *                 these are one shared setting for the whole question, edited from the canvas gear
+     *                 panel and broadcast to every canvas via editorRegistry - see
+     *                 canvasSettingsFieldIds in createGraphEditor().
      */
-    function initEditor(containerId, hiddenFieldId, resetButtonId, sourceHiddenFieldId, addInputTargetContainerId) {
+    function initEditor(containerId, hiddenFieldId, resetButtonId, sourceHiddenFieldId, addInputTargetContainerId,
+            canvasSettingsFieldIds) {
         const root = document.getElementById(containerId);
         const hidden = document.getElementById(hiddenFieldId);
         if (!root || !hidden) {
@@ -3554,6 +3774,7 @@
             enableAddInput: !!addInputTargetContainerId,
             addInputTargetContainerId: addInputTargetContainerId || null,
             hideLayoutControls: hasLayoutSource,
+            canvasSettingsFieldIds,
             onChange: (data) => {
                 hidden.value = JSON.stringify(data);
             },

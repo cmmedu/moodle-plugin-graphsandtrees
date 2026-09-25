@@ -146,6 +146,15 @@
   display: block;
 }
 
+/* Pushed to the far right of the toolbar's own flex row (a question-wide
+   canvas setting - grid/background color and, eventually, more - is a
+   different kind of control than the mode/zoom/export buttons grouped to its
+   left, so it reads as visually separate rather than one more item in that
+   row). */
+.qtype_graph-settingsbtn {
+  margin-left: auto;
+}
+
 .qtype_graph-exportpanel[hidden] {
   display: none;
 }

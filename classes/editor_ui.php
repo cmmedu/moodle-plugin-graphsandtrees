@@ -78,6 +78,16 @@ class editor_ui {
         </svg>
       </button>
     </div>
+    <button type="button"
+        class="qtype_graph-menubtn qtype_graph-exportbtn qtype_graph-exportbtn--icon qtype_graph-settingsbtn"
+        data-role="canvas-settings-btn" hidden aria-label="Configuración del lienzo" title="Configuración del lienzo">
+      <svg class="qtype_graph-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z">
+        </path>
+      </svg>
+    </button>
   </div>
   <div class="qtype_graph-canvas" data-role="canvas">
     <div class="qtype_graph-content" data-role="content">
@@ -120,6 +130,34 @@ class editor_ui {
       <div class="qtype_graph-exportactions">
         <button type="button" class="qtype_graph-menubtn" data-role="image-download-btn">Descargar</button>
         <button type="button" class="qtype_graph-menubtn" data-role="image-close-btn">Cerrar</button>
+      </div>
+    </div>
+    <div class="qtype_graph-exportpanel" data-role="canvas-settings-panel" hidden>
+      <div class="qtype_graph-menulabel">Configuración del lienzo</div>
+      <div class="qtype_graph-checkboxrow">
+        <label class="qtype_graph-checkboxlabel">
+          <input type="checkbox" data-role="canvas-showgrid-checkbox" checked>
+          Mostrar cuadrícula
+        </label>
+      </div>
+      <div class="qtype_graph-menusection">
+        <span class="qtype_graph-menulabel">Color de fondo</span>
+        <div class="qtype_graph-textcolorrow">
+          <input type="text" data-role="canvas-bgcolor-input" class="qtype_graph-textinput" placeholder="#f8f9fa">
+          <input type="color" data-role="canvas-bgcolor-picker" class="qtype_graph-textcolorpicker"
+              aria-label="Color de fondo">
+        </div>
+      </div>
+      <div class="qtype_graph-menusection">
+        <span class="qtype_graph-menulabel">Color de cuadrícula</span>
+        <div class="qtype_graph-textcolorrow">
+          <input type="text" data-role="canvas-gridcolor-input" class="qtype_graph-textinput" placeholder="#e2e8f0">
+          <input type="color" data-role="canvas-gridcolor-picker" class="qtype_graph-textcolorpicker"
+              aria-label="Color de cuadrícula">
+        </div>
+      </div>
+      <div class="qtype_graph-exportactions">
+        <button type="button" class="qtype_graph-menubtn" data-role="canvas-settings-close-btn">Cerrar</button>
       </div>
     </div>
     <div class="qtype_graph-nodemenu" data-role="node-menu" hidden>

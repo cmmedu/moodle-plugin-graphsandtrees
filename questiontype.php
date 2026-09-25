@@ -73,8 +73,8 @@ class qtype_graph extends question_type {
         $options->newedgecontenttype = $formdata->newedgecontenttype ?? 'input';
         $options->newedgecontentvalue = $formdata->newedgecontentvalue ?? '';
         $options->showgrid = !empty($formdata->showgrid) ? 1 : 0;
-        $options->bgcolor = $formdata->bgcolor ?? '#e2e8f0';
-        $options->gridcolor = $formdata->gridcolor ?? '#1b1f27';
+        $options->bgcolor = $formdata->bgcolor ?? '#f8f9fa';
+        $options->gridcolor = $formdata->gridcolor ?? '#e2e8f0';
         $options->textcolor = $formdata->textcolor ?? '';
         $options->shownodetrail = !empty($formdata->shownodetrail) ? 1 : 0;
         $options->allowdownloadimage = !empty($formdata->allowdownloadimage) ? 1 : 0;
@@ -144,8 +144,8 @@ class qtype_graph extends question_type {
         $question->newedgecontenttype = $questiondata->options->newedgecontenttype ?? 'input';
         $question->newedgecontentvalue = $questiondata->options->newedgecontentvalue ?? '';
         $question->showgrid = (bool) ($questiondata->options->showgrid ?? 1);
-        $question->bgcolor = $questiondata->options->bgcolor ?? '#e2e8f0';
-        $question->gridcolor = $questiondata->options->gridcolor ?? '#1b1f27';
+        $question->bgcolor = $questiondata->options->bgcolor ?? '#f8f9fa';
+        $question->gridcolor = $questiondata->options->gridcolor ?? '#e2e8f0';
         $question->textcolor = $questiondata->options->textcolor ?? '';
         $question->shownodetrail = (bool) ($questiondata->options->shownodetrail ?? 1);
         $question->allowdownloadimage = (bool) ($questiondata->options->allowdownloadimage ?? 0);
@@ -273,8 +273,8 @@ class qtype_graph extends question_type {
         $qo->newedgecontenttype = $format->getpath($data, ['#', 'newedgecontenttype', 0, '#'], 'input', true);
         $qo->newedgecontentvalue = $format->getpath($data, ['#', 'newedgecontentvalue', 0, '#'], '', true);
         $qo->showgrid = $format->getpath($data, ['#', 'showgrid', 0, '#'], 1);
-        $qo->bgcolor = $format->getpath($data, ['#', 'bgcolor', 0, '#'], '#e2e8f0', true);
-        $qo->gridcolor = $format->getpath($data, ['#', 'gridcolor', 0, '#'], '#1b1f27', true);
+        $qo->bgcolor = $format->getpath($data, ['#', 'bgcolor', 0, '#'], '#f8f9fa', true);
+        $qo->gridcolor = $format->getpath($data, ['#', 'gridcolor', 0, '#'], '#e2e8f0', true);
         $qo->textcolor = $format->getpath($data, ['#', 'textcolor', 0, '#'], '', true);
         $qo->shownodetrail = $format->getpath($data, ['#', 'shownodetrail', 0, '#'], 1);
         $qo->allowdownloadimage = $format->getpath($data, ['#', 'allowdownloadimage', 0, '#'], 0);

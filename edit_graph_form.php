@@ -105,55 +105,30 @@ class qtype_graph_edit_form extends question_edit_form {
                 ['size' => 50]);
         $mform->setType('newedgecontentvalue', PARAM_TEXT);
 
-        // Explicit ids (rather than relying on mform's default id_<name> generation) since
-        // initCanvasSettings() below needs to read/listen to them by id. Applies to every
-        // canvas this question has (default, result, every alternate, and the student
-        // attempt canvas) - see editor_ui::render()'s $dataattrs calls below and in
-        // renderer.php, and setCanvasStyle() in amd/src/editor.js.
-        $mform->addElement('advcheckbox', 'showgrid', get_string('showgrid', 'qtype_graph'),
-                null, ['id' => 'id_showgrid']);
-        $mform->setDefault('showgrid', 1);
-
         $mform->addElement('advcheckbox', 'showlevellabels', get_string('showlevellabels', 'qtype_graph'),
                 null, ['id' => 'id_showlevellabels']);
         $mform->setDefault('showlevellabels', 1);
         $mform->addHelpButton('showlevellabels', 'showlevellabels', 'qtype_graph');
 
-        // A plain text field (so a hex value can be typed/pasted directly), paired on the
-        // same row with a native color-swatch picker as a convenience that overwrites it -
-        // the picker isn't an mform element itself (no name attribute, so it never submits
-        // as its own form field), just a visual affordance kept in sync with the text field
-        // in both directions by initCanvasSettings().
-        $bgcolorgroup = [
-            $mform->createElement('text', 'bgcolor', '', ['id' => 'id_bgcolor', 'size' => 10]),
-            $mform->createElement('html', html_writer::empty_tag('input', [
-                'type' => 'color',
-                'id' => 'id_bgcolor_picker',
-                'value' => $this->question->options->bgcolor ?? '#f8f9fa',
-                'class' => 'qtype_graph-bgcolorpicker',
-                'aria-label' => get_string('bgcolor', 'qtype_graph'),
-            ])),
-        ];
-        $mform->addGroup($bgcolorgroup, 'bgcolorgroup', get_string('bgcolor', 'qtype_graph'), ' ', false);
+        // No longer visible fields on this form - "Mostrar cuadrícula"/"Color de
+        // fondo"/"Color de cuadrícula" are now edited from the canvas's own gear
+        // panel (classes/editor_ui.php's canvas-settings-panel, wired in
+        // createGraphEditor() in amd/src/editor.js), the same way graphjson itself
+        // is only ever edited via the canvas, never a form field. Kept as hidden
+        // fields (rather than dropped outright) so they're still what actually
+        // gets submitted and saved - the canvas panel writes into them by id on
+        // every change (see canvasSettingsFieldIds passed to initEditor() below).
+        // The default values here only ever matter if that JS somehow fails to
+        // load, since $canvasstyleattrs below (which the canvas panel's initial
+        // state is itself seeded from) already resolves the real current value -
+        // still, kept matching db/install.xml's own column defaults, not left
+        // empty, as a sane fallback.
+        $mform->addElement('hidden', 'showgrid', 1, ['id' => 'id_showgrid']);
+        $mform->setType('showgrid', PARAM_INT);
+        $mform->addElement('hidden', 'bgcolor', '#f8f9fa', ['id' => 'id_bgcolor']);
         $mform->setType('bgcolor', PARAM_TEXT);
-        $mform->setDefault('bgcolor', '#f8f9fa');
-        $mform->addHelpButton('bgcolorgroup', 'bgcolor', 'qtype_graph');
-
-        // Same text-field-plus-swatch pattern as bgcolor above, for the grid line color.
-        $gridcolorgroup = [
-            $mform->createElement('text', 'gridcolor', '', ['id' => 'id_gridcolor', 'size' => 10]),
-            $mform->createElement('html', html_writer::empty_tag('input', [
-                'type' => 'color',
-                'id' => 'id_gridcolor_picker',
-                'value' => $this->question->options->gridcolor ?? '#e2e8f0',
-                'class' => 'qtype_graph-bgcolorpicker',
-                'aria-label' => get_string('gridcolor', 'qtype_graph'),
-            ])),
-        ];
-        $mform->addGroup($gridcolorgroup, 'gridcolorgroup', get_string('gridcolor', 'qtype_graph'), ' ', false);
+        $mform->addElement('hidden', 'gridcolor', '#e2e8f0', ['id' => 'id_gridcolor']);
         $mform->setType('gridcolor', PARAM_TEXT);
-        $mform->setDefault('gridcolor', '#e2e8f0');
-        $mform->addHelpButton('gridcolorgroup', 'gridcolor', 'qtype_graph');
 
         // No longer a visible question-level field - node/edge/floating-label text
         // color is now set per-item, in that item's own menu on the canvas (see
@@ -175,14 +150,17 @@ class qtype_graph_edit_form extends question_edit_form {
         $containerid = 'qtype_graph_editor_' . html_writer::random_id('editor');
         $resultcontainerid = 'qtype_graph_editor_' . html_writer::random_id('editor');
 
-        // One setting for every canvas this question has (see initCanvasSettings() above),
-        // so the same values seed all three render() calls below (default, result, and
-        // the alternate-answer template) - a brand new question falls back to the same
-        // defaults set on the showgrid/bgcolor/gridcolor form fields above.
+        // One setting for every canvas this question has (see the canvas gear
+        // panel/canvasSettingsFieldIds below, and initCanvasSettings() above for
+        // the settings still on this form), so the same values seed all three
+        // render() calls below (default, result, and the alternate-answer
+        // template) - a brand new question falls back to the same defaults as
+        // the showgrid/bgcolor/gridcolor hidden fields above (matching
+        // db/install.xml's own column defaults).
         $canvasstyleattrs = [
             'showgrid' => (!empty($this->question->options) ? (int) $this->question->options->showgrid : 1) ? '1' : '0',
-            'bgcolor' => !empty($this->question->options) ? $this->question->options->bgcolor : '#e2e8f0',
-            'gridcolor' => !empty($this->question->options) ? $this->question->options->gridcolor : '#cbd5e1',
+            'bgcolor' => !empty($this->question->options) ? $this->question->options->bgcolor : '#f8f9fa',
+            'gridcolor' => !empty($this->question->options) ? $this->question->options->gridcolor : '#e2e8f0',
             'textcolor' => !empty($this->question->options) ? ($this->question->options->textcolor ?? '') : '',
             'showlevellabels' =>
                     (!empty($this->question->options) ? (int) $this->question->options->showlevellabels : 1) ? '1' : '0',
@@ -206,11 +184,11 @@ class qtype_graph_edit_form extends question_edit_form {
         $mform->setType('graphjson', PARAM_RAW);
 
         $PAGE->requires->js_call_amd('qtype_graph/editor', 'initEditor',
-                [$containerid, 'id_graphjson', null, null, $resultcontainerid]);
+                [$containerid, 'id_graphjson', null, null, $resultcontainerid,
+                        ['showGrid' => 'id_showgrid', 'bgColor' => 'id_bgcolor', 'gridColor' => 'id_gridcolor']]);
 
         $PAGE->requires->js_call_amd('qtype_graph/editor', 'initCanvasSettings',
-                ['id_showgrid', 'id_bgcolor', 'id_bgcolor_picker', 'id_gridcolor', 'id_gridcolor_picker',
-                        'id_showlevellabels', null, null, 'id_levellabelsize']);
+                ['id_showlevellabels', null, null, 'id_levellabelsize']);
 
         // Per-depth overrides for "Show level labels" above: up to MAX_LEVEL_LABELS rows,
         // each a show/hide checkbox plus a custom title, subtitle, and text color for
@@ -395,8 +373,8 @@ class qtype_graph_edit_form extends question_edit_form {
             $question->newedgecontenttype = $question->options->newedgecontenttype ?? 'input';
             $question->newedgecontentvalue = $question->options->newedgecontentvalue ?? '';
             $question->showgrid = $question->options->showgrid ?? 1;
-            $question->bgcolor = $question->options->bgcolor ?? '#e2e8f0';
-            $question->gridcolor = $question->options->gridcolor ?? '#1b1f27';
+            $question->bgcolor = $question->options->bgcolor ?? '#f8f9fa';
+            $question->gridcolor = $question->options->gridcolor ?? '#e2e8f0';
             $question->textcolor = $question->options->textcolor ?? '';
             $question->shownodetrail = $question->options->shownodetrail ?? 1;
             $question->allowdownloadimage = $question->options->allowdownloadimage ?? 0;

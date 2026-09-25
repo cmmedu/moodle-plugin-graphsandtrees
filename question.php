@@ -71,10 +71,10 @@ class qtype_graph_question extends question_graded_automatically {
     public $showgrid = true;
 
     /** @var string background color (CSS hex) of every canvas for this question. */
-    public $bgcolor = '#e2e8f0';
+    public $bgcolor = '#f8f9fa';
 
     /** @var string background grid line color (CSS hex) of every canvas for this question. */
-    public $gridcolor = '#1b1f27';
+    public $gridcolor = '#e2e8f0';
 
     /** @var string text color (CSS hex) for node labels and connection labels on every canvas for
      *  this question - empty means each falls back to its own default (white node text, dark

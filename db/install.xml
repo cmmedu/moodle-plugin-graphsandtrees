@@ -25,8 +25,8 @@
         <FIELD NAME="incorrectfeedbackformat" TYPE="int" LENGTH="2" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
         <FIELD NAME="shownumcorrect" TYPE="int" LENGTH="2" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="If true, once the question is finished, tell the student how many parts they got correct alongside the combined feedback."/>
         <FIELD NAME="showgrid" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether every canvas for this question (editor and attempt) shows its background grid."/>
-        <FIELD NAME="bgcolor" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="#e2e8f0" SEQUENCE="false" COMMENT="Background color (CSS hex) of every canvas for this question."/>
-        <FIELD NAME="gridcolor" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="#1b1f27" SEQUENCE="false" COMMENT="Background grid line color (CSS hex) of every canvas for this question."/>
+        <FIELD NAME="bgcolor" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="#f8f9fa" SEQUENCE="false" COMMENT="Background color (CSS hex) of every canvas for this question."/>
+        <FIELD NAME="gridcolor" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="#e2e8f0" SEQUENCE="false" COMMENT="Background grid line color (CSS hex) of every canvas for this question."/>
         <FIELD NAME="textcolor" TYPE="char" LENGTH="20" NOTNULL="false" SEQUENCE="false" COMMENT="Text color (CSS hex) for node labels and connection labels on every canvas for this question - empty/null means each falls back to its own default (white node text, dark connection text)."/>
         <FIELD NAME="shownodetrail" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether clicking a node during the attempt highlights the path (nodes and edges) back to its origin node."/>
         <FIELD NAME="showlevellabels" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="1" SEQUENCE="false" COMMENT="Whether every canvas for this question (editor and attempt) shows tree-mode depth labels ('Nivel 0', 'Nivel 1', ...)."/>

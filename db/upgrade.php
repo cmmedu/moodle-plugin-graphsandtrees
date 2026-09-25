@@ -367,5 +367,38 @@ function xmldb_qtype_graph_upgrade(int $oldversion): bool {
         upgrade_plugin_savepoint(true, 2026092502, 'qtype', 'graph');
     }
 
+    if ($oldversion < 2026092503) {
+        $table = new xmldb_table('qtype_graph_options');
+
+        // Was '#1b1f27' (dark, for contrast against the light default background) -
+        // now matches --qtype-graph-grid's own CSS default (styles.css) instead of
+        // diverging from it. Existing questions keep whatever gridcolor they
+        // already have saved, untouched by this - only what a brand new question
+        // (or the DB column's own bare default, effectively unreachable in
+        // practice since PHP always sets this explicitly - see
+        // save_question_options()) falls back to changes.
+        $field = new xmldb_field('gridcolor', XMLDB_TYPE_CHAR, '20', null,
+                XMLDB_NOTNULL, null, '#e2e8f0', 'bgcolor');
+        $dbman->change_field_default($table, $field);
+
+        upgrade_plugin_savepoint(true, 2026092503, 'qtype', 'graph');
+    }
+
+    if ($oldversion < 2026092504) {
+        $table = new xmldb_table('qtype_graph_options');
+
+        // Was '#e2e8f0' (matching the old gridcolor default before 2026092503
+        // above, which made the two indistinguishable by default) - now matches
+        // --qtype-graph-bg's own CSS default (styles.css) instead, giving new
+        // questions a visibly distinct grid/background pair out of the box.
+        // Existing questions keep whatever bgcolor they already have saved,
+        // untouched by this - same reasoning as the gridcolor change above.
+        $field = new xmldb_field('bgcolor', XMLDB_TYPE_CHAR, '20', null,
+                XMLDB_NOTNULL, null, '#f8f9fa', 'showgrid');
+        $dbman->change_field_default($table, $field);
+
+        upgrade_plugin_savepoint(true, 2026092504, 'qtype', 'graph');
+    }
+
     return true;
 }
