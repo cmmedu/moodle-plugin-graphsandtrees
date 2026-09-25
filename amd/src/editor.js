@@ -819,7 +819,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const nodeTextColorPicker = root.querySelector('[data-role="node-textcolor-picker"]');
         const nodeShapeSection = root.querySelector('[data-role="node-shape-section"]');
         const nodeTextInput = root.querySelector('[data-role="node-text-input"]');
-        const colorRow = root.querySelector('[data-role="color-row"]');
+        const nodeColorInput = root.querySelector('[data-role="node-color-input"]');
+        const nodeColorPicker = root.querySelector('[data-role="node-color-picker"]');
         const shapeRow = root.querySelector('[data-role="shape-row"]');
         const addConnectedBtn = root.querySelector('[data-role="add-connected-btn"]');
         const addInputBtn = root.querySelector('[data-role="add-input-btn"]');
@@ -864,12 +865,13 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         }
 
         /**
-         * Populates a "Color de texto" text+swatch pair (node/edge/floating-label
-         * menu) from a stored value. The text field always shows the raw value
-         * (including '' - "no color of its own"); the swatch only updates when
-         * it's a valid 6-digit hex, since a native <input type=color> can't
-         * represent "unset" and would otherwise just snap to black - same
-         * reasoning as wireColorPair() in initCanvasSettings() below.
+         * Populates a hex text+swatch color pair (node fill, or "Color de texto"
+         * on the node/edge/floating-label menus) from a stored value. The text
+         * field always shows the raw value (including '' - "no color of its
+         * own"); the swatch only updates when it's a valid 6-digit hex, since a
+         * native <input type=color> can't represent "unset" and would otherwise
+         * just snap to black - same reasoning as wireColorPair() in
+         * initCanvasSettings() below.
          *
          * @param {Element} textInput
          * @param {Element} picker
@@ -883,7 +885,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         }
 
         /**
-         * Wires a "Color de texto" text+swatch pair so either control updates the
+         * Wires a hex text+swatch color pair (node fill, or "Color de texto" on
+         * the node/edge/floating-label menus) so either control updates the
          * other and calls setColor() with the resulting value - setColor is a
          * closure that looks up whichever node/edge/floating label is currently
          * active at the time of the edit (activeNodeId/activeEdge/
@@ -909,6 +912,12 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 notifyChange();
             });
         }
+
+        wireColorField(nodeColorInput, nodeColorPicker, (color) => {
+            if (activeNodeId) {
+                applyNodeColors(nodes.get(activeNodeId).el, color);
+            }
+        });
 
         wireColorField(nodeTextColorInput, nodeTextColorPicker, (color) => {
             if (activeNodeId) {
@@ -2628,23 +2637,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 populateColorField(nodeTextColorInput, nodeTextColorPicker,
                         record.el.style.getPropertyValue('--item-text-color').trim());
 
-                const currentColor = getComputedStyle(record.el).getPropertyValue('--node-color').trim();
-                colorRow.innerHTML = '';
-                COLORS.forEach((entry) => {
-                    const swatch = document.createElement('button');
-                    swatch.type = 'button';
-                    swatch.className = 'qtype_graph-colorswatch';
-                    swatch.style.background = entry.bg;
-                    if (entry.bg.toLowerCase() === currentColor.toLowerCase()) {
-                        swatch.classList.add('qtype_graph-colorswatch--selected');
-                    }
-                    swatch.addEventListener('click', () => {
-                        applyNodeColors(record.el, entry.bg, entry.border);
-                        notifyChange();
-                        openMenu(nodeId);
-                    });
-                    colorRow.appendChild(swatch);
-                });
+                populateColorField(nodeColorInput, nodeColorPicker,
+                        record.el.style.getPropertyValue('--node-color').trim());
 
                 const currentShape = record.el.dataset.shape || DEFAULT_SHAPE;
                 [...shapeRow.children].forEach((btn) => {

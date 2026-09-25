@@ -688,25 +688,6 @@
   color: var(--qtype-graph-muted);
 }
 
-.qtype_graph-colorrow {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.qtype_graph-colorswatch {
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-  padding: 0;
-}
-
-.qtype_graph-colorswatch--selected {
-  border-color: var(--qtype-graph-text);
-}
-
 .qtype_graph-collapsible {
   display: flex;
   flex-direction: column;
