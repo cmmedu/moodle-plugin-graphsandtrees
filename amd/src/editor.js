@@ -988,6 +988,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const canvasGridColorInput = root.querySelector('[data-role="canvas-gridcolor-input"]');
         const canvasGridColorPicker = root.querySelector('[data-role="canvas-gridcolor-picker"]');
         const canvasLevelLabelSizeInput = root.querySelector('[data-role="canvas-levellabelsize-input"]');
+        const canvasShowLevelLabelsCheckbox = root.querySelector('[data-role="canvas-showlevellabels-checkbox"]');
+        const canvasShowNodeTrailCheckbox = root.querySelector('[data-role="canvas-shownodetrail-checkbox"]');
         const canvasSettingsCloseBtn = root.querySelector('[data-role="canvas-settings-close-btn"]');
 
         if (lockLayout) {
@@ -1283,8 +1285,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             }
             hydrate(data);
             // hydrate() above only ever applies embedded showGrid/bgColor/
-            // gridColor/levelLabelSize/levelLabelOverrides visually (see its own
-            // comment) - pasting JSON here is a real, user-initiated change, so
+            // gridColor/levelLabelSize/showLevelLabels/showNodeTrail/
+            // levelLabelOverrides visually (see its own comment) - pasting JSON
+            // here is a real, user-initiated change, so
             // also persist whatever it just applied into the hidden mform fields,
             // same as if the teacher had set it from the gear panel or the
             // level-label click-menu directly.
@@ -1389,6 +1392,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const gridColorField = canvasSettingsFieldIds && document.getElementById(canvasSettingsFieldIds.gridColor);
             const levelLabelSizeField = canvasSettingsFieldIds &&
                     document.getElementById(canvasSettingsFieldIds.levelLabelSize);
+            const showLevelLabelsField = canvasSettingsFieldIds &&
+                    document.getElementById(canvasSettingsFieldIds.showLevelLabels);
+            const showNodeTrailField = canvasSettingsFieldIds &&
+                    document.getElementById(canvasSettingsFieldIds.showNodeTrail);
 
             // Seeded from this editor's already-resolved initial canvasStyle state
             // (see setCanvasStyle() above), not by re-reading the hidden mform
@@ -1405,29 +1412,42 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 canvasGridColorPicker.value = canvasStyle.gridColor;
             }
             canvasLevelLabelSizeInput.value = canvasStyle.levelLabelSize;
+            canvasShowLevelLabelsCheckbox.checked = canvasStyle.showLevelLabels;
+            // Not part of canvasStyle - shownodetrail only ever affects the
+            // student attempt canvas (see showTrail below), never this one, so
+            // there's no live style state to seed from; read the same data-*
+            // attribute setCanvasStyle()'s own initial call reads the others
+            // from instead.
+            canvasShowNodeTrailCheckbox.checked = root.dataset.shownodetrail !== '0';
 
             /**
-             * Applies the panel's current showgrid/bgcolor/gridcolor/level-label-size
-             * controls: restyles every canvas belonging to this question (same
-             * broadcast reasoning as initCanvasSettings() above) - always, live
-             * preview or not. On the Moodle edit form (showGridField/bgColorField/
-             * gridColorField/levelLabelSizeField non-null) it also writes the
-             * resolved values into the hidden mform fields so they're what actually
-             * gets submitted on save, and marks the form dirty - the same two
-             * things editing the graph itself does via notifyChange(), just for
-             * these settings instead of graphjson. On the standalone helper page
-             * (no form at all) those four are null, so this is preview-only there.
-             * Assigns the outer applyCanvasSettings binding (declared above, before
-             * this block) rather than a local const, since hydrate() and the
-             * "Construir grafo" button need to call this too - see there.
+             * Applies the panel's current showgrid/bgcolor/gridcolor/level-label-
+             * size/show-level-labels/show-node-trail controls: restyles every
+             * canvas belonging to this question (same broadcast reasoning as
+             * initCanvasSettings() above) - always, live preview or not (except
+             * showNodeTrail, which never visually affects this canvas - see its
+             * own seeding comment above). On the Moodle edit form
+             * (showGridField/bgColorField/gridColorField/levelLabelSizeField/
+             * showLevelLabelsField/showNodeTrailField non-null) it also writes
+             * the resolved values into the hidden mform fields so they're what
+             * actually gets submitted on save, and marks the form dirty - the
+             * same two things editing the graph itself does via notifyChange(),
+             * just for these settings instead of graphjson. On the standalone
+             * helper page (no form at all) those six are null, so this is
+             * preview-only there. Assigns the outer applyCanvasSettings binding
+             * (declared above, before this block) rather than a local const,
+             * since hydrate() and the "Construir grafo" button need to call this
+             * too - see there.
              */
             applyCanvasSettings = () => {
                 const showGrid = canvasShowGridCheckbox.checked;
                 const bgColor = canvasBgColorInput.value;
                 const gridColor = canvasGridColorInput.value;
                 const levelLabelSize = canvasLevelLabelSizeInput.value;
+                const showLevelLabels = canvasShowLevelLabelsCheckbox.checked;
+                const showNodeTrail = canvasShowNodeTrailCheckbox.checked;
                 editorRegistry.forEach((editor) =>
-                        editor.setCanvasStyle({showGrid, bgColor, gridColor, levelLabelSize}));
+                        editor.setCanvasStyle({showGrid, bgColor, gridColor, levelLabelSize, showLevelLabels}));
                 if (showGridField) {
                     showGridField.value = showGrid ? '1' : '0';
                 }
@@ -1439,6 +1459,12 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 }
                 if (levelLabelSizeField) {
                     levelLabelSizeField.value = levelLabelSize;
+                }
+                if (showLevelLabelsField) {
+                    showLevelLabelsField.value = showLevelLabels ? '1' : '0';
+                }
+                if (showNodeTrailField) {
+                    showNodeTrailField.value = showNodeTrail ? '1' : '0';
                 }
                 const form = root.closest('form');
                 if (form) {
@@ -1472,6 +1498,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             wireCanvasColorField(canvasBgColorInput, canvasBgColorPicker);
             wireCanvasColorField(canvasGridColorInput, canvasGridColorPicker);
             canvasLevelLabelSizeInput.addEventListener('input', applyCanvasSettings);
+            canvasShowLevelLabelsCheckbox.addEventListener('change', applyCanvasSettings);
+            canvasShowNodeTrailCheckbox.addEventListener('change', applyCanvasSettings);
 
             const levelLabelOverridesField = canvasSettingsFieldIds &&
                     document.getElementById(canvasSettingsFieldIds.levelLabelOverrides);
@@ -3255,23 +3283,20 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 // "Copiar al portapapeles"/"Guardar como .json", or Moodle's own
                 // JSON panel "Construir grafo" - see hydrate() below), never as a
                 // second source of truth: the Moodle edit form's hidden
-                // showgrid/bgcolor/gridcolor/levellabelsize/levellabelsjson fields
-                // (written by the gear panel and the level-label click-menu)
-                // remain what actually gets saved. Irrelevant to grading -
-                // classes/grading.php and answer_matcher.php only ever read
-                // nodes/edges off this object, never these.
-                // showLevelLabels (the global on/off toggle) is deliberately NOT
-                // embedded here - unlike the others, it's still a plain visible
-                // mform checkbox (initCanvasSettings() below), not yet migrated to
-                // the gear panel, so there's no hidden field for hydrate() to write
-                // it back into - embedding it would visually apply on paste, then
-                // silently revert on save since nothing persists it. Add it here
-                // once it gets the same gear-panel treatment as the rest.
+                // showgrid/bgcolor/gridcolor/levellabelsize/showlevellabels/
+                // shownodetrail/levellabelsjson fields (written by the gear
+                // panel and the level-label click-menu) remain what actually
+                // gets saved. Irrelevant to grading - classes/grading.php and
+                // answer_matcher.php only ever read nodes/edges off this object,
+                // never these.
                 ...(isCanvasSettingsOwner ? {
                     showGrid: canvasStyle.showGrid,
                     bgColor: canvasStyle.bgColor,
                     gridColor: canvasStyle.gridColor,
                     levelLabelSize: canvasStyle.levelLabelSize,
+                    showLevelLabels: canvasStyle.showLevelLabels,
+                    // Not part of canvasStyle - see its own seeding comment above.
+                    showNodeTrail: canvasShowNodeTrailCheckbox.checked,
                     levelLabelOverrides,
                 } : {}),
                 nodes: [...nodes.values()].map((record) => ({
@@ -3325,8 +3350,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             if (data.lineStyle === 'orthogonal') {
                 setLineStyle('orthogonal', true);
             }
-            // Embedded showGrid/bgColor/gridColor (see serialize() above) - only
-            // read on the one canvas that owns these settings, and only ever
+            // Embedded showGrid/bgColor/gridColor/levelLabelSize/showLevelLabels/
+            // showNodeTrail (see serialize() above) - only read on the one canvas
+            // that owns these settings, and only ever
             // applied visually here (broadcast to every canvas via
             // editorRegistry, same as applyCanvasSettings() below, but never the
             // hidden-field write or form-dirty mark that function also does).
@@ -3368,8 +3394,21 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                         canvasLevelLabelSizeInput.value = data.levelLabelSize;
                     }
                 }
+                if (typeof data.showLevelLabels === 'boolean') {
+                    stylePatch.showLevelLabels = data.showLevelLabels;
+                    if (canvasShowLevelLabelsCheckbox) {
+                        canvasShowLevelLabelsCheckbox.checked = data.showLevelLabels;
+                    }
+                }
                 if (Object.keys(stylePatch).length) {
                     editorRegistry.forEach((editor) => editor.setCanvasStyle(stylePatch));
+                }
+                // showNodeTrail isn't part of setCanvasStyle() either (it has no
+                // visual effect on this canvas at all - see its own seeding
+                // comment above) - just seed the checkbox here; applyCanvasSettings()
+                // is what the "Construir grafo" button calls afterward to persist it.
+                if (typeof data.showNodeTrail === 'boolean' && canvasShowNodeTrailCheckbox) {
+                    canvasShowNodeTrailCheckbox.checked = data.showNodeTrail;
                 }
                 // levelLabelOverrides isn't part of setCanvasStyle()'s patch (a
                 // separate editor API method, setLevelLabelOverrides() above) -
@@ -3755,64 +3794,44 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     }
 
     /**
-     * Wires the edit form's remaining "Mostrar etiquetas de nivel"/text color
-     * controls so changing them immediately restyles every canvas belonging
-     * to this question (default graph, result graph, and every alternate
-     * answer graph, including ones added later via initAltAnswers) - not
-     * just the one saved to the DB on next submit. Broadcasts to every editor
+     * Wires the edit form's remaining node/connection text color control so
+     * changing it immediately restyles every canvas belonging to this
+     * question (default graph, result graph, and every alternate answer
+     * graph, including ones added later via initAltAnswers) - not just the
+     * one saved to the DB on next submit. Broadcasts to every editor
      * currently in editorRegistry rather than tracking specific container
      * ids, since alternates are created and removed dynamically after this
-     * runs. Show grid/background color/grid color/level-label size moved off
-     * the edit form into the canvas's own gear panel (see
-     * canvasSettingsFieldIds in createGraphEditor()) - each side only ever
-     * patches the setCanvasStyle() keys it owns, see that function's docblock.
+     * runs. Show grid/background color/grid color/level-label size/show
+     * level labels have all moved off the edit form into the canvas's own
+     * gear panel (see canvasSettingsFieldIds in createGraphEditor()) - each
+     * side only ever patches the setCanvasStyle() keys it owns, see that
+     * function's docblock.
      *
-     * @param {string} [showLevelLabelsFieldId] id of the "show level labels" checkbox.
      * @param {string} [textColorFieldId] id of the node/connection text color text field.
      * @param {string} [textColorPickerId] id of its paired <input type="color"> swatch.
      */
-    function initCanvasSettings(showLevelLabelsFieldId, textColorFieldId, textColorPickerId) {
-        const showLevelLabelsField = document.getElementById(showLevelLabelsFieldId);
+    function initCanvasSettings(textColorFieldId, textColorPickerId) {
         const textColorField = document.getElementById(textColorFieldId);
-        if (!showLevelLabelsField && !textColorField) {
+        if (!textColorField) {
             return;
         }
 
         function broadcast() {
-            const showLevelLabels = showLevelLabelsField ? showLevelLabelsField.checked : true;
-            const textColor = textColorField ? textColorField.value : '';
-            editorRegistry.forEach((editor) => editor.setCanvasStyle({showLevelLabels, textColor}));
+            editorRegistry.forEach((editor) => editor.setCanvasStyle({textColor: textColorField.value}));
         }
 
-        /**
-         * Two-way-syncs a plain hex text field with its paired native color-swatch
-         * picker (see the picker markup in edit_graph_form.php) - typing a valid
-         * 6-digit hex updates the swatch, picking a color overwrites the text
-         * field - and calls broadcast() after either.
-         *
-         * @param {Element} textField
-         * @param {Element|null} picker
-         */
-        function wireColorPair(textField, picker) {
-            textField.addEventListener('input', () => {
-                if (picker && /^#[0-9a-fA-F]{6}$/.test(textField.value)) {
-                    picker.value = textField.value;
-                }
+        const picker = document.getElementById(textColorPickerId);
+        textColorField.addEventListener('input', () => {
+            if (picker && /^#[0-9a-fA-F]{6}$/.test(textColorField.value)) {
+                picker.value = textColorField.value;
+            }
+            broadcast();
+        });
+        if (picker) {
+            picker.addEventListener('input', () => {
+                textColorField.value = picker.value;
                 broadcast();
             });
-            if (picker) {
-                picker.addEventListener('input', () => {
-                    textField.value = picker.value;
-                    broadcast();
-                });
-            }
-        }
-
-        if (showLevelLabelsField) {
-            showLevelLabelsField.addEventListener('change', broadcast);
-        }
-        if (textColorField) {
-            wireColorPair(textColorField, document.getElementById(textColorPickerId));
         }
     }
 
@@ -3831,8 +3850,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      *                 Whenever the mode/orientation/line-style toggles change here, the same values are
      *                 also pushed onto this sibling (see setLayout()), which is how the result graph
      *                 stays in lockstep with the default graph despite never exposing its own controls.
-     * @param {Object} [canvasSettingsFieldIds] {showGrid, bgColor, gridColor, levelLabelSize} mform
-     *                 hidden-field ids (edit_graph_form.php) - only ever passed on the default graph's own initEditor()
+     * @param {Object} [canvasSettingsFieldIds] {showGrid, bgColor, gridColor, levelLabelSize,
+     *                 showLevelLabels, showNodeTrail, levelLabelOverrides} mform hidden-field ids
+     *                 (edit_graph_form.php) - only ever passed on the default graph's own initEditor()
      *                 call (never the result graph's, which already sets hasLayoutSource below), since
      *                 these are one shared setting for the whole question, edited from the canvas gear
      *                 panel and broadcast to every canvas via editorRegistry - see

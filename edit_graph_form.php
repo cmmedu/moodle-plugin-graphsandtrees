@@ -53,10 +53,6 @@ class qtype_graph_edit_form extends question_edit_form {
         $mform->setDefault('strictinputchecks', 1);
         $mform->addHelpButton('strictinputchecks', 'strictinputchecks', 'qtype_graph');
 
-        $mform->addElement('advcheckbox', 'shownodetrail', get_string('shownodetrail', 'qtype_graph'));
-        $mform->setDefault('shownodetrail', 1);
-        $mform->addHelpButton('shownodetrail', 'shownodetrail', 'qtype_graph');
-
         $mform->addElement('advcheckbox', 'allowdownloadimage', get_string('allowdownloadimage', 'qtype_graph'));
         $mform->setDefault('allowdownloadimage', 0);
         $mform->addHelpButton('allowdownloadimage', 'allowdownloadimage', 'qtype_graph');
@@ -97,24 +93,29 @@ class qtype_graph_edit_form extends question_edit_form {
                 ['size' => 50]);
         $mform->setType('newedgecontentvalue', PARAM_TEXT);
 
-        $mform->addElement('advcheckbox', 'showlevellabels', get_string('showlevellabels', 'qtype_graph'),
-                null, ['id' => 'id_showlevellabels']);
-        $mform->setDefault('showlevellabels', 1);
-        $mform->addHelpButton('showlevellabels', 'showlevellabels', 'qtype_graph');
-
-        // No longer visible fields on this form - "Mostrar cuadrícula"/"Color de
-        // fondo"/"Color de cuadrícula" are now edited from the canvas's own gear
-        // panel (classes/editor_ui.php's canvas-settings-panel, wired in
-        // createGraphEditor() in amd/src/editor.js), the same way graphjson itself
-        // is only ever edited via the canvas, never a form field. Kept as hidden
-        // fields (rather than dropped outright) so they're still what actually
-        // gets submitted and saved - the canvas panel writes into them by id on
-        // every change (see canvasSettingsFieldIds passed to initEditor() below).
-        // The default values here only ever matter if that JS somehow fails to
-        // load, since $canvasstyleattrs below (which the canvas panel's initial
-        // state is itself seeded from) already resolves the real current value -
-        // still, kept matching db/install.xml's own column defaults, not left
-        // empty, as a sane fallback.
+        // No longer visible fields on this form - "Mostrar recorrido del nodo"/
+        // "Mostrar etiquetas de nivel"/"Mostrar cuadrícula"/"Color de fondo"/
+        // "Color de cuadrícula" are now edited from the canvas's own gear panel
+        // (classes/editor_ui.php's canvas-settings-panel, wired in
+        // createGraphEditor() in amd/src/editor.js), the same way graphjson
+        // itself is only ever edited via the canvas, never a form field. Kept as
+        // hidden fields (rather than dropped outright) so they're still what
+        // actually gets submitted and saved - the canvas panel writes into them
+        // by id on every change (see canvasSettingsFieldIds passed to
+        // initEditor() below). The default values here only ever matter if that
+        // JS somehow fails to load, since $canvasstyleattrs below (which the
+        // canvas panel's initial state is itself seeded from) already resolves
+        // the real current value - still, kept matching db/install.xml's own
+        // column defaults, not left empty, as a sane fallback. shownodetrail
+        // only ever affects the student attempt canvas (clicking a node during
+        // an attempt highlights its trail back to the origin) - unlike the
+        // others, there's no live preview to show while editing, but it's the
+        // same kind of one-shared-value-per-question setting, so it lives here
+        // too rather than being the one remaining exception.
+        $mform->addElement('hidden', 'shownodetrail', 1, ['id' => 'id_shownodetrail']);
+        $mform->setType('shownodetrail', PARAM_INT);
+        $mform->addElement('hidden', 'showlevellabels', 1, ['id' => 'id_showlevellabels']);
+        $mform->setType('showlevellabels', PARAM_INT);
         $mform->addElement('hidden', 'showgrid', 1, ['id' => 'id_showgrid']);
         $mform->setType('showgrid', PARAM_INT);
         $mform->addElement('hidden', 'bgcolor', '#f8f9fa', ['id' => 'id_bgcolor']);
@@ -150,6 +151,8 @@ class qtype_graph_edit_form extends question_edit_form {
         // the showgrid/bgcolor/gridcolor hidden fields above (matching
         // db/install.xml's own column defaults).
         $canvasstyleattrs = [
+            'shownodetrail' =>
+                    (!empty($this->question->options) ? (int) $this->question->options->shownodetrail : 1) ? '1' : '0',
             'showgrid' => (!empty($this->question->options) ? (int) $this->question->options->showgrid : 1) ? '1' : '0',
             'bgcolor' => !empty($this->question->options) ? $this->question->options->bgcolor : '#f8f9fa',
             'gridcolor' => !empty($this->question->options) ? $this->question->options->gridcolor : '#e2e8f0',
@@ -178,10 +181,10 @@ class qtype_graph_edit_form extends question_edit_form {
         $PAGE->requires->js_call_amd('qtype_graph/editor', 'initEditor',
                 [$containerid, 'id_graphjson', null, null, $resultcontainerid,
                         ['showGrid' => 'id_showgrid', 'bgColor' => 'id_bgcolor', 'gridColor' => 'id_gridcolor',
-                                'levelLabelSize' => 'id_levellabelsize', 'levelLabelOverrides' => 'id_levellabelsjson']]);
+                                'levelLabelSize' => 'id_levellabelsize', 'levelLabelOverrides' => 'id_levellabelsjson',
+                                'showLevelLabels' => 'id_showlevellabels', 'showNodeTrail' => 'id_shownodetrail']]);
 
-        $PAGE->requires->js_call_amd('qtype_graph/editor', 'initCanvasSettings',
-                ['id_showlevellabels', null, null]);
+        $PAGE->requires->js_call_amd('qtype_graph/editor', 'initCanvasSettings', [null, null]);
 
         // No longer a visible field - global font size for every level label's
         // title (applying uniformly to all depths - see --qtype-graph-levellabel-size

@@ -139,6 +139,16 @@ class editor_ui {
           <input type="checkbox" data-role="canvas-showgrid-checkbox" checked>
           Mostrar cuadrícula
         </label>
+        <label class="qtype_graph-checkboxlabel">
+          <input type="checkbox" data-role="canvas-showlevellabels-checkbox" checked>
+          Mostrar etiquetas de nivel
+        </label>
+      </div>
+      <div class="qtype_graph-checkboxrow">
+        <label class="qtype_graph-checkboxlabel">
+          <input type="checkbox" data-role="canvas-shownodetrail-checkbox" checked>
+          Mostrar recorrido del nodo (en el intento)
+        </label>
       </div>
       <div class="qtype_graph-menusection">
         <span class="qtype_graph-menulabel">Color de fondo</span>
@@ -166,7 +176,7 @@ class editor_ui {
     </div>
     <div class="qtype_graph-nodemenu" data-role="node-menu" hidden>
       <div class="qtype_graph-menusection" data-role="node-text-section">
-        <span class="qtype_graph-menulabel">Texto</span>
+        <span class="qtype_graph-menulabel">Nombre</span>
         <input type="text" data-role="node-text-input" class="qtype_graph-textinput">
       </div>
       <div class="qtype_graph-menusection" data-role="node-select-section" hidden>
@@ -214,7 +224,7 @@ class editor_ui {
     </div>
     <div class="qtype_graph-nodemenu" data-role="floatinglabel-menu" hidden>
       <div class="qtype_graph-menusection" data-role="floatinglabel-text-section">
-        <span class="qtype_graph-menulabel">Etiqueta flotante</span>
+        <span class="qtype_graph-menulabel">Nombre</span>
         <input type="text" data-role="floatinglabel-text-input" class="qtype_graph-textinput">
       </div>
       <div class="qtype_graph-menusection" data-role="floatinglabel-select-section" hidden>
@@ -251,7 +261,7 @@ class editor_ui {
     </div>
     <div class="qtype_graph-nodemenu" data-role="edge-menu" hidden>
       <div class="qtype_graph-menusection" data-role="edge-text-section">
-        <span class="qtype_graph-menulabel">Etiqueta</span>
+        <span class="qtype_graph-menulabel">Nombre</span>
         <input type="text" data-role="edge-label-input" class="qtype_graph-textinput" maxlength="40">
       </div>
       <div class="qtype_graph-menusection" data-role="edge-select-section" hidden>
