@@ -681,7 +681,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * @param {Element} contentEl its .qtype_graph-content child.
      * @return {{left: number, top: number, width: number, height: number}}
      */
-    function computeGraphContentBounds(canvasEl, contentEl) {
+    function computeGraphContentBounds(canvasEl, contentEl, includeHiddenLevelLabels) {
         const canvasRect = canvasEl.getBoundingClientRect();
         const t = readContentTransform(contentEl);
         let minX = Infinity;
@@ -701,6 +701,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
 
         contentEl.querySelectorAll('.qtype_graph-node, .qtype_graph-floatinglabel, .qtype_graph-levellabel')
                 .forEach((el) => {
+                    if (!includeHiddenLevelLabels && el.classList.contains('qtype_graph-levellabel--hidden')) {
+                        return;
+                    }
                     const r = el.getBoundingClientRect();
                     // Mid tree-relayout animation a node's (and its floating label's)
                     // on-screen rect lags behind its target position - shift it by
@@ -749,14 +752,20 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      *                  the grid - see includeGrid). Defaults to true.
      * @param {boolean} [options.includeGrid] true keeps the editing grid pattern
      *                  in the export instead of stripping it. Defaults to false.
+     * @param {boolean} [options.includeHiddenLevelLabels] true also exports level
+     *                  labels the teacher switched off ("Mostrar" unchecked), which
+     *                  the owner canvas still draws faded so they stay clickable
+     *                  (.qtype_graph-levellabel--hidden) - exported at full opacity,
+     *                  like a shown label. Defaults to false: left out entirely.
      * @param {string} [fontCss] @font-face CSS to embed - see buildEmbeddedFontCss().
      * @return {{markup: string, width: number, height: number}}
      */
     function buildGraphSvgMarkup(canvasEl, contentEl, options, fontCss) {
         const includeBackground = !options || options.includeBackground !== false;
         const includeGrid = !!(options && options.includeGrid);
+        const includeHiddenLevelLabels = !!(options && options.includeHiddenLevelLabels);
         const PADDING = 40;
-        const bounds = computeGraphContentBounds(canvasEl, contentEl);
+        const bounds = computeGraphContentBounds(canvasEl, contentEl, includeHiddenLevelLabels);
         const width = Math.max(1, Math.round(bounds.width + PADDING * 2));
         const height = Math.max(1, Math.round(bounds.height + PADDING * 2));
 
@@ -780,9 +789,16 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         // teacher happened to leave open).
         clone.querySelectorAll(
                 '[data-role="json-panel"], [data-role="image-panel"], [data-role="canvas-settings-panel"], ' +
-                '[data-role="node-menu"], ' +
+                '[data-role="node-menu"], [data-role="levellabel-menu"], ' +
                 '[data-role="floatinglabel-menu"], [data-role="edge-menu"]'
         ).forEach((el) => el.remove());
+        clone.querySelectorAll('.qtype_graph-levellabel--hidden').forEach((el) => {
+            if (includeHiddenLevelLabels) {
+                el.style.opacity = '1';
+            } else {
+                el.remove();
+            }
+        });
         // Override the baked-in (live) viewport size/clipping and pan/zoom transform
         // that inlineComputedStyles() just copied, so the clone renders the full
         // bounds computed above instead of reproducing the live view's crop.
@@ -1163,6 +1179,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const imageFormatButtons = [...root.querySelectorAll('[data-role="image-format-toggle"] button')];
         const imageBgCheckbox = root.querySelector('[data-role="image-bg-checkbox"]');
         const imageGridCheckbox = root.querySelector('[data-role="image-grid-checkbox"]');
+        const imageHiddenLevelLabelsCheckbox = root.querySelector('[data-role="image-hiddenlevellabels-checkbox"]');
         const imageStatus = root.querySelector('[data-role="image-status"]');
         const imageDownloadBtn = root.querySelector('[data-role="image-download-btn"]');
         const imageCloseBtn = root.querySelector('[data-role="image-close-btn"]');
@@ -1539,6 +1556,11 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             canvasSettingsPanel.hidden = true;
             imagePanel.hidden = false;
             showImageStatus('', false);
+            // Only offered when this canvas actually has a switched-off level label
+            // to include - see renderLevelLabels(), which only draws those on the
+            // canvas owning the question's shared style settings.
+            imageHiddenLevelLabelsCheckbox.closest('label').hidden =
+                    !graphContent.querySelector('.qtype_graph-levellabel--hidden');
         }
 
         imageBtn.addEventListener('click', () => {
@@ -1557,7 +1579,11 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         imageDownloadBtn.addEventListener('click', () => {
             showImageStatus('Generando...', false);
             const exportFn = imageFormat === 'svg' ? exportCanvasAsSvg : exportCanvasAsPng;
-            const options = {includeBackground: imageBgCheckbox.checked, includeGrid: imageGridCheckbox.checked};
+            const options = {
+                includeBackground: imageBgCheckbox.checked,
+                includeGrid: imageGridCheckbox.checked,
+                includeHiddenLevelLabels: imageHiddenLevelLabelsCheckbox.checked,
+            };
             exportFn(canvas, graphContent, options).then(() => {
                 showImageStatus(imageFormat === 'svg' ? 'SVG descargado.' : 'PNG descargado.', false);
             }, () => {

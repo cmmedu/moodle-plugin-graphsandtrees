@@ -207,7 +207,8 @@
    below). */
 .qtype_graph-checkboxrow {
   display: flex;
-  gap: 16px;
+  flex-wrap: wrap;
+  gap: 8px 16px;
 }
 
 .qtype_graph-checkboxlabel {
@@ -217,6 +218,13 @@
   font-size: 13px;
   color: var(--qtype-graph-text);
   cursor: pointer;
+}
+
+/* "Etiquetas de nivel ocultas" is only shown when the canvas has one - see
+   openImagePanel() in amd/src/editor.js; display: flex above would
+   otherwise override the hidden attribute. */
+.qtype_graph-checkboxlabel[hidden] {
+  display: none;
 }
 
 .qtype_graph-checkboxlabel input[type="checkbox"] {
