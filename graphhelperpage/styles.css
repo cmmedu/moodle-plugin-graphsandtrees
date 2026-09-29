@@ -730,10 +730,26 @@
   border-radius: 10px;
   padding: 12px;
   min-width: 200px;
+  /* Never taller than the canvas it sits in (its containing block - see
+     .qtype_graph-canvas's position: relative), minus the 8px margin the menu
+     positioning in amd/src/editor.js keeps from the bottom edge; with every
+     collapsible section open, the rest scrolls instead of being clipped by
+     the canvas's own overflow: hidden. */
+  max-height: calc(100% - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--qtype-graph-border) transparent;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+/* A scrolling flex column would otherwise shrink its sections/buttons to fit
+   max-height instead of overflowing into the scroll area. */
+.qtype_graph-nodemenu > * {
+  flex-shrink: 0;
 }
 
 .qtype_graph-menusection {

@@ -601,20 +601,57 @@
     }
 
     /**
-     * cloneNode(true) copies DOM attributes, not live JS properties, so a blank
-     * node rendered as <input>/<select> (its .value is set via JS, not an
-     * attribute) would otherwise clone back to empty. Both trees have identical
-     * structure right after cloning, so matching form controls positionally is
-     * safe.
+     * Swaps every form control in a detached clone for a plain <span> showing
+     * the live control's current value - a student's typed answer in a
+     * free-text blank, or the chosen option's label in a select blank.
+     *
+     * Setting the clone's .value isn't enough: that's a live JS property, not
+     * an attribute, and XMLSerializer (buildGraphSvgMarkup()) only serializes
+     * attributes, so the exported image showed every blank empty. Plain text is
+     * also more reliable than hoping a form control renders inside an SVG image
+     * at all. The span keeps the control's own inlined computed style (border,
+     * padding, width, colors - see inlineComputedStyles(), which must run
+     * first), so it still reads as a filled-in blank. Both trees have identical
+     * structure right after cloning, so matching controls positionally is safe.
      *
      * @param {Element} sourceRoot
      * @param {Element} cloneRoot
      */
-    function copyLiveFormState(sourceRoot, cloneRoot) {
+    function replaceFormControlsWithText(sourceRoot, cloneRoot) {
         const sourceControls = sourceRoot.querySelectorAll('input, select, textarea');
         const cloneControls = cloneRoot.querySelectorAll('input, select, textarea');
         sourceControls.forEach((sourceControl, i) => {
-            cloneControls[i].value = sourceControl.value;
+            const cloneControl = cloneControls[i];
+            let text = sourceControl.value;
+            let isPlaceholder = false;
+            if (sourceControl.tagName === 'SELECT') {
+                const option = sourceControl.options[sourceControl.selectedIndex];
+                text = option ? option.textContent : '';
+            } else if (!text && sourceControl.placeholder) {
+                text = sourceControl.placeholder;
+                isPlaceholder = true;
+            }
+            const span = document.createElementNS(XHTML_NS, 'span');
+            span.setAttribute('style', cloneControl.getAttribute('style') || '');
+            span.className = cloneControl.className;
+            const computed = window.getComputedStyle(sourceControl);
+            if (computed.display !== 'none') {
+                // Inputs center their single line vertically on their own; a span
+                // needs flex for that, and justify-content to honour text-align.
+                span.style.display = 'inline-flex';
+                span.style.alignItems = 'center';
+                span.style.justifyContent = {
+                    left: 'flex-start', start: 'flex-start', right: 'flex-end', end: 'flex-end',
+                }[computed.textAlign] || 'center';
+            }
+            span.style.whiteSpace = 'pre';
+            span.style.overflow = 'hidden';
+            span.style.verticalAlign = 'middle';
+            if (isPlaceholder) {
+                span.style.opacity = '0.55';
+            }
+            span.textContent = text;
+            cloneControl.replaceWith(span);
         });
     }
 
@@ -740,8 +777,8 @@
         const height = Math.max(1, Math.round(bounds.height + PADDING * 2));
 
         const clone = canvasEl.cloneNode(true);
-        copyLiveFormState(canvasEl, clone);
         inlineComputedStyles(canvasEl, clone);
+        replaceFormControlsWithText(canvasEl, clone);
         clone.style.transition = 'none';
         // The editing grid and the canvas's own background color are each only
         // exported when their matching image-panel checkbox (see editor_ui.php) is
@@ -1707,7 +1744,29 @@
             canvasSettingsPanel.hidden = true;
         });
 
+        // Menus are only clamped inside the canvas when they open (see openMenu()
+        // and friends), so expanding a collapsible section afterwards could push
+        // one past the canvas's bottom edge. Re-clamp on every section toggle
+        // ('toggle' doesn't bubble, hence the capture listener); past the
+        // canvas's own height the menu scrolls instead (max-height in styles.css).
+        canvas.addEventListener('toggle', (e) => {
+            const openMenuEl = e.target.closest && e.target.closest('.qtype_graph-nodemenu');
+            if (!openMenuEl || openMenuEl.hidden) {
+                return;
+            }
+            const overflow = openMenuEl.offsetTop + openMenuEl.offsetHeight - (canvas.clientHeight - 8);
+            if (overflow > 0) {
+                openMenuEl.style.top = `${Math.max(0, openMenuEl.offsetTop - overflow)}px`;
+            }
+        }, true);
+
         canvas.addEventListener('wheel', (e) => {
+            // Over a popup menu/panel (which scrolls on its own once it's taller
+            // than the canvas - see .qtype_graph-nodemenu's max-height), let the
+            // wheel scroll it instead of zooming the graph behind it.
+            if (e.target.closest('.qtype_graph-nodemenu, .qtype_graph-exportpanel')) {
+                return;
+            }
             e.preventDefault();
             setZoom(zoom + (e.deltaY > 0 ? -ZOOM_STEP : ZOOM_STEP));
         }, {passive: false});
