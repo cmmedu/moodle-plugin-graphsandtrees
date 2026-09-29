@@ -456,7 +456,14 @@
      a node - .qtype_graph-node--dragging (z-index: 100) still rises above other
      nodes on top of this while actively being dragged. */
   z-index: 2;
-  min-width: 120px;
+  /* Content-driven width: a short label keeps the default node size (the
+     120px floor lives on .qtype_graph-node-text below, so it still counts
+     toward this box's intrinsic size), a phrase grows up to max-width and
+     then wraps between words, and a single word longer than max-width widens
+     the node instead of being cut - min-width wins over max-width whenever
+     the two conflict, and min-content is exactly the longest unbreakable
+     word (see the no-break rules on .qtype_graph-node-text). */
+  min-width: min-content;
   max-width: 240px;
   padding: 14px 18px;
   /* Solid fill (not a dark-panel-diluted tint) so a node's chosen color reads
@@ -542,6 +549,34 @@
   display: none;
 }
 
+/* Per-label "Alineación del texto" (applyFloatingLabelTextAlign() in
+   amd/src/editor.js). The chip is a single line, so alignment positions it
+   against its node: below the node (vertical), left/right line up with the
+   node's left/right edge; beside it (--horizontal), the same two choices
+   line up with the node's top/bottom edge instead. Center is the default
+   (the rules above). */
+.qtype_graph-floatinglabel--align-left:not(.qtype_graph-floatinglabel--horizontal) {
+  left: 0;
+  transform: none;
+}
+
+.qtype_graph-floatinglabel--align-right:not(.qtype_graph-floatinglabel--horizontal) {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+.qtype_graph-floatinglabel--horizontal.qtype_graph-floatinglabel--align-left {
+  top: 0;
+  transform: none;
+}
+
+.qtype_graph-floatinglabel--horizontal.qtype_graph-floatinglabel--align-right {
+  top: auto;
+  bottom: 0;
+  transform: none;
+}
+
 .qtype_graph-floatinglabel-text {
   display: inline-block;
   padding: 2px 10px;
@@ -621,12 +656,13 @@
 }
 
 .qtype_graph-node--shape-circle {
-  /* Own (smaller) min-width, not the 120px rectangular default: aspect-ratio
+  /* Own (smaller) width floor, not the 120px rectangular default (see the
+     circle override under .qtype_graph-node-text below): aspect-ratio
      forces height to match width, so inheriting min-width:120px would make
      even a one-word circle ~120px tall - tall enough to blow past
      TREE_LEVEL_MIN_PITCH's floor in relayoutTree() (editor.js) and collapse
      the visible tree-mode connecting line down to the bare TREE_LEVEL_GAP. */
-  min-width: 64px;
+  min-width: min-content;
   padding: 10px;
   aspect-ratio: 1 / 1;
   border-radius: 50%;
@@ -652,8 +688,29 @@
 
 .qtype_graph-node-text {
   outline: none;
-  word-break: break-word;
+  /* Wrap only between words, never inside one - a word too long for the
+     node's max-width widens the node instead (see .qtype_graph-node's
+     min-width: min-content). */
+  word-break: normal;
+  overflow-wrap: normal;
+  hyphens: none;
   display: block;
+  /* Default node width floor (120px minus .qtype_graph-node's 18px side
+     padding) - set here rather than as the node's own min-width, which is
+     min-content so long words can grow it. */
+  min-width: 84px;
+}
+
+/* Circle keeps its own smaller floor (64px minus 10px padding) - see the
+   .qtype_graph-node--shape-circle rule for why it must stay small. */
+.qtype_graph-node--shape-circle .qtype_graph-node-text {
+  min-width: 44px;
+}
+
+/* Oval's wider side padding (34px) would otherwise push its floor to 152px;
+   keep it at the same 120px default as the other shapes. */
+.qtype_graph-node--shape-oval .qtype_graph-node-text {
+  min-width: 52px;
 }
 
 .qtype_graph-node--editing .qtype_graph-node-text {
@@ -739,6 +796,17 @@
 .qtype_graph-formatrow .qtype_graph-shapebtn {
   flex: 1;
   justify-content: center;
+}
+
+/* Node menu's "Alineación del texto" chips (classes/editor_ui.php) - an
+   inline SVG of text lines, stroked in the chip's own text color. */
+.qtype_graph-aligniconsvg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
 }
 
 .qtype_graph-shapebtn {

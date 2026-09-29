@@ -54,8 +54,13 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     ];
     const SHAPES = ['rounded', 'circle', 'rectangle', 'oval'];
     const DEFAULT_SHAPE = SHAPES[0];
+    // Per-node text alignment (node menu's "Alineación del texto" section) -
+    // centered matches .qtype_graph-node's own text-align default in styles.css.
+    const TEXT_ALIGNS = ['left', 'center', 'right'];
+    const DEFAULT_TEXT_ALIGN = 'center';
     const CLICK_THRESHOLD = 4;
-    // Nodes can be up to 240px wide (.qtype_graph-node's max-width) and grow tall
+    // Nodes can be 240px wide or more (.qtype_graph-node wraps phrases at 240px but
+    // widens past it for a single long word) and grow tall
     // with wrapped/multi-blank content (e.g. a multi-blank label, or the
     // free-text/select input a student's own node renders), so these need real
     // margin beyond that or adjacent-level/sibling nodes can end up edge-to-edge
@@ -481,6 +486,105 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
     }
 
     /**
+     * Every font family (lowercased, unquoted) that any element under root is
+     * actually rendered with, per its computed font-family list.
+     *
+     * @param {Element} root
+     * @return {Set<string>}
+     */
+    function collectUsedFontFamilies(root) {
+        const families = new Set();
+        [root, ...root.querySelectorAll('*')].forEach((el) => {
+            window.getComputedStyle(el).fontFamily.split(',').forEach((family) => {
+                families.add(family.trim().replace(/^["']|["']$/g, '').toLowerCase());
+            });
+        });
+        return families;
+    }
+
+    /**
+     * @param {Blob} blob
+     * @return {Promise<string>} the blob as a data: URL.
+     */
+    function blobToDataUrl(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => reject(reader.error);
+            reader.readAsDataURL(blob);
+        });
+    }
+
+    // Cache for buildEmbeddedFontCss(), keyed by the sorted used-family list -
+    // the page's @font-face rules never change after load, so each font file is
+    // fetched and base64-encoded at most once per page, not on every export.
+    const embeddedFontCssCache = new Map();
+
+    /**
+     * Self-contained @font-face CSS (every url() inlined as a data: URL) for
+     * each web font the canvas actually uses. An SVG rendered as an image (the
+     * PNG path draws it through an <img>, and a downloaded .svg is opened the
+     * same way) can't load any external resource, so without this every web
+     * font silently falls back to a system font - e.g. the Stream theme's
+     * `* {font-family: 'Nunito', Verdana, ...}` rule exports as Verdana, whose
+     * wider glyphs no longer fit the node widths inlineComputedStyles() froze
+     * from the live (Nunito) layout: text re-wraps differently and overflowing
+     * lines lose their centering.
+     *
+     * Best effort: a cross-origin stylesheet (cssRules throws) or a font that
+     * fails to fetch is skipped, leaving that family to fall back as before.
+     *
+     * @param {Element} canvasEl the .qtype_graph-canvas element.
+     * @return {Promise<string>} CSS text, '' if no web font is used.
+     */
+    function buildEmbeddedFontCss(canvasEl) {
+        const families = collectUsedFontFamilies(canvasEl);
+        const cacheKey = [...families].sort().join('|');
+        if (embeddedFontCssCache.has(cacheKey)) {
+            return embeddedFontCssCache.get(cacheKey);
+        }
+        const faces = [];
+        [...document.styleSheets].forEach((sheet) => {
+            let rules;
+            try {
+                rules = sheet.cssRules;
+            } catch (e) {
+                return;
+            }
+            [...(rules || [])].forEach((rule) => {
+                if (!(rule instanceof CSSFontFaceRule)) {
+                    return;
+                }
+                const family = rule.style.getPropertyValue('font-family').trim()
+                        .replace(/^["']|["']$/g, '').toLowerCase();
+                if (families.has(family)) {
+                    faces.push({cssText: rule.cssText, base: sheet.href || document.baseURI});
+                }
+            });
+        });
+        const promise = Promise.all(faces.map((face) => {
+            const urls = [...face.cssText.matchAll(/url\(\s*(["']?)([^"')]+)\1\s*\)/g)];
+            return Promise.all(urls.map((match) => {
+                if (match[2].startsWith('data:')) {
+                    return Promise.resolve([match[0], match[0]]);
+                }
+                return fetch(new URL(match[2], face.base).href, {credentials: 'same-origin'})
+                    .then((response) => {
+                        if (!response.ok) {
+                            throw new Error(`HTTP ${response.status}`);
+                        }
+                        return response.blob();
+                    })
+                    .then(blobToDataUrl)
+                    .then((dataUrl) => [match[0], `url("${dataUrl}")`]);
+            })).then((replacements) => replacements.reduce(
+                    (css, [from, to]) => css.split(from).join(to), face.cssText), () => '');
+        })).then((cssParts) => cssParts.filter(Boolean).join('\n'));
+        embeddedFontCssCache.set(cacheKey, promise);
+        return promise;
+    }
+
+    /**
      * cloneNode(true) copies DOM attributes, not live JS properties, so a blank
      * node rendered as <input>/<select> (its .value is set via JS, not an
      * attribute) would otherwise clone back to empty. Both trees have identical
@@ -561,7 +665,14 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         contentEl.querySelectorAll('.qtype_graph-node, .qtype_graph-floatinglabel, .qtype_graph-levellabel')
                 .forEach((el) => {
                     const r = el.getBoundingClientRect();
-                    includeRect((r.left - canvasRect.left - t.panX) / t.zoom, (r.top - canvasRect.top - t.panY) / t.zoom,
+                    // Mid tree-relayout animation a node's (and its floating label's)
+                    // on-screen rect lags behind its target position - shift it by
+                    // that lag so the bounds match what buildGraphSvgMarkup() exports.
+                    const node = el.closest('.qtype_graph-node');
+                    const lagX = node ? (parseFloat(node.style.left) || 0) - node.offsetLeft : 0;
+                    const lagY = node ? (parseFloat(node.style.top) || 0) - node.offsetTop : 0;
+                    includeRect((r.left - canvasRect.left - t.panX) / t.zoom + lagX,
+                            (r.top - canvasRect.top - t.panY) / t.zoom + lagY,
                             r.width / t.zoom, r.height / t.zoom);
                 });
 
@@ -601,9 +712,10 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      *                  the grid - see includeGrid). Defaults to true.
      * @param {boolean} [options.includeGrid] true keeps the editing grid pattern
      *                  in the export instead of stripping it. Defaults to false.
+     * @param {string} [fontCss] @font-face CSS to embed - see buildEmbeddedFontCss().
      * @return {{markup: string, width: number, height: number}}
      */
-    function buildGraphSvgMarkup(canvasEl, contentEl, options) {
+    function buildGraphSvgMarkup(canvasEl, contentEl, options, fontCss) {
         const includeBackground = !options || options.includeBackground !== false;
         const includeGrid = !!(options && options.includeGrid);
         const PADDING = 40;
@@ -640,6 +752,22 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         clone.style.overflow = 'visible';
         clone.style.width = `${width}px`;
         clone.style.height = `${height}px`;
+        // A tree relayout animates each node's left/top (see .qtype_graph-node's
+        // transition in styles.css) while edges jump straight to their final
+        // geometry, so an export taken mid-animation would freeze nodes at their
+        // computed, still-moving positions, detached from their edges. Use each
+        // node's target (inline) position instead - the one the edges already use.
+        const liveNodes = contentEl.querySelectorAll('.qtype_graph-node');
+        // The inlined computed style also carries the logical inset-* longhands
+        // (same mid-animation values), declared after left/top, so they would
+        // still win unless removed.
+        clone.querySelectorAll('.qtype_graph-node').forEach((node, i) => {
+            node.style.transition = 'none';
+            ['inset-inline-start', 'inset-inline-end', 'inset-block-start', 'inset-block-end', 'right', 'bottom']
+                    .forEach((prop) => node.style.removeProperty(prop));
+            node.style.left = liveNodes[i].style.left;
+            node.style.top = liveNodes[i].style.top;
+        });
         const cloneContent = clone.querySelector('[data-role="content"]');
         if (cloneContent) {
             cloneContent.style.transition = 'none';
@@ -654,6 +782,11 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         svgRoot.setAttribute('xmlns', SVG_NS);
         svgRoot.setAttribute('width', String(width));
         svgRoot.setAttribute('height', String(height));
+        if (fontCss) {
+            const style = document.createElementNS(SVG_NS, 'style');
+            style.textContent = fontCss;
+            svgRoot.appendChild(style);
+        }
         const foreignObject = document.createElementNS(SVG_NS, 'foreignObject');
         foreignObject.setAttribute('width', '100%');
         foreignObject.setAttribute('height', '100%');
@@ -691,9 +824,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * @return {Promise}
      */
     function exportCanvasAsPng(canvasEl, contentEl, options) {
-        const svg = buildGraphSvgMarkup(canvasEl, contentEl, options);
-        const svgUrl = URL.createObjectURL(new Blob([svg.markup], {type: 'image/svg+xml;charset=utf-8'}));
-        return new Promise((resolve, reject) => {
+        return buildEmbeddedFontCss(canvasEl).then((fontCss) => new Promise((resolve, reject) => {
+            const svg = buildGraphSvgMarkup(canvasEl, contentEl, options, fontCss);
+            const svgUrl = URL.createObjectURL(new Blob([svg.markup], {type: 'image/svg+xml;charset=utf-8'}));
             const img = new Image();
             img.onload = () => {
                 const scale = window.devicePixelRatio || 1;
@@ -718,7 +851,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 reject(new Error('No se pudo generar la imagen intermedia del lienzo.'));
             };
             img.src = svgUrl;
-        });
+        }));
     }
 
     /**
@@ -730,9 +863,11 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
      * @return {Promise}
      */
     function exportCanvasAsSvg(canvasEl, contentEl, options) {
-        const svg = buildGraphSvgMarkup(canvasEl, contentEl, options);
-        downloadBlob(new Blob([svg.markup], {type: 'image/svg+xml;charset=utf-8'}), 'grafo.svg');
-        return Promise.resolve();
+        return buildEmbeddedFontCss(canvasEl).then((fontCss) => {
+            const svg = buildGraphSvgMarkup(canvasEl, contentEl, options, fontCss);
+            downloadBlob(new Blob([svg.markup], {type: 'image/svg+xml;charset=utf-8'}), 'grafo.svg');
+            return svg;
+        });
     }
 
     /**
@@ -822,6 +957,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const nodeColorInput = root.querySelector('[data-role="node-color-input"]');
         const nodeColorPicker = root.querySelector('[data-role="node-color-picker"]');
         const shapeRow = root.querySelector('[data-role="shape-row"]');
+        const nodeTextAlignSection = root.querySelector('[data-role="node-textalign-section"]');
+        const textAlignRow = root.querySelector('[data-role="textalign-row"]');
         const addConnectedBtn = root.querySelector('[data-role="add-connected-btn"]');
         const addInputBtn = root.querySelector('[data-role="add-input-btn"]');
         const addSelectBtn = root.querySelector('[data-role="add-select-btn"]');
@@ -834,6 +971,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const floatingLabelSelectInput = root.querySelector('[data-role="floatinglabel-select-input"]');
         const floatingLabelTextColorInput = root.querySelector('[data-role="floatinglabel-textcolor-input"]');
         const floatingLabelTextColorPicker = root.querySelector('[data-role="floatinglabel-textcolor-picker"]');
+        const floatingLabelTextAlignRow = root.querySelector('[data-role="floatinglabel-textalign-row"]');
         const addFloatingLabelInputBtn = root.querySelector('[data-role="add-floatinglabel-input-btn"]');
         const addFloatingLabelSelectBtn = root.querySelector('[data-role="add-floatinglabel-select-btn"]');
         const deleteFloatingLabelBtn = root.querySelector('[data-role="delete-floatinglabel-btn"]');
@@ -850,6 +988,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const edgeTextColorSection = root.querySelector('[data-role="edge-textcolor-section"]');
         const edgeTextColorInput = root.querySelector('[data-role="edge-textcolor-input"]');
         const edgeTextColorPicker = root.querySelector('[data-role="edge-textcolor-picker"]');
+        const edgeTextAlignSection = root.querySelector('[data-role="edge-textalign-section"]');
+        const edgeTextAlignRow = root.querySelector('[data-role="edge-textalign-row"]');
         const addEdgeInputBtn = root.querySelector('[data-role="add-edge-input-btn"]');
         const addEdgeSelectBtn = root.querySelector('[data-role="add-edge-select-btn"]');
         const deleteEdgeBtn = root.querySelector('[data-role="delete-edge-btn"]');
@@ -1609,6 +1749,9 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         const EDGE_LABEL_FO_MIN_WIDTH = 24;
         const EDGE_LABEL_FO_MIN_HEIGHT = 20;
         const EDGE_LABEL_FO_PADDING = 8;
+        // Gap between the line's midpoint and a left/right-aligned connection
+        // label - see applyEdgeTextAlign().
+        const EDGE_LABEL_ALIGN_OFFSET = 6;
 
         function setEdgeGeometry(edge, x1, y1, x2, y2) {
             const {d, lx, ly} = computeEdgeGeometry(x1, y1, x2, y2, lineStyle, mode, orientation);
@@ -1622,12 +1765,23 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 const h = Math.min(
                         Math.max(div.offsetHeight + EDGE_LABEL_FO_PADDING, EDGE_LABEL_FO_MIN_HEIGHT),
                         EDGE_LABEL_FO_MAX_HEIGHT);
-                fo.setAttribute('x', lx - w / 2);
+                let foX = lx - w / 2;
+                if (edge.textAlign === 'left') {
+                    foX = lx - w - EDGE_LABEL_ALIGN_OFFSET;
+                } else if (edge.textAlign === 'right') {
+                    foX = lx + EDGE_LABEL_ALIGN_OFFSET;
+                }
+                fo.setAttribute('x', foX);
                 fo.setAttribute('y', ly - h / 2);
                 fo.setAttribute('width', w);
                 fo.setAttribute('height', h);
             } else {
-                edge.textEl.setAttribute('x', lx);
+                // Left = label ends just before the midpoint, right = starts just
+                // after it, center = centered on it - see applyEdgeTextAlign().
+                const anchor = {left: 'end', right: 'start'}[edge.textAlign] || 'middle';
+                const offset = {left: -EDGE_LABEL_ALIGN_OFFSET, right: EDGE_LABEL_ALIGN_OFFSET}[edge.textAlign] || 0;
+                edge.textEl.setAttribute('text-anchor', anchor);
+                edge.textEl.setAttribute('x', lx + offset);
                 edge.textEl.setAttribute('y', ly);
             }
         }
@@ -1955,7 +2109,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             refreshAllFloatingLabelVisibility();
         }
 
-        function createEdge(fromId, toId, label, locked, id, textColor) {
+        function createEdge(fromId, toId, label, locked, id, textColor, textAlign) {
             if (!id) {
                 edgeCounter += 1;
                 id = `edge-${Date.now().toString(36)}-${edgeCounter}`;
@@ -2003,6 +2157,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const edge = {
                 id, group, hitPath, visiblePath, textEl, htmlLabel,
                 fromId, toId, label: label || '', locked: !!locked,
+                textAlign: TEXT_ALIGNS.includes(textAlign) ? textAlign : DEFAULT_TEXT_ALIGN,
             };
             edges.push(edge);
             nodes.get(fromId).edges.add(edge);
@@ -2183,6 +2338,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             edgeTextColorSection.hidden = edge.locked;
             populateColorField(edgeTextColorInput, edgeTextColorPicker,
                     edge.group.style.getPropertyValue('--item-text-color').trim());
+            edgeTextAlignSection.hidden = edge.locked;
+            markSelectedTextAlign(edgeTextAlignRow, edge.textAlign);
             edgeLabelInput.value = edge.label;
             edgeLabelInput.readOnly = attemptMode && !edge.locked && newEdgeContentType === 'text';
             // Shown WITH its [[...]] brackets (unlike a plain options list) so text typed
@@ -2410,6 +2567,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const rawTextColor = record.floatingLabelWrap.style.getPropertyValue('--item-text-color').trim();
             populateColorField(floatingLabelTextColorInput, floatingLabelTextColorPicker,
                     rawTextColor === 'initial' ? '' : rawTextColor);
+            markSelectedTextAlign(floatingLabelTextAlignRow,
+                    record.floatingLabelWrap.dataset.textalign || DEFAULT_TEXT_ALIGN);
 
             const wrapRect = record.floatingLabelWrap.getBoundingClientRect();
             const canvasRect = canvas.getBoundingClientRect();
@@ -2602,6 +2761,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             nodeColorSection.hidden = locked;
             nodeTextColorSection.hidden = locked;
             nodeShapeSection.hidden = locked;
+            nodeTextAlignSection.hidden = locked;
             addConnectedBtn.hidden = !allowAddNodes;
 
             // "+ Etiqueta flotante": only offered on a leaf node (no outgoing edge) in tree
@@ -2620,6 +2780,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             // just set) and leave the node non-interactive.
             const hasVisibleContent = !nodeTextSection.hidden || !nodeSelectSection.hidden ||
                     !nodeColorSection.hidden || !nodeTextColorSection.hidden || !nodeShapeSection.hidden ||
+                    !nodeTextAlignSection.hidden ||
                     !addConnectedBtn.hidden || !addInputBtn.hidden || !addSelectBtn.hidden ||
                     !addFloatingLabelBtn.hidden || !deleteNodeBtn.hidden;
             if (!hasVisibleContent) {
@@ -2644,6 +2805,8 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                 [...shapeRow.children].forEach((btn) => {
                     btn.classList.toggle('qtype_graph-shapebtn--selected', btn.dataset.shape === currentShape);
                 });
+
+                markSelectedTextAlign(textAlignRow, record.el.dataset.textalign || DEFAULT_TEXT_ALIGN);
             }
 
             if (canDeleteThisNode) {
@@ -2677,6 +2840,38 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             }
             const record = nodes.get(activeNodeId);
             applyShape(record.el, btn.dataset.shape);
+            notifyChange();
+            openMenu(activeNodeId);
+        });
+
+        edgeTextAlignRow.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-align]');
+            if (!btn || !activeEdge) {
+                return;
+            }
+            applyEdgeTextAlign(activeEdge, btn.dataset.align);
+            markSelectedTextAlign(edgeTextAlignRow, activeEdge.textAlign);
+            notifyChange();
+        });
+
+        floatingLabelTextAlignRow.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-align]');
+            if (!btn || !activeFloatingLabelNodeId) {
+                return;
+            }
+            const wrap = nodes.get(activeFloatingLabelNodeId).floatingLabelWrap;
+            applyFloatingLabelTextAlign(wrap, btn.dataset.align);
+            markSelectedTextAlign(floatingLabelTextAlignRow, wrap.dataset.textalign);
+            notifyChange();
+        });
+
+        textAlignRow.addEventListener('click', (e) => {
+            const btn = e.target.closest('button[data-align]');
+            if (!btn || !activeNodeId) {
+                return;
+            }
+            const record = nodes.get(activeNodeId);
+            applyTextAlign(record.el, btn.dataset.align);
             notifyChange();
             openMenu(activeNodeId);
         });
@@ -2906,6 +3101,68 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         }
 
         /**
+         * Sets one node's text alignment. Only a non-default value is written as an
+         * inline style, so a centered node keeps inheriting .qtype_graph-node's own
+         * text-align rule from styles.css. Noticeable on wrapped (multi-line) text,
+         * or a short label sitting in the node's default minimum width.
+         *
+         * @param {Element} el the .qtype_graph-node element.
+         * @param {string} [align] one of TEXT_ALIGNS; anything else means DEFAULT_TEXT_ALIGN.
+         */
+        function applyTextAlign(el, align) {
+            el.dataset.textalign = TEXT_ALIGNS.includes(align) ? align : DEFAULT_TEXT_ALIGN;
+            if (el.dataset.textalign === DEFAULT_TEXT_ALIGN) {
+                el.style.removeProperty('text-align');
+            } else {
+                el.style.textAlign = el.dataset.textalign;
+            }
+        }
+
+        /**
+         * Highlights the button matching align in one of the node/edge/floating-label
+         * menus' "Alineación del texto" rows.
+         *
+         * @param {Element} row the [data-role$="textalign-row"] container.
+         * @param {string} align
+         */
+        function markSelectedTextAlign(row, align) {
+            [...row.children].forEach((btn) => {
+                btn.classList.toggle('qtype_graph-shapebtn--selected', btn.dataset.align === align);
+            });
+        }
+
+        /**
+         * Sets one connection's label alignment. A connection label is a single
+         * line, so this positions it relative to the line's midpoint instead of
+         * aligning lines inside a box: left = the label ends at the midpoint,
+         * right = it starts there, center = centered on it (the default).
+         *
+         * @param {Object} edge an edges[] entry.
+         * @param {string} [align] one of TEXT_ALIGNS; anything else means DEFAULT_TEXT_ALIGN.
+         */
+        function applyEdgeTextAlign(edge, align) {
+            edge.textAlign = TEXT_ALIGNS.includes(align) ? align : DEFAULT_TEXT_ALIGN;
+            positionEdge(edge);
+        }
+
+        /**
+         * Sets one floating label's alignment. Also single-line, so like
+         * applyEdgeTextAlign() this positions the chip relative to its node: in
+         * vertical orientation (label below the node) left/right line it up with
+         * the node's left/right edge; in horizontal orientation (label to the
+         * node's right) the same choices map to top/bottom edge instead. See the
+         * .qtype_graph-floatinglabel--align-* rules in styles.css.
+         *
+         * @param {Element} wrap the .qtype_graph-floatinglabel element.
+         * @param {string} [align] one of TEXT_ALIGNS; anything else means DEFAULT_TEXT_ALIGN.
+         */
+        function applyFloatingLabelTextAlign(wrap, align) {
+            wrap.dataset.textalign = TEXT_ALIGNS.includes(align) ? align : DEFAULT_TEXT_ALIGN;
+            wrap.classList.toggle('qtype_graph-floatinglabel--align-left', wrap.dataset.textalign === 'left');
+            wrap.classList.toggle('qtype_graph-floatinglabel--align-right', wrap.dataset.textalign === 'right');
+        }
+
+        /**
          * Sets a node's fill (--node-color) and, if given, an explicit border color
          * that overrides the CSS default (a darkened shade of the fill - see
          * .qtype_graph-node's border rule in styles.css) - some COLORS entries pair
@@ -2976,7 +3233,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
         }
 
         function createNode(left, top, text, color, locked, id, shape, borderColor, floatingLabel,
-                textColor, floatingLabelTextColor) {
+                textColor, floatingLabelTextColor, textAlign, floatingLabelTextAlign) {
             if (!id) {
                 nodeCounter += 1;
                 id = `node-${Date.now().toString(36)}-${nodeCounter}`;
@@ -2992,6 +3249,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             applyNodeColors(el, color, borderColor);
             applyNodeTextColor(el, textColor || '');
             applyShape(el, shape);
+            applyTextAlign(el, textAlign);
 
             let textEl;
             if (locked && attemptMode && hasBlankTokens(text)) {
@@ -3081,6 +3339,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const floatingLabelWrap = document.createElement('div');
             floatingLabelWrap.className = 'qtype_graph-floatinglabel';
             applyFloatingLabelTextColor(floatingLabelWrap, floatingLabelTextColor || '');
+            applyFloatingLabelTextAlign(floatingLabelWrap, floatingLabelTextAlign);
             const floatingLabelEl = document.createElement('span');
             floatingLabelEl.className = 'qtype_graph-floatinglabel-text';
             if (attemptMode && hasBlankTokens(floatingLabelText)) {
@@ -3304,6 +3563,7 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                     // (a darkened --node-color, see styles.css) computed to at save time.
                     bordercolor: record.el.style.getPropertyValue('--node-border-color').trim(),
                     shape: record.el.dataset.shape || DEFAULT_SHAPE,
+                    textalign: record.el.dataset.textalign || DEFAULT_TEXT_ALIGN,
                     locked: !!record.locked,
                     floatingLabel: record.floatingLabel || '',
                     textcolor: record.el.style.getPropertyValue('--item-text-color').trim(),
@@ -3313,10 +3573,12 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
                         const raw = record.floatingLabelWrap.style.getPropertyValue('--item-text-color').trim();
                         return raw === 'initial' ? '' : raw;
                     })(),
+                    floatingLabelTextAlign: record.floatingLabelWrap.dataset.textalign || DEFAULT_TEXT_ALIGN,
                 })),
                 edges: edges.map((edge) => ({
                     id: edge.id, from: edge.fromId, to: edge.toId, label: edge.label, locked: !!edge.locked,
                     textcolor: edge.group.style.getPropertyValue('--item-text-color').trim(),
+                    textalign: edge.textAlign || DEFAULT_TEXT_ALIGN,
                 })),
             };
         }
@@ -3327,12 +3589,13 @@ define(['core_form/changechecker'], function(FormChangeChecker) {
             const nodeList = Array.isArray(data.nodes) ? data.nodes : [];
             nodeList.forEach((n) => {
                 createNode(n.left || 0, n.top || 0, n.text, n.color, !!n.locked, n.id, n.shape, n.bordercolor,
-                        n.floatingLabel, n.textcolor, n.floatingLabelTextColor);
+                        n.floatingLabel, n.textcolor, n.floatingLabelTextColor, n.textalign,
+                        n.floatingLabelTextAlign);
             });
             const edgeList = Array.isArray(data.edges) ? data.edges : [];
             edgeList.forEach((e) => {
                 if (nodes.has(e.from) && nodes.has(e.to)) {
-                    createEdge(e.from, e.to, e.label || '', !!e.locked, e.id, e.textcolor);
+                    createEdge(e.from, e.to, e.label || '', !!e.locked, e.id, e.textcolor, e.textalign);
                 }
             });
             if (data.mode === 'tree') {
