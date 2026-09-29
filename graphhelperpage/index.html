@@ -234,7 +234,7 @@
           <li>El estilo de línea (recta / en ángulo recto) y el zoom se controlan desde la barra superior del editor.
           </li>
           <center><img src="img/graph_tree_h_angled.png" style="width: 45%;" /><img src="img/graph_tree_v_angled.png"
-              style="width: 45%;" /</center>
+              style="width: 45%;" /></center>
         </ul>
 
         <h2>Edición de nodos y Conectores</h2>
@@ -274,6 +274,40 @@
             style="width: 45%;" />
         </center>
 
+        <h3>Etiquetas de nivel (solo en modo árbol)</h3>
+        <ul>
+          <li>En modo árbol cada nivel del árbol muestra una etiqueta ("Etapa 0", "Etapa 1", ...) al costado.</li>
+          <li>Haz clic sobre una etiqueta de nivel para abrir su menú:
+            <ul>
+              <li><strong>Mostrar etiqueta</strong>: muestra u oculta la etiqueta de ese nivel.</li>
+              <li><strong>Texto</strong>: cambia el nombre del nivel (si se deja vacío se usa el nombre por defecto).</li>
+              <li><strong>Subtítulo</strong>: texto opcional, más pequeño, que se muestra debajo del nombre del nivel.</li>
+            </ul>
+          </li>
+          <center><img src="img/grap_levellabel_menu.png" style="width: 45%;" /></center>
+        </ul>
+
+        <h2>Configuración del lienzo</h2>
+        <ul>
+          <li>El botón con el icono de engranaje (a la derecha de la barra superior) abre el panel de configuración del
+            lienzo, que aplica a todo el grafo:
+            <ul>
+              <li><strong>Mostrar cuadrícula</strong>: muestra u oculta la cuadrícula de fondo.</li>
+              <li><strong>Mostrar etiquetas de nivel</strong>: muestra u oculta todas las etiquetas de nivel a la vez
+                (modo árbol).</li>
+              <li><strong>Mostrar recorrido del nodo (en el intento)</strong>: durante el intento, cuando el alumno hace
+                clic en un nodo se resalta el camino que lleva hasta él (sus nodos y conexiones anteriores). No tiene
+                efecto en este editor.</li>
+              <li><strong>Color de fondo</strong> y <strong>Color de cuadrícula</strong>: escribe un color (por ejemplo
+                <code>#f8f9fa</code>) o elígelo con el selector de la derecha.</li>
+              <li><strong>Tamaño de etiquetas de nivel</strong>: tamaño de letra (en píxeles) de las etiquetas de
+                nivel.</li>
+            </ul>
+          </li>
+          <li>Esta configuración se guarda dentro del JSON del grafo, junto con los cambios a las etiquetas de nivel.</li>
+          <center><img src="img/grap_config_menu.png" style="width: 85%;" /></center>
+        </ul>
+
 
         <h2>grafo de repsuesta</h2>
         <ul>
@@ -287,16 +321,29 @@
         <ul>
           <li>El botón <strong>"JSON"</strong> (en la barra superior del editor) abre un panel para copiar/pegar el JSON
             del grafo directamente, listo para el script de montaje del curso.</li>
-          <li>El botón de imagen (icono de foto, junto al de JSON) abre un panel para descargar una imagen del grafo
-            tal como se ve (todo el grafo completo, no solo lo visible en pantalla), en formato PNG (mapa de píxeles)
-            o SVG (editable en un programa de diseño vectorial) - elige el formato antes de descargar.</li>
+        </ul>
+
+        <h3>Exportar como imagen</h3>
+        <ul>
+          <li>El botón de imagen (icono de foto, junto al de JSON) abre el panel <strong>"Exportar imagen"</strong>, que
+            descarga el grafo completo (no solo lo visible en pantalla).</li>
+          <li>Elige el formato: <strong>PNG</strong> (imagen de píxeles, lista para insertar) o <strong>SVG</strong>
+            (vectorial, editable en un programa de diseño).</li>
+          <li>Opciones:
+            <ul>
+              <li><strong>Fondo</strong>: incluye el color de fondo del lienzo; si se desmarca, el fondo queda
+                transparente.</li>
+              <li><strong>Cuadrícula</strong>: incluye la cuadrícula en la imagen.</li>
+              <li><strong>Etiquetas de nivel ocultas</strong>: incluye también las etiquetas de nivel que ocultaste con
+                "Mostrar etiqueta".</li>
+            </ul>
+          </li>
+          <li>Pulsa <strong>"Descargar"</strong> para guardar la imagen.</li>
+          <center><img src="img/grap_image_export_menu.png" style="width: 85%;" /></center>
         </ul>
 
         <h3>Qué queda para el montaje en la plataforma</h3>
         <ul>
-          <li>Los nombres de los niveles del árbol ("Nivel 0", "Nivel 1", ...) no se pueden cambiar en este editor.
-            Basta con indicar en el guión de la clase cómo quieres que se llame cada nivel - quien haga el montaje los
-            renombrará directamente en Moodle.</li>
           <li>Este editor solo construye el <strong>grafo de entrada</strong> (el grafo por defecto que ve el alumno).
             El <strong>grafo de repsuesta</strong> (con las respuestas correctas, usado para la calificación automática)
             se arma aparte, dentro de Moodle. Indica en el guión de la clase cómo debe quedar tanto el grafo de entrada
