@@ -21,7 +21,9 @@ namespace qtype_graph;
  * amd/src/editor.js. Implements the result-graph answer-field grammar
  * documented in this plugin's CLAUDE.md ("Answer-field grammar"): empty,
  * {{T_ANY}}, {{T_ANY_N_EMPTY}}, {{a;b}} (items optionally quoted, {{"a";"b"}}),
- * or plain text.
+ * or plain text. A numeric {{N_INPUT}} blank uses the same grammar, but each
+ * accepted answer is a number with an optional Cloze-style tolerance
+ * ("valor:tolerancia", e.g. 3.14:0.01) compared numerically - see matches().
  *
  * @package    qtype_graph
  * @copyright  2026 Rutas Digitales
@@ -30,6 +32,16 @@ namespace qtype_graph;
 class answer_matcher {
     /** @var string matches the bare/authored {{T_INPUT...}} blank marker in a default-graph label. */
     const BLANK_TOKEN_PATTERN = '/\{\{T_INPUT\b/';
+
+    /** @var string the numeric blank marker ("Marcar como input → Número") - a free-text blank whose
+     *  student value is graded numerically instead of as text. A new marker rather than an
+     *  option on {{T_INPUT}} so every existing graph keeps grading exactly as before. Carries no
+     *  answer content, so blank_token.php never needs to strip it. */
+    const NUMERIC_MARKER = '{{N_INPUT}}';
+
+    /** @var string a number as a student/teacher may type it: optional sign, '.' or ',' as the
+     *  decimal separator, optional exponent. No thousands separators ("1.000" would be ambiguous). */
+    const NUMBER_PATTERN = '/^[+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][+-]?\d+)?$/';
 
     /** @var string matches a [[option1,option2,...]] dropdown blank marker in a default-graph label -
      *  see amd/src/editor.js's "Marcar como selector". Unlike BLANK_TOKEN_PATTERN, this marker's
@@ -46,7 +58,7 @@ class answer_matcher {
      *  this one is used positionally by strip_default_context() below to find where the
      *  blank sits amid any decorative prefix/suffix text the label may also carry (e.g.
      *  "antes [[Opción 1;Opción 2]] despues"). */
-    const BLANK_SPAN_PATTERN = '/\{\{T_INPUT\b[^}]*\}\}|\[\[[^\]]*\]\]/';
+    const BLANK_SPAN_PATTERN = '/\{\{T_INPUT\b[^}]*\}\}|\{\{N_INPUT\}\}|\[\[[^\]]*\]\]/';
 
     /** @var string matches a whole result-graph field that is a {{...}} multi-answer list -
      *  either the original quoted-items form {{"a";"b"}} or the plainer unquoted form
@@ -64,7 +76,8 @@ class answer_matcher {
 
     /**
      * Does a default-graph node/edge label contain a fill-in-the-blank marker -
-     * either a free-text {{T_INPUT}} blank or a [[option1,option2,...]] dropdown blank?
+     * a free-text {{T_INPUT}} blank, a numeric {{N_INPUT}} blank, or a
+     * [[option1,option2,...]] dropdown blank?
      *
      * @param mixed $text
      * @return bool
@@ -74,7 +87,57 @@ class answer_matcher {
             return false;
         }
         return preg_match(self::BLANK_TOKEN_PATTERN, $text) === 1
+                || strpos($text, self::NUMERIC_MARKER) !== false
                 || preg_match(self::SELECT_TOKEN_PATTERN, $text) === 1;
+    }
+
+    /**
+     * Is a default-graph label's (only graded, index-0) blank a numeric {{N_INPUT}} one?
+     *
+     * @param mixed $text
+     * @return bool
+     */
+    public static function is_numeric_blank($text): bool {
+        if (!is_string($text) || preg_match(self::BLANK_SPAN_PATTERN, $text, $match) !== 1) {
+            return false;
+        }
+        return $match[0] === self::NUMERIC_MARKER;
+    }
+
+    /**
+     * Parse a typed number, accepting '.' or ',' as the decimal separator.
+     *
+     * @param mixed $value
+     * @return float|null null if $value is not a number.
+     */
+    public static function parse_number($value): ?float {
+        if (!is_string($value) && !is_int($value) && !is_float($value)) {
+            return null;
+        }
+        $trimmed = trim((string) $value);
+        if (preg_match(self::NUMBER_PATTERN, $trimmed) !== 1) {
+            return null;
+        }
+        return (float) str_replace(',', '.', $trimmed);
+    }
+
+    /**
+     * Parse one accepted numeric answer: "valor" or Cloze-style "valor:tolerancia".
+     *
+     * @param string $answer
+     * @return array|null [value, tolerance], or null if malformed.
+     */
+    public static function parse_numeric_answer(string $answer): ?array {
+        $parts = explode(':', $answer);
+        if (count($parts) > 2) {
+            return null;
+        }
+        $value = self::parse_number($parts[0]);
+        $tolerance = count($parts) === 2 ? self::parse_number($parts[1]) : 0.0;
+        if ($value === null || $tolerance === null || $tolerance < 0) {
+            return null;
+        }
+        return [$value, $tolerance];
     }
 
     /**
@@ -181,12 +244,38 @@ class answer_matcher {
     /**
      * Does a student's typed value satisfy a result-graph answer field?
      *
+     * For a numeric blank ($numeric, see is_numeric_blank()), {{T_ANY}} means "any valid
+     * number" and each listed answer is compared as "valor[:tolerancia]" - correct iff
+     * |student - valor| <= tolerancia (plus a tiny epsilon for float rounding, so e.g.
+     * 0.1+0.2-style representation error never fails an exact answer).
+     *
      * @param mixed $studentvalue what the student typed into the blank.
      * @param mixed $acceptedfieldtext the result-graph node/edge's text for the matching id.
+     * @param bool $numeric whether the default-graph blank is a numeric {{N_INPUT}} one.
      * @return bool
      */
-    public static function matches($studentvalue, $acceptedfieldtext): bool {
+    public static function matches($studentvalue, $acceptedfieldtext, bool $numeric = false): bool {
         $spec = self::parse_accepted_answers($acceptedfieldtext);
+        if ($numeric && $spec['type'] !== 'any_or_empty') {
+            $number = self::parse_number($studentvalue);
+            if ($number === null) {
+                return false;
+            }
+            if ($spec['type'] === 'any') {
+                return true;
+            }
+            foreach ($spec['answers'] as $answer) {
+                $parsed = self::parse_numeric_answer($answer);
+                if ($parsed === null) {
+                    continue;
+                }
+                [$value, $tolerance] = $parsed;
+                if (abs($number - $value) <= $tolerance + 1e-9 * max(1.0, abs($value))) {
+                    return true;
+                }
+            }
+            return false;
+        }
         $normalizedstudent = self::normalize($studentvalue);
         switch ($spec['type']) {
             case 'any_or_empty':

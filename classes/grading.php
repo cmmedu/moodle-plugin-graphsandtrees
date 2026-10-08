@@ -42,7 +42,10 @@ namespace qtype_graph;
  * - present in the result graph, is a {{T_INPUT}} blank => the result
  *   graph's text for that id is the accepted-answer field (see
  *   answer_matcher::parse_accepted_answers()), compared against the
- *   student's typed value for blank index 0 of that node/edge. Only blank
+ *   student's typed value for blank index 0 of that node/edge. A numeric
+ *   {{N_INPUT}} blank is graded the same way, but compared numerically
+ *   (answer_matcher::matches()'s $numeric, decided by the DEFAULT graph's
+ *   marker, never by the result graph's text). Only blank
  *   index 0 is graded: the "Marcar como input" button always replaces a
  *   label's entire text with a single bare marker, so every gradable blank
  *   today is index 0 - a label with more than one {{T_INPUT}} token (only
@@ -450,7 +453,9 @@ class grading {
                 $targetid = $permutation['nodes'][$id] ?? $id;
                 $accepted = answer_matcher::strip_default_context($floatingtext,
                         $resultnodes[$targetid]['floatingLabel'] ?? '');
-                $status = answer_matcher::matches($studentvalue, $accepted) ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
+                $numeric = answer_matcher::is_numeric_blank($floatingtext);
+                $status = answer_matcher::matches($studentvalue, $accepted, $numeric)
+                        ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
                 self::record($report, $status, 'floatingLabel:' . $id . ':0', null);
                 $report['floatinglabels'][$id] = ($status === self::ITEM_CORRECT);
             }
@@ -713,7 +718,8 @@ class grading {
         $studentvalue = $blanks["node:{$id}:0"] ?? '';
         $targetid = $idmap[$id] ?? $id;
         $accepted = answer_matcher::strip_default_context($text, $resultnodes[$targetid]['text'] ?? '');
-        return answer_matcher::matches($studentvalue, $accepted) ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
+        return answer_matcher::matches($studentvalue, $accepted, answer_matcher::is_numeric_blank($text))
+                ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
     }
 
     /**
@@ -751,7 +757,8 @@ class grading {
         $studentvalue = $blanks["edge:{$id}:0"] ?? '';
         $targetid = $edgeidmap[$id] ?? $id;
         $accepted = answer_matcher::strip_default_context($text, $resultedges[$targetid]['label'] ?? '');
-        return answer_matcher::matches($studentvalue, $accepted) ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
+        return answer_matcher::matches($studentvalue, $accepted, answer_matcher::is_numeric_blank($text))
+                ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
     }
 
     /**
@@ -802,6 +809,8 @@ class grading {
 
         $fixedids = [];
         $freeids = [];
+        // Keyed by node id; each value is whether that blank is a numeric {{N_INPUT}} one
+        // (see permutation_delta()) - membership itself is what marks it as a blank.
         $hastextblank = [];
         $hasfloatblank = [];
         foreach ($default['nodes'] as $node) {
@@ -816,10 +825,10 @@ class grading {
             if ($textblank || $floatblank) {
                 $freeids[] = $id;
                 if ($textblank) {
-                    $hastextblank[$id] = true;
+                    $hastextblank[$id] = answer_matcher::is_numeric_blank($node['text'] ?? '');
                 }
                 if ($floatblank) {
-                    $hasfloatblank[$id] = true;
+                    $hasfloatblank[$id] = answer_matcher::is_numeric_blank($node['floatingLabel'] ?? '');
                 }
             } else {
                 $fixedids[$id] = true;
@@ -852,8 +861,9 @@ class grading {
                 continue;
             }
             $blank = answer_matcher::has_blank($edge['label'] ?? '');
-            $outedges[$from][] = ['to' => $to, 'edgeid' => $eid, 'blank' => $blank];
-            $inedges[$to][] = ['from' => $from, 'edgeid' => $eid, 'blank' => $blank];
+            $numeric = answer_matcher::is_numeric_blank($edge['label'] ?? '');
+            $outedges[$from][] = ['to' => $to, 'edgeid' => $eid, 'blank' => $blank, 'numeric' => $numeric];
+            $inedges[$to][] = ['from' => $from, 'edgeid' => $eid, 'blank' => $blank, 'numeric' => $numeric];
             $outto[$from][] = $to;
             $into[$to][] = $from;
             $edgeidbyendpoints[$from][$to] = $eid;
@@ -1099,7 +1109,7 @@ class grading {
             $counted++;
             if (!$deleted) {
                 $studentvalue = $blanks["node:{$id}:0"] ?? '';
-                if (answer_matcher::matches($studentvalue, $node['text'] ?? '')) {
+                if (answer_matcher::matches($studentvalue, $node['text'] ?? '', $state['hastextblank'][$id])) {
                     $delta += 1.0;
                 }
             }
@@ -1108,7 +1118,7 @@ class grading {
             $counted++;
             if (!$deleted) {
                 $studentvalue = $blanks["floatingLabel:{$id}:0"] ?? '';
-                if (answer_matcher::matches($studentvalue, $node['floatingLabel'] ?? '')) {
+                if (answer_matcher::matches($studentvalue, $node['floatingLabel'] ?? '', $state['hasfloatblank'][$id])) {
                     $delta += 1.0;
                 }
             }
@@ -1136,7 +1146,7 @@ class grading {
             $mappedid = $state['edgeidbyendpoints'][$target][$rw] ?? null;
             $studentvalue = $blanks['edge:' . $info['edgeid'] . ':0'] ?? '';
             $accepted = $mappedid !== null ? ($state['resultedges'][$mappedid]['label'] ?? '') : '';
-            if (answer_matcher::matches($studentvalue, $accepted)) {
+            if (answer_matcher::matches($studentvalue, $accepted, $info['numeric'])) {
                 $delta += 1.0;
             }
         }
@@ -1155,7 +1165,7 @@ class grading {
             $mappedid = $state['edgeidbyendpoints'][$rw][$target] ?? null;
             $studentvalue = $blanks['edge:' . $info['edgeid'] . ':0'] ?? '';
             $accepted = $mappedid !== null ? ($state['resultedges'][$mappedid]['label'] ?? '') : '';
-            if (answer_matcher::matches($studentvalue, $accepted)) {
+            if (answer_matcher::matches($studentvalue, $accepted, $info['numeric'])) {
                 $delta += 1.0;
             }
         }
