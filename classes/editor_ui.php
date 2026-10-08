@@ -178,10 +178,6 @@ class editor_ui {
         <button type="button" class="qtype_graph-menubtn" data-role="canvas-settings-close-btn">Cerrar</button>
       </div>
     </div>
-    <div class="qtype_graph-nodemenu qtype_graph-submenu" data-role="add-input-submenu" hidden>
-      <button type="button" class="qtype_graph-menubtn" data-role="add-input-btn">Texto</button>
-      <button type="button" class="qtype_graph-menubtn" data-role="add-numeric-btn">Número</button>
-    </div>
     <div class="qtype_graph-nodemenu" data-role="node-menu" hidden>
       <div class="qtype_graph-menusection" data-role="node-text-section">
         <span class="qtype_graph-menulabel">Nombre</span>
@@ -237,14 +233,10 @@ class editor_ui {
         </div>
       </details>
       <button type="button" class="qtype_graph-menubtn" data-role="add-connected-btn">+ Nodo conectado</button>
-      <button type="button" class="qtype_graph-menubtn" data-role="add-input-menu-btn" hidden>Marcar como input ▸</button>
+      <button type="button" class="qtype_graph-menubtn" data-role="add-input-btn" hidden>Marcar como input</button>
       <button type="button" class="qtype_graph-menubtn" data-role="add-select-btn" hidden>Marcar como selector</button>
       <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-btn" hidden>+ Etiqueta flotante</button>
       <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-node-btn">Eliminar nodo</button>
-    </div>
-    <div class="qtype_graph-nodemenu qtype_graph-submenu" data-role="add-floatinglabel-input-submenu" hidden>
-      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-input-btn">Texto</button>
-      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-numeric-btn">Número</button>
     </div>
     <div class="qtype_graph-nodemenu" data-role="floatinglabel-menu" hidden>
       <div class="qtype_graph-menusection" data-role="floatinglabel-text-section">
@@ -271,7 +263,7 @@ class editor_ui {
           <button type="button" class="qtype_graph-shapebtn" data-align="right" title="Derecha" aria-label="Derecha"><svg class="qtype_graph-aligniconsvg" viewBox="0 0 16 16" aria-hidden="true"><line x1="2" y1="3" x2="14" y2="3"/><line x1="6" y1="6.5" x2="14" y2="6.5"/><line x1="2" y1="10" x2="14" y2="10"/><line x1="8" y1="13.5" x2="14" y2="13.5"/></svg></button>
         </div>
       </details>
-      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-input-menu-btn" hidden>Marcar como input ▸</button>
+      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-input-btn" hidden>Marcar como input</button>
       <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-select-btn" hidden>Marcar como selector</button>
       <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-floatinglabel-btn">Eliminar etiqueta</button>
     </div>
@@ -290,10 +282,6 @@ class editor_ui {
         <span class="qtype_graph-menulabel">Subtítulo</span>
         <input type="text" data-role="levellabel-subtitle-input" class="qtype_graph-textinput">
       </div>
-    </div>
-    <div class="qtype_graph-nodemenu qtype_graph-submenu" data-role="add-edge-input-submenu" hidden>
-      <button type="button" class="qtype_graph-menubtn" data-role="add-edge-input-btn">Texto</button>
-      <button type="button" class="qtype_graph-menubtn" data-role="add-edge-numeric-btn">Número</button>
     </div>
     <div class="qtype_graph-nodemenu" data-role="edge-menu" hidden>
       <div class="qtype_graph-menusection" data-role="edge-text-section">
@@ -324,7 +312,7 @@ class editor_ui {
           <button type="button" class="qtype_graph-shapebtn" data-align="right" title="Derecha" aria-label="Derecha"><svg class="qtype_graph-aligniconsvg" viewBox="0 0 16 16" aria-hidden="true"><line x1="2" y1="3" x2="14" y2="3"/><line x1="6" y1="6.5" x2="14" y2="6.5"/><line x1="2" y1="10" x2="14" y2="10"/><line x1="8" y1="13.5" x2="14" y2="13.5"/></svg></button>
         </div>
       </details>
-      <button type="button" class="qtype_graph-menubtn" data-role="add-edge-input-menu-btn" hidden>Marcar como input ▸</button>
+      <button type="button" class="qtype_graph-menubtn" data-role="add-edge-input-btn" hidden>Marcar como input</button>
       <button type="button" class="qtype_graph-menubtn" data-role="add-edge-select-btn" hidden>Marcar como selector</button>
       <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-edge-btn">Eliminar conexión</button>
     </div>

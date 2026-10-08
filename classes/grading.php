@@ -42,10 +42,7 @@ namespace qtype_graph;
  * - present in the result graph, is a {{T_INPUT}} blank => the result
  *   graph's text for that id is the accepted-answer field (see
  *   answer_matcher::parse_accepted_answers()), compared against the
- *   student's typed value for blank index 0 of that node/edge. A numeric
- *   {{N_INPUT}} blank is graded the same way, but compared numerically
- *   (answer_matcher::matches()'s $numeric, decided by the DEFAULT graph's
- *   marker, never by the result graph's text). Only blank
+ *   student's typed value for blank index 0 of that node/edge. Only blank
  *   index 0 is graded: the "Marcar como input" button always replaces a
  *   label's entire text with a single bare marker, so every gradable blank
  *   today is index 0 - a label with more than one {{T_INPUT}} token (only
@@ -307,6 +304,80 @@ class grading {
     }
 
     /**
+     * Which of the default graph's blanks expect a number - their response keys
+     * ('node:<id>:0', 'edge:<id>:0', 'floatingLabel:<id>:0'), for the attempt page's
+     * numeric hints (numeric keyboard, "not a number" highlight - see renderer.php and
+     * amd/src/editor.js's initAttempt()). A blank counts only if EVERY non-blank answer
+     * graph (primary + alternates) has a {{N:...}} answer field at that id, since a single
+     * text-graded candidate means a non-number may still be a correct answer. Only says
+     * "this blank is numeric", never what the accepted values are, so it is safe to send
+     * to the student's browser. Id-based, like strict grading - good enough for a hint.
+     *
+     * @param string $graphjson the default (student-visible) graph.
+     * @param string $resultgraphjson the primary expected/correct result graph.
+     * @param string[] $altresultgraphjsons extra alternate answer graphs.
+     * @return string[] response keys of numeric blanks.
+     */
+    public static function numeric_blank_keys(string $graphjson, string $resultgraphjson,
+            array $altresultgraphjsons = []): array {
+        $default = json_decode($graphjson, true);
+        if (!is_array($default) || empty($default['nodes'])) {
+            return [];
+        }
+        $candidates = [];
+        foreach (array_merge([$resultgraphjson], $altresultgraphjsons) as $candidate) {
+            $decoded = trim((string) $candidate) === '' ? null : json_decode((string) $candidate, true);
+            if (is_array($decoded)) {
+                $candidates[] = [
+                    'nodes' => self::index_by_id($decoded['nodes'] ?? []),
+                    'edges' => self::index_by_id($decoded['edges'] ?? []),
+                ];
+            }
+        }
+        if (empty($candidates)) {
+            return [];
+        }
+
+        // [response key, default-graph text, candidate collection, id, candidate field].
+        $blanks = [];
+        foreach ($default['nodes'] as $node) {
+            $id = $node['id'] ?? null;
+            if ($id === null) {
+                continue;
+            }
+            if (answer_matcher::has_blank($node['text'] ?? '')) {
+                $blanks[] = ["node:{$id}:0", $node['text'], 'nodes', $id, 'text'];
+            }
+            if (answer_matcher::has_blank($node['floatingLabel'] ?? '')) {
+                $blanks[] = ["floatingLabel:{$id}:0", $node['floatingLabel'], 'nodes', $id, 'floatingLabel'];
+            }
+        }
+        foreach (($default['edges'] ?? []) as $edge) {
+            $id = $edge['id'] ?? null;
+            if ($id !== null && answer_matcher::has_blank($edge['label'] ?? '')) {
+                $blanks[] = ["edge:{$id}:0", $edge['label'], 'edges', $id, 'label'];
+            }
+        }
+
+        $keys = [];
+        foreach ($blanks as [$key, $defaulttext, $collection, $id, $field]) {
+            $numeric = true;
+            foreach ($candidates as $candidate) {
+                $accepted = answer_matcher::strip_default_context($defaulttext,
+                        $candidate[$collection][$id][$field] ?? '');
+                if (!answer_matcher::is_numeric_answer($accepted)) {
+                    $numeric = false;
+                    break;
+                }
+            }
+            if ($numeric) {
+                $keys[] = $key;
+            }
+        }
+        return $keys;
+    }
+
+    /**
      * The evaluate() report shape for "no answer graph could be evaluated" -
      * every candidate passed to evaluate_best() was blank.
      *
@@ -453,9 +524,7 @@ class grading {
                 $targetid = $permutation['nodes'][$id] ?? $id;
                 $accepted = answer_matcher::strip_default_context($floatingtext,
                         $resultnodes[$targetid]['floatingLabel'] ?? '');
-                $numeric = answer_matcher::is_numeric_blank($floatingtext);
-                $status = answer_matcher::matches($studentvalue, $accepted, $numeric)
-                        ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
+                $status = answer_matcher::matches($studentvalue, $accepted) ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
                 self::record($report, $status, 'floatingLabel:' . $id . ':0', null);
                 $report['floatinglabels'][$id] = ($status === self::ITEM_CORRECT);
             }
@@ -718,8 +787,7 @@ class grading {
         $studentvalue = $blanks["node:{$id}:0"] ?? '';
         $targetid = $idmap[$id] ?? $id;
         $accepted = answer_matcher::strip_default_context($text, $resultnodes[$targetid]['text'] ?? '');
-        return answer_matcher::matches($studentvalue, $accepted, answer_matcher::is_numeric_blank($text))
-                ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
+        return answer_matcher::matches($studentvalue, $accepted) ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
     }
 
     /**
@@ -757,8 +825,7 @@ class grading {
         $studentvalue = $blanks["edge:{$id}:0"] ?? '';
         $targetid = $edgeidmap[$id] ?? $id;
         $accepted = answer_matcher::strip_default_context($text, $resultedges[$targetid]['label'] ?? '');
-        return answer_matcher::matches($studentvalue, $accepted, answer_matcher::is_numeric_blank($text))
-                ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
+        return answer_matcher::matches($studentvalue, $accepted) ? self::ITEM_CORRECT : self::ITEM_WRONG_BLANK;
     }
 
     /**
@@ -809,8 +876,6 @@ class grading {
 
         $fixedids = [];
         $freeids = [];
-        // Keyed by node id; each value is whether that blank is a numeric {{N_INPUT}} one
-        // (see permutation_delta()) - membership itself is what marks it as a blank.
         $hastextblank = [];
         $hasfloatblank = [];
         foreach ($default['nodes'] as $node) {
@@ -825,10 +890,10 @@ class grading {
             if ($textblank || $floatblank) {
                 $freeids[] = $id;
                 if ($textblank) {
-                    $hastextblank[$id] = answer_matcher::is_numeric_blank($node['text'] ?? '');
+                    $hastextblank[$id] = true;
                 }
                 if ($floatblank) {
-                    $hasfloatblank[$id] = answer_matcher::is_numeric_blank($node['floatingLabel'] ?? '');
+                    $hasfloatblank[$id] = true;
                 }
             } else {
                 $fixedids[$id] = true;
@@ -861,9 +926,8 @@ class grading {
                 continue;
             }
             $blank = answer_matcher::has_blank($edge['label'] ?? '');
-            $numeric = answer_matcher::is_numeric_blank($edge['label'] ?? '');
-            $outedges[$from][] = ['to' => $to, 'edgeid' => $eid, 'blank' => $blank, 'numeric' => $numeric];
-            $inedges[$to][] = ['from' => $from, 'edgeid' => $eid, 'blank' => $blank, 'numeric' => $numeric];
+            $outedges[$from][] = ['to' => $to, 'edgeid' => $eid, 'blank' => $blank];
+            $inedges[$to][] = ['from' => $from, 'edgeid' => $eid, 'blank' => $blank];
             $outto[$from][] = $to;
             $into[$to][] = $from;
             $edgeidbyendpoints[$from][$to] = $eid;
@@ -1109,7 +1173,7 @@ class grading {
             $counted++;
             if (!$deleted) {
                 $studentvalue = $blanks["node:{$id}:0"] ?? '';
-                if (answer_matcher::matches($studentvalue, $node['text'] ?? '', $state['hastextblank'][$id])) {
+                if (answer_matcher::matches($studentvalue, $node['text'] ?? '')) {
                     $delta += 1.0;
                 }
             }
@@ -1118,7 +1182,7 @@ class grading {
             $counted++;
             if (!$deleted) {
                 $studentvalue = $blanks["floatingLabel:{$id}:0"] ?? '';
-                if (answer_matcher::matches($studentvalue, $node['floatingLabel'] ?? '', $state['hasfloatblank'][$id])) {
+                if (answer_matcher::matches($studentvalue, $node['floatingLabel'] ?? '')) {
                     $delta += 1.0;
                 }
             }
@@ -1146,7 +1210,7 @@ class grading {
             $mappedid = $state['edgeidbyendpoints'][$target][$rw] ?? null;
             $studentvalue = $blanks['edge:' . $info['edgeid'] . ':0'] ?? '';
             $accepted = $mappedid !== null ? ($state['resultedges'][$mappedid]['label'] ?? '') : '';
-            if (answer_matcher::matches($studentvalue, $accepted, $info['numeric'])) {
+            if (answer_matcher::matches($studentvalue, $accepted)) {
                 $delta += 1.0;
             }
         }
@@ -1165,7 +1229,7 @@ class grading {
             $mappedid = $state['edgeidbyendpoints'][$rw][$target] ?? null;
             $studentvalue = $blanks['edge:' . $info['edgeid'] . ':0'] ?? '';
             $accepted = $mappedid !== null ? ($state['resultedges'][$mappedid]['label'] ?? '') : '';
-            if (answer_matcher::matches($studentvalue, $accepted, $info['numeric'])) {
+            if (answer_matcher::matches($studentvalue, $accepted)) {
                 $delta += 1.0;
             }
         }

@@ -136,17 +136,6 @@
     const BLANK_TOKEN_RE = /\{\{T_INPUT\}\}/g;
     const BLANK_MARKER = '{{T_INPUT}}';
 
-    // Numeric blank marker ("Marcar como input → Número") - a free-text blank whose
-    // student value must be a number and is graded numerically (see
-    // classes/answer_matcher.php's NUMERIC_MARKER/matches()). A separate marker,
-    // not a variant of {{T_INPUT}}, so existing graphs keep grading unchanged.
-    const NUMERIC_TOKEN_RE = /\{\{N_INPUT\}\}/g;
-    const NUMERIC_BLANK_MARKER = '{{N_INPUT}}';
-
-    // A number as typed by a student/teacher: '.' or ',' decimal separator,
-    // optional sign/exponent. Must match classes/answer_matcher.php's NUMBER_PATTERN.
-    const NUMBER_RE = /^[+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][+-]?\d+)?$/;
-
     // Matches a [[option1;option2;...]] dropdown blank marker - "Marcar como
     // selector"'s counterpart to BLANK_TOKEN_RE/BLANK_MARKER above. Unlike
     // {{T_INPUT}}, this marker's content is not secret (it is the list of
@@ -169,6 +158,16 @@
     // classes/answer_matcher.php's ANSWER_LIST_PATTERN; see splitAnswerList() below for
     // the actual per-item extraction.
     const ANSWER_LIST_RE = /^\{\{([\s\S]*)\}\}$/;
+    // Matches a whole result-graph field that opts into numeric validation, {{N:item;...}} -
+    // see parseNumericItem(). Checked before ANSWER_LIST_RE, which would also match it. Must
+    // match classes/answer_matcher.php's NUMERIC_LIST_PATTERN.
+    const NUMERIC_LIST_RE = /^\{\{N:([\s\S]*)\}\}$/;
+    // A number as typed by a student/teacher: '.' or ',' decimal separator, optional
+    // sign/exponent. Must match classes/answer_matcher.php's NUMBER_PATTERN.
+    const NUMBER_RE = /^[+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][+-]?\d+)?$/;
+    // A simple fraction (1/2, -3/4, 7 / 8), compared by value so equivalent fractions
+    // match. Must match classes/answer_matcher.php's FRACTION_PATTERN.
+    const FRACTION_RE = /^([+-]?\d+)\s*\/\s*(\d+)$/;
     const ANY_ANSWER_MARKER = '{{T_ANY}}';
     const ANY_OR_EMPTY_ANSWER_MARKER = '{{T_ANY_N_EMPTY}}';
 
@@ -189,55 +188,7 @@
             return false;
         }
         SELECT_TOKEN_RE.lastIndex = 0;
-        return text.indexOf(BLANK_MARKER) !== -1 || text.indexOf(NUMERIC_BLANK_MARKER) !== -1 ||
-                SELECT_TOKEN_RE.test(text);
-    }
-
-    /**
-     * Is a default-graph label's (only graded, index-0) blank a numeric {{N_INPUT}} one?
-     * Must match classes/answer_matcher.php's is_numeric_blank().
-     *
-     * @param {string} text
-     * @return {boolean}
-     */
-    function isNumericBlank(text) {
-        if (typeof text !== 'string') {
-            return false;
-        }
-        const match = BLANK_SPAN_RE.exec(text);
-        return !!match && match[0] === NUMERIC_BLANK_MARKER;
-    }
-
-    /**
-     * Parse a typed number, accepting '.' or ',' as the decimal separator. Must match
-     * classes/answer_matcher.php's parse_number().
-     *
-     * @param {string} value
-     * @return {number|null} null if value is not a number.
-     */
-    function parseNumber(value) {
-        const trimmed = typeof value === 'string' ? value.trim() : '';
-        return NUMBER_RE.test(trimmed) ? parseFloat(trimmed.replace(',', '.')) : null;
-    }
-
-    /**
-     * Is this one accepted numeric answer well-formed - "valor" or Cloze-style
-     * "valor:tolerancia" (tolerance >= 0)? Must match classes/answer_matcher.php's
-     * parse_numeric_answer().
-     *
-     * @param {string} answer
-     * @return {boolean}
-     */
-    function isValidNumericAnswer(answer) {
-        const parts = answer.split(':');
-        if (parts.length > 2 || parseNumber(parts[0]) === null) {
-            return false;
-        }
-        if (parts.length === 2) {
-            const tolerance = parseNumber(parts[1]);
-            return tolerance !== null && tolerance >= 0;
-        }
-        return true;
+        return text.indexOf(BLANK_MARKER) !== -1 || SELECT_TOKEN_RE.test(text);
     }
 
     /**
@@ -290,7 +241,7 @@
     // index-0 blank marker in a default-graph label - used positionally by
     // stripDefaultContext() below. Must match classes/answer_matcher.php's
     // BLANK_SPAN_PATTERN.
-    const BLANK_SPAN_RE = /\{\{T_INPUT\b[^}]*\}\}|\{\{N_INPUT\}\}|\[\[[^\]]*\]\]/;
+    const BLANK_SPAN_RE = /\{\{T_INPUT\b[^}]*\}\}|\[\[[^\]]*\]\]/;
 
     /**
      * JS mirror of classes/answer_matcher.php's strip_default_context() - see its
@@ -329,11 +280,11 @@
 
     /**
      * Split a node/edge label into alternating plain-text and blank segments - a
-     * blank is a free-text {{T_INPUT}} marker, a numeric {{N_INPUT}} marker, or a
-     * [[option1;option2;...]] dropdown marker.
+     * blank is either a free-text {{T_INPUT}} marker or a [[option1;option2;...]]
+     * dropdown marker.
      *
      * @param {string} text raw label text.
-     * @return {Array} [{type:'text', value}, {type:'blank', index, kind:'text'|'number'|'select', options}, ...]
+     * @return {Array} [{type:'text', value}, {type:'blank', index, kind:'text'|'select', options}, ...]
      */
     function parseLabelSegments(text) {
         const segments = [];
@@ -350,10 +301,6 @@
         while ((match = BLANK_TOKEN_RE.exec(text)) !== null) {
             matches.push({index: match.index, length: match[0].length, kind: 'text', options: null});
         }
-        NUMERIC_TOKEN_RE.lastIndex = 0;
-        while ((match = NUMERIC_TOKEN_RE.exec(text)) !== null) {
-            matches.push({index: match.index, length: match[0].length, kind: 'number', options: null});
-        }
         SELECT_TOKEN_RE.lastIndex = 0;
         while ((match = SELECT_TOKEN_RE.exec(text)) !== null) {
             matches.push({index: match.index, length: match[0].length, kind: 'select', options: splitOptions(match[1])});
@@ -364,7 +311,7 @@
         let blankIndex = 0;
         matches.forEach((m) => {
             if (m.index < lastIndex) {
-                // Overlapping match (shouldn't happen - the token grammars don't
+                // Overlapping match (shouldn't happen - the two token grammars don't
                 // share any characters - but skip defensively rather than corrupt output).
                 return;
             }
@@ -393,6 +340,8 @@
      * @param {boolean} editableInputs whether the generated inputs should be editable.
      * @param {Function} [getBlankValue] (blankId) => initial value.
      * @param {Function} [onBlankChange] (blankId, value) => void, called on input/change.
+     * @param {Function} [isNumericBlank] (blankId) => whether every answer graph validates
+     *      this blank numerically ({{N:...}}) - see grading::numeric_blank_keys().
      */
     /**
      * Auto-grows a free-text <input>'s width to fit its current value (or its
@@ -411,7 +360,8 @@
         input.style.width = `${content.length + 1}ch`;
     }
 
-    function renderLabelSegments(container, text, ownerKind, ownerId, editableInputs, getBlankValue, onBlankChange) {
+    function renderLabelSegments(container, text, ownerKind, ownerId, editableInputs, getBlankValue, onBlankChange,
+            isNumericBlank) {
         container.innerHTML = '';
         parseLabelSegments(text).forEach((seg) => {
             if (seg.type === 'text') {
@@ -452,18 +402,17 @@
             input.dataset.blankId = blankId;
             input.readOnly = !editableInputs;
             input.value = (getBlankValue && getBlankValue(blankId)) || '';
-            // A numeric blank stays a text input (not type="number", which would reject
-            // a ',' decimal separator and hide what was typed) - just flagged when its
-            // value is not a number. Non-numbers are still saved; grading marks them wrong.
-            const numeric = seg.kind === 'number';
+            // A blank every answer graph validates as {{N:...}} gets a numeric keyboard and
+            // is flagged when its value is not a number. Stays type="text" (type="number"
+            // would reject a ',' decimal or a 1/2 fraction); non-numbers are still saved.
+            const numeric = !!(isNumericBlank && isNumericBlank(blankId));
             const checkNumeric = () => {
                 const invalid = input.value.trim() !== '' && parseNumber(input.value) === null;
                 input.classList.toggle('qtype_graph-blank-input--invalid', invalid);
-                input.title = invalid ? 'Ingresa un número' : '';
+                input.title = invalid ? 'Ingresa un número (p. ej. 0,5 o 1/2)' : '';
             };
             if (numeric) {
                 input.inputMode = 'decimal';
-                input.classList.add('qtype_graph-blank-input--numeric');
                 checkNumeric();
             }
             autosizeTextInput(input);
@@ -511,15 +460,16 @@
     /**
      * Parse a result-graph node/edge's text into the answer-field grammar
      * documented in CLAUDE.md: empty means "not authored yet", {{T_ANY}} /
-     * {{T_ANY_N_EMPTY}} are the wildcard markers, {{a;b}} (items optionally
-     * quoted) is a list of accepted answers, and any other text is a single
-     * accepted answer.
+     * {{T_ANY_N_EMPTY}} are the wildcard markers, {{N:a;b}} is a list of numeric
+     * items (see parseNumericItem()), {{a;b}} (items optionally quoted) is a list of
+     * accepted answers, and any other text is a single accepted answer.
      *
      * Used by checkAnswerField() (authoring-time validation) below.
      *
      * @param {string} text raw result-graph field text.
      * @return {{type: string, answers: Array}} type is one of 'unset', 'any',
-     *         'any_or_empty', 'exact'; answers is only populated for 'exact'.
+     *         'any_or_empty', 'exact', 'numeric'; answers is only populated for
+     *         'exact'/'numeric'.
      */
     function parseAcceptedAnswers(text) {
         const trimmed = typeof text === 'string' ? text.trim() : '';
@@ -532,11 +482,67 @@
         if (trimmed === ANY_OR_EMPTY_ANSWER_MARKER) {
             return {type: 'any_or_empty', answers: []};
         }
+        const numericMatch = trimmed.match(NUMERIC_LIST_RE);
+        if (numericMatch) {
+            return {type: 'numeric', answers: splitAnswerList(numericMatch[1])};
+        }
         const listMatch = trimmed.match(ANSWER_LIST_RE);
         if (listMatch) {
             return {type: 'exact', answers: splitAnswerList(listMatch[1])};
         }
         return {type: 'exact', answers: [trimmed]};
+    }
+
+    /**
+     * Parse a typed number, accepting '.' or ',' as the decimal separator, or a simple
+     * fraction (FRACTION_RE) - a zero denominator is not a number. Must match
+     * classes/answer_matcher.php's parse_number().
+     *
+     * @param {string} value
+     * @return {number|null} null if value is not a number.
+     */
+    function parseNumber(value) {
+        const trimmed = typeof value === 'string' ? value.trim() : '';
+        const fraction = trimmed.match(FRACTION_RE);
+        if (fraction) {
+            const denominator = parseInt(fraction[2], 10);
+            return denominator === 0 ? null : parseInt(fraction[1], 10) / denominator;
+        }
+        return NUMBER_RE.test(trimmed) ? parseFloat(trimmed.replace(',', '.')) : null;
+    }
+
+    /**
+     * Parse one item of a {{N:...}} numeric answer field into its accepted interval:
+     * "valor", Cloze-style "valor:tolerancia", "min..max" (inclusive), or "*" (any number).
+     * Must match classes/answer_matcher.php's parse_numeric_answer().
+     *
+     * @param {string} item
+     * @return {Array|null} [min, max], or null if malformed.
+     */
+    function parseNumericItem(item) {
+        const trimmed = item.trim();
+        if (trimmed === '*') {
+            return [-Infinity, Infinity];
+        }
+        if (trimmed.includes('..')) {
+            const bounds = trimmed.split('..');
+            if (bounds.length !== 2) {
+                return null;
+            }
+            const min = parseNumber(bounds[0]);
+            const max = parseNumber(bounds[1]);
+            return (min === null || max === null || min > max) ? null : [min, max];
+        }
+        const parts = trimmed.split(':');
+        if (parts.length > 2) {
+            return null;
+        }
+        const value = parseNumber(parts[0]);
+        const tolerance = parts.length === 2 ? parseNumber(parts[1]) : 0;
+        if (value === null || tolerance === null || tolerance < 0) {
+            return null;
+        }
+        return [value - tolerance, value + tolerance];
     }
 
     /**
@@ -1109,10 +1115,7 @@
         const nodeTextAlignSection = root.querySelector('[data-role="node-textalign-section"]');
         const textAlignRow = root.querySelector('[data-role="textalign-row"]');
         const addConnectedBtn = root.querySelector('[data-role="add-connected-btn"]');
-        const addInputMenuBtn = root.querySelector('[data-role="add-input-menu-btn"]');
-        const addInputSubmenu = root.querySelector('[data-role="add-input-submenu"]');
         const addInputBtn = root.querySelector('[data-role="add-input-btn"]');
-        const addNumericBtn = root.querySelector('[data-role="add-numeric-btn"]');
         const addSelectBtn = root.querySelector('[data-role="add-select-btn"]');
         const addFloatingLabelBtn = root.querySelector('[data-role="add-floatinglabel-btn"]');
         const deleteNodeBtn = root.querySelector('[data-role="delete-node-btn"]');
@@ -1124,10 +1127,7 @@
         const floatingLabelTextColorInput = root.querySelector('[data-role="floatinglabel-textcolor-input"]');
         const floatingLabelTextColorPicker = root.querySelector('[data-role="floatinglabel-textcolor-picker"]');
         const floatingLabelTextAlignRow = root.querySelector('[data-role="floatinglabel-textalign-row"]');
-        const addFloatingLabelInputMenuBtn = root.querySelector('[data-role="add-floatinglabel-input-menu-btn"]');
-        const addFloatingLabelInputSubmenu = root.querySelector('[data-role="add-floatinglabel-input-submenu"]');
         const addFloatingLabelInputBtn = root.querySelector('[data-role="add-floatinglabel-input-btn"]');
-        const addFloatingLabelNumericBtn = root.querySelector('[data-role="add-floatinglabel-numeric-btn"]');
         const addFloatingLabelSelectBtn = root.querySelector('[data-role="add-floatinglabel-select-btn"]');
         const deleteFloatingLabelBtn = root.querySelector('[data-role="delete-floatinglabel-btn"]');
         const levelLabelMenu = root.querySelector('[data-role="levellabel-menu"]');
@@ -1145,22 +1145,17 @@
         const edgeTextColorPicker = root.querySelector('[data-role="edge-textcolor-picker"]');
         const edgeTextAlignSection = root.querySelector('[data-role="edge-textalign-section"]');
         const edgeTextAlignRow = root.querySelector('[data-role="edge-textalign-row"]');
-        const addEdgeInputMenuBtn = root.querySelector('[data-role="add-edge-input-menu-btn"]');
-        const addEdgeInputSubmenu = root.querySelector('[data-role="add-edge-input-submenu"]');
         const addEdgeInputBtn = root.querySelector('[data-role="add-edge-input-btn"]');
-        const addEdgeNumericBtn = root.querySelector('[data-role="add-edge-numeric-btn"]');
         const addEdgeSelectBtn = root.querySelector('[data-role="add-edge-select-btn"]');
         const deleteEdgeBtn = root.querySelector('[data-role="delete-edge-btn"]');
         const edgeLabelInput = root.querySelector('[data-role="edge-label-input"]');
 
         if (enableAddInput) {
-            // "Marcar como input ▸" opens a submenu to the right of its menu with two
-            // options - Texto ({{T_INPUT}}) and Número ({{N_INPUT}}); see wireInputSubmenu().
-            addInputMenuBtn.hidden = false;
-            addEdgeInputMenuBtn.hidden = false;
-            addFloatingLabelInputMenuBtn.hidden = false;
+            addInputBtn.hidden = false;
+            addEdgeInputBtn.hidden = false;
             addSelectBtn.hidden = false;
             addEdgeSelectBtn.hidden = false;
+            addFloatingLabelInputBtn.hidden = false;
             addFloatingLabelSelectBtn.hidden = false;
         }
 
@@ -2337,7 +2332,8 @@
                 fo.setAttribute('width', EDGE_LABEL_FO_MAX_WIDTH);
                 fo.setAttribute('height', EDGE_LABEL_FO_MAX_HEIGHT);
                 fo.appendChild(div);
-                renderLabelSegments(div, label, 'edge', id, editable, opts.getBlankValue, opts.onBlankChange);
+                renderLabelSegments(div, label, 'edge', id, editable, opts.getBlankValue, opts.onBlankChange,
+                        opts.isNumericBlank);
                 group.appendChild(fo);
                 htmlLabel = {fo, div};
             } else {
@@ -2405,7 +2401,6 @@
 
         function closeMenu() {
             menu.hidden = true;
-            addInputSubmenu.hidden = true;
             if (activeNodeId && nodes.has(activeNodeId)) {
                 nodes.get(activeNodeId).el.classList.remove('qtype_graph-node--menuopen');
             }
@@ -2414,7 +2409,6 @@
 
         function closeEdgeMenu() {
             edgeMenu.hidden = true;
-            addEdgeInputSubmenu.hidden = true;
             if (activeEdge) {
                 activeEdge.group.classList.remove('qtype_graph-edge-group--selected');
             }
@@ -2428,7 +2422,6 @@
          */
         function closeFloatingLabelMenu() {
             floatingLabelMenu.hidden = true;
-            addFloatingLabelInputSubmenu.hidden = true;
             activeFloatingLabelNodeId = null;
         }
 
@@ -2640,65 +2633,18 @@
             notifyChange();
         });
 
-        /**
-         * Wire a "Marcar como input ▸" button to its Texto/Número submenu: toggles the
-         * submenu open beside its parent menu - to the right, or to the left when there
-         * is no room on the right of the canvas - aligned with the button. The submenu
-         * is a sibling of the menu (not a child) because the menu itself scrolls and
-         * would clip it.
-         *
-         * @param {Element} parentMenu the node/edge/floating-label menu holding the button.
-         * @param {Element} triggerBtn the "Marcar como input ▸" button.
-         * @param {Element} submenu the Texto/Número submenu.
-         * @param {Array} options [[button, handler], ...] - each hides the submenu once picked.
-         */
-        function wireInputSubmenu(parentMenu, triggerBtn, submenu, options) {
-            triggerBtn.addEventListener('click', () => {
-                if (!submenu.hidden) {
-                    submenu.hidden = true;
-                    return;
-                }
-                submenu.hidden = false;
-                const gap = 6;
-                let left = parentMenu.offsetLeft + parentMenu.offsetWidth + gap;
-                if (left + submenu.offsetWidth > canvas.clientWidth) {
-                    left = Math.max(0, parentMenu.offsetLeft - submenu.offsetWidth - gap);
-                }
-                let top = parentMenu.offsetTop + triggerBtn.offsetTop - parentMenu.scrollTop;
-                top = Math.max(0, Math.min(top, canvas.clientHeight - submenu.offsetHeight));
-                submenu.style.left = `${left}px`;
-                submenu.style.top = `${top}px`;
-            });
-            options.forEach(([button, handler]) => {
-                button.addEventListener('click', () => {
-                    submenu.hidden = true;
-                    handler();
-                });
-            });
-        }
-
-        /**
-         * "Marcar como input ▸" Texto/Número on the active edge.
-         *
-         * @param {string} marker BLANK_MARKER or NUMERIC_BLANK_MARKER.
-         */
-        function markActiveEdgeAsInput(marker) {
+        addEdgeInputBtn.addEventListener('click', () => {
             if (!activeEdge) {
                 return;
             }
-            activeEdge.label = marker;
-            activeEdge.textEl.textContent = marker;
-            edgeLabelInput.value = marker;
+            activeEdge.label = BLANK_MARKER;
+            activeEdge.textEl.textContent = BLANK_MARKER;
+            edgeLabelInput.value = BLANK_MARKER;
             edgeTextSection.hidden = false;
             edgeSelectSection.hidden = true;
             notifyChange();
             getAddInputTargets().forEach((target) => target.setEdgeLabel(activeEdge.id, ''));
-        }
-
-        wireInputSubmenu(edgeMenu, addEdgeInputMenuBtn, addEdgeInputSubmenu, [
-            [addEdgeInputBtn, () => markActiveEdgeAsInput(BLANK_MARKER)],
-            [addEdgeNumericBtn, () => markActiveEdgeAsInput(NUMERIC_BLANK_MARKER)],
-        ]);
+        });
 
         addEdgeSelectBtn.addEventListener('click', () => {
             if (!activeEdge) {
@@ -2722,28 +2668,18 @@
             deleteNode(activeNodeId);
         });
 
-        /**
-         * "Marcar como input ▸" Texto/Número on the active node.
-         *
-         * @param {string} marker BLANK_MARKER or NUMERIC_BLANK_MARKER.
-         */
-        function markActiveNodeAsInput(marker) {
+        addInputBtn.addEventListener('click', () => {
             if (!activeNodeId) {
                 return;
             }
             const record = nodes.get(activeNodeId);
-            setRecordText(record, marker);
-            nodeTextInput.value = marker;
+            setRecordText(record, BLANK_MARKER);
+            nodeTextInput.value = BLANK_MARKER;
             nodeTextSection.hidden = false;
             nodeSelectSection.hidden = true;
             notifyChange();
             getAddInputTargets().forEach((target) => target.setNodeText(activeNodeId, ''));
-        }
-
-        wireInputSubmenu(menu, addInputMenuBtn, addInputSubmenu, [
-            [addInputBtn, () => markActiveNodeAsInput(BLANK_MARKER)],
-            [addNumericBtn, () => markActiveNodeAsInput(NUMERIC_BLANK_MARKER)],
-        ]);
+        });
 
         addSelectBtn.addEventListener('click', () => {
             if (!activeNodeId) {
@@ -2921,28 +2857,18 @@
         levelLabelTitleInput.addEventListener('input', applyActiveLevelLabelChange);
         levelLabelSubtitleInput.addEventListener('input', applyActiveLevelLabelChange);
 
-        /**
-         * "Marcar como input ▸" Texto/Número on the active floating label.
-         *
-         * @param {string} marker BLANK_MARKER or NUMERIC_BLANK_MARKER.
-         */
-        function markActiveFloatingLabelAsInput(marker) {
+        addFloatingLabelInputBtn.addEventListener('click', () => {
             if (!activeFloatingLabelNodeId) {
                 return;
             }
             const record = nodes.get(activeFloatingLabelNodeId);
-            setRecordFloatingLabelText(record, marker);
-            floatingLabelTextInput.value = marker;
+            setRecordFloatingLabelText(record, BLANK_MARKER);
+            floatingLabelTextInput.value = BLANK_MARKER;
             floatingLabelTextSection.hidden = false;
             floatingLabelSelectSection.hidden = true;
             notifyChange();
             getAddInputTargets().forEach((target) => target.setFloatingLabel(activeFloatingLabelNodeId, ''));
-        }
-
-        wireInputSubmenu(floatingLabelMenu, addFloatingLabelInputMenuBtn, addFloatingLabelInputSubmenu, [
-            [addFloatingLabelInputBtn, () => markActiveFloatingLabelAsInput(BLANK_MARKER)],
-            [addFloatingLabelNumericBtn, () => markActiveFloatingLabelAsInput(NUMERIC_BLANK_MARKER)],
-        ]);
+        });
 
         addFloatingLabelSelectBtn.addEventListener('click', () => {
             if (!activeFloatingLabelNodeId) {
@@ -3043,7 +2969,7 @@
             const hasVisibleContent = !nodeTextSection.hidden || !nodeSelectSection.hidden ||
                     !nodeColorSection.hidden || !nodeTextColorSection.hidden || !nodeShapeSection.hidden ||
                     !nodeTextAlignSection.hidden ||
-                    !addConnectedBtn.hidden || !addInputMenuBtn.hidden || !addSelectBtn.hidden ||
+                    !addConnectedBtn.hidden || !addInputBtn.hidden || !addSelectBtn.hidden ||
                     !addFloatingLabelBtn.hidden || !deleteNodeBtn.hidden;
             if (!hasVisibleContent) {
                 closeMenu();
@@ -3518,7 +3444,8 @@
                 textEl = document.createElement('span');
                 textEl.className = 'qtype_graph-node-text';
                 textEl.dataset.maxWords = String(DEFAULT_MAX_WORDS);
-                renderLabelSegments(textEl, text, 'node', id, editable, opts.getBlankValue, opts.onBlankChange);
+                renderLabelSegments(textEl, text, 'node', id, editable, opts.getBlankValue, opts.onBlankChange,
+                        opts.isNumericBlank);
             } else if (!locked && attemptMode && newNodeContentType === 'text') {
                 // Fixed, non-editable content (question-level "New node content" setting) -
                 // the student cannot type or choose anything for this node; only whether
@@ -3606,7 +3533,7 @@
             floatingLabelEl.className = 'qtype_graph-floatinglabel-text';
             if (attemptMode && hasBlankTokens(floatingLabelText)) {
                 renderLabelSegments(floatingLabelEl, floatingLabelText, 'floatingLabel', id,
-                        editable, opts.getBlankValue, opts.onBlankChange);
+                        editable, opts.getBlankValue, opts.onBlankChange, opts.isNumericBlank);
             } else {
                 floatingLabelEl.textContent = floatingLabelText;
             }
@@ -4116,18 +4043,17 @@
      * @param {string} itemDescription human-readable "el nodo \"X\"" / "la conexión \"X\"" prefix.
      * @param {string} acceptedRaw the result-graph node/edge's text for this blank.
      * @param {Array} issues {severity, message} objects to push onto.
-     * @param {boolean} [numeric] whether the default-graph blank is a numeric {{N_INPUT}} one.
      */
-    function checkAnswerField(itemDescription, acceptedRaw, issues, numeric) {
+    function checkAnswerField(itemDescription, acceptedRaw, issues) {
         const spec = parseAcceptedAnswers(acceptedRaw);
         const trimmed = typeof acceptedRaw === 'string' ? acceptedRaw.trim() : '';
         if (spec.type === 'unset') {
             issues.push({severity: 'error', message: `${itemDescription} no tiene ninguna respuesta definida en el grafo de respuesta.`});
             return;
         }
-        if (trimmed === BLANK_MARKER || trimmed === NUMERIC_BLANK_MARKER) {
+        if (trimmed === BLANK_MARKER) {
             issues.push({severity: 'error',
-                    message: `${itemDescription} todavía tiene el marcador ${trimmed} sin completar en el grafo de respuesta.`});
+                    message: `${itemDescription} todavía tiene el marcador {{T_INPUT}} sin completar en el grafo de respuesta.`});
             return;
         }
         if (WHOLE_SELECT_RE.test(trimmed)) {
@@ -4135,17 +4061,19 @@
                     '[[...]] sin reemplazar por la respuesta aceptada en el grafo de respuesta.'});
             return;
         }
-        if (spec.type === 'exact' && ANSWER_LIST_RE.test(trimmed) && spec.answers.length === 0) {
+        if ((spec.type === 'exact' || spec.type === 'numeric') && ANSWER_LIST_RE.test(trimmed) &&
+                spec.answers.length === 0) {
             issues.push({severity: 'warning',
                     message: `${itemDescription} tiene una lista de respuestas aceptadas {{...}} sin ningún ` +
                             'valor dentro.'});
         }
-        if (numeric && spec.type === 'exact') {
-            const invalid = spec.answers.filter((answer) => !isValidNumericAnswer(answer));
+        if (spec.type === 'numeric') {
+            const invalid = spec.answers.filter((item) => parseNumericItem(item) === null);
             if (invalid.length > 0) {
                 issues.push({severity: 'error',
-                        message: `${itemDescription} es numérico, pero su respuesta aceptada no es un número válido ` +
-                                `(usa valor o valor:tolerancia, p. ej. 3,14:0,01): ${invalid.join('; ')}`});
+                        message: `${itemDescription} tiene una validación numérica {{N:...}} con valores no válidos ` +
+                                `(${invalid.join('; ')}). Usa un valor (0,5 o 1/2), valor:tolerancia (3,14:0,01), ` +
+                                'un rango min..max (1..2) o * para cualquier número.'});
             }
         }
     }
@@ -4195,7 +4123,7 @@
         const parentIds = new Set(defaultData.edges.map((e) => e.from));
 
         defaultData.nodes.forEach((node) => {
-            // A blank node's own text is just its marker ({{T_INPUT}}, {{N_INPUT}} or [[opt1,opt2,...]]),
+            // A blank node's own text is just its marker ({{T_INPUT}} or [[opt1,opt2,...]]),
             // not a human-readable label - show its id instead.
             const label = hasBlankTokens(node.text) ? node.id : (node.text || node.id);
             const resultNode = resultNodes.get(node.id);
@@ -4205,14 +4133,12 @@
                 return;
             }
             if (hasBlankTokens(node.text)) {
-                checkAnswerField(`El input del nodo "${label}"`, stripDefaultContext(node.text, resultNode.text), issues,
-                        isNumericBlank(node.text));
+                checkAnswerField(`El input del nodo "${label}"`, stripDefaultContext(node.text, resultNode.text), issues);
             }
             const isLeaf = defaultData.mode === 'tree' && !parentIds.has(node.id);
             if (isLeaf && hasBlankTokens(node.floatingLabel)) {
                 checkAnswerField(`La etiqueta flotante del nodo "${label}"`,
-                        stripDefaultContext(node.floatingLabel, resultNode.floatingLabel), issues,
-                        isNumericBlank(node.floatingLabel));
+                        stripDefaultContext(node.floatingLabel, resultNode.floatingLabel), issues);
             }
         });
 
@@ -4226,7 +4152,7 @@
             }
             if (hasBlankTokens(edge.label)) {
                 checkAnswerField(`El input de la conexión "${label}"`,
-                        stripDefaultContext(edge.label, resultEdge.label), issues, isNumericBlank(edge.label));
+                        stripDefaultContext(edge.label, resultEdge.label), issues);
             }
         });
 
@@ -4608,6 +4534,7 @@
             newEdgeContentType: opts.newEdgeContentType,
             newEdgeContentValue: opts.newEdgeContentValue,
             getBlankValue: (blankId) => blankValues[blankId],
+            isNumericBlank: opts.isNumericBlank,
             onBlankChange: (blankId, value) => {
                 blankValues[blankId] = value;
                 updateResponse(editor.serialize());
@@ -4628,7 +4555,7 @@
      * Attempt-page widget: teacher graph locked, student additions editable.
      *
      * @param {string} containerId id of the .qtype_graph-container element. teacherjson,
-     *                 feedback, and newnodecontenttype/newnodecontentvalue/
+     *                 feedback, numericblanks, and newnodecontenttype/newnodecontentvalue/
      *                 newedgecontenttype/newedgecontentvalue are all read from this
      *                 element's data-* attributes (set by renderer.php via
      *                 editor_ui::render()'s $dataattrs param) rather than taken as
@@ -4655,7 +4582,18 @@
             return;
         }
 
+        // Response keys of blanks every answer graph validates as {{N:...}} - see
+        // grading::numeric_blank_keys(). No accepted values, just "expects a number".
+        let numericBlanks = new Set();
+        try {
+            const parsed = JSON.parse(root.dataset.numericblanks || '[]');
+            numericBlanks = new Set(Array.isArray(parsed) ? parsed : []);
+        } catch (e) {
+            numericBlanks = new Set();
+        }
+
         const attempt = createAttemptEditor(root, root.dataset.teacherjson, {
+            isNumericBlank: (blankId) => numericBlanks.has(blankId),
             readOnly,
             allowAddNodes,
             allowDeleteNodes,

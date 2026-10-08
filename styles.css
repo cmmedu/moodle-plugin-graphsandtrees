@@ -937,15 +937,6 @@
   display: none;
 }
 
-/* "Marcar como input ▸" flyout (Texto / Número) - positioned beside its parent
-   .qtype_graph-nodemenu by wireInputSubmenu() in amd/src/editor.js. */
-.qtype_graph-nodemenu.qtype_graph-submenu {
-  min-width: 0;
-  padding: 8px;
-  gap: 6px;
-  z-index: 201;
-}
-
 .qtype_graph-menubtn:hover {
   background: color-mix(in srgb, var(--qtype-graph-accent) 30%, var(--qtype-graph-panel));
 }
@@ -1029,8 +1020,9 @@
   box-shadow: 0 0 0 2px var(--qtype-graph-accent-soft);
 }
 
-/* A numeric {{N_INPUT}} blank whose current value is not a number - see
-   renderLabelSegments() in amd/src/editor.js. Still saved; graded as wrong. */
+/* A blank validated as a number ({{N:...}} in every answer graph) whose current
+   value is not a number - see renderLabelSegments() in amd/src/editor.js. Still
+   saved; graded as wrong. */
 .qtype_graph-blank-input--invalid,
 .qtype_graph-blank-input--invalid:focus {
   border-color: #dc2626;

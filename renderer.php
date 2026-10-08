@@ -70,6 +70,10 @@ class qtype_graph_renderer extends qtype_with_combined_feedback_renderer {
         $output .= \qtype_graph\editor_ui::render($containerid, [
             'teacherjson' => \qtype_graph\blank_token::strip_answers($question->graphjson),
             'feedback' => $feedbackjson,
+            // Which blanks expect a number (numeric keyboard + "not a number" hint) - only
+            // their response keys, never the accepted values.
+            'numericblanks' => json_encode(\qtype_graph\grading::numeric_blank_keys(
+                    (string) $question->graphjson, (string) $question->resultgraphjson, $question->altresultgraphs)),
             'newnodecontenttype' => $question->newnodecontenttype,
             'newnodecontentvalue' => $question->newnodecontentvalue,
             'newedgecontenttype' => $question->newedgecontenttype,
