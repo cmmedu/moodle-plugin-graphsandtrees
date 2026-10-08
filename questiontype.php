@@ -67,7 +67,9 @@ class qtype_graph extends question_type {
         $options->resultgraphjson = $formdata->resultgraphjson ?? '';
         $options->allowaddnodes = !empty($formdata->allowaddnodes) ? 1 : 0;
         $options->allowdeletenodes = !empty($formdata->allowdeletenodes) ? 1 : 0;
-        $options->strictinputchecks = !empty($formdata->strictinputchecks) ? 1 : 0;
+        // Unused since grading is always order-independent (see classes/grading.php);
+        // the column is kept only so existing rows and backups stay valid.
+        $options->strictinputchecks = 0;
         $options->newnodecontenttype = $formdata->newnodecontenttype ?? 'input';
         $options->newnodecontentvalue = $formdata->newnodecontentvalue ?? '';
         $options->newedgecontenttype = $formdata->newedgecontenttype ?? 'input';
@@ -138,7 +140,6 @@ class qtype_graph extends question_type {
         $question->resultgraphjson = $questiondata->options->resultgraphjson ?? '';
         $question->allowaddnodes = (bool) $questiondata->options->allowaddnodes;
         $question->allowdeletenodes = (bool) $questiondata->options->allowdeletenodes;
-        $question->strictinputchecks = (bool) ($questiondata->options->strictinputchecks ?? 1);
         $question->newnodecontenttype = $questiondata->options->newnodecontenttype ?? 'input';
         $question->newnodecontentvalue = $questiondata->options->newnodecontentvalue ?? '';
         $question->newedgecontenttype = $questiondata->options->newedgecontenttype ?? 'input';
@@ -207,7 +208,6 @@ class qtype_graph extends question_type {
         $expout .= '    <resultgraphjson>' . $format->xml_escape($options->resultgraphjson) . "</resultgraphjson>\n";
         $expout .= "    <allowaddnodes>{$options->allowaddnodes}</allowaddnodes>\n";
         $expout .= "    <allowdeletenodes>{$options->allowdeletenodes}</allowdeletenodes>\n";
-        $expout .= "    <strictinputchecks>{$options->strictinputchecks}</strictinputchecks>\n";
         $expout .= '    <newnodecontenttype>' . $format->xml_escape($options->newnodecontenttype) .
                 "</newnodecontenttype>\n";
         $expout .= '    <newnodecontentvalue>' . $format->xml_escape($options->newnodecontentvalue) .
@@ -267,7 +267,6 @@ class qtype_graph extends question_type {
         $qo->resultgraphjson = $format->getpath($data, ['#', 'resultgraphjson', 0, '#'], '', true);
         $qo->allowaddnodes = $format->getpath($data, ['#', 'allowaddnodes', 0, '#'], 1);
         $qo->allowdeletenodes = $format->getpath($data, ['#', 'allowdeletenodes', 0, '#'], 0);
-        $qo->strictinputchecks = $format->getpath($data, ['#', 'strictinputchecks', 0, '#'], 1);
         $qo->newnodecontenttype = $format->getpath($data, ['#', 'newnodecontenttype', 0, '#'], 'input', true);
         $qo->newnodecontentvalue = $format->getpath($data, ['#', 'newnodecontentvalue', 0, '#'], '', true);
         $qo->newedgecontenttype = $format->getpath($data, ['#', 'newedgecontenttype', 0, '#'], 'input', true);

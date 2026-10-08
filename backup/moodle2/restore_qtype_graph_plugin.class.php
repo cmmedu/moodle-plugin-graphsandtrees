@@ -78,7 +78,8 @@ class restore_qtype_graph_plugin extends restore_qtype_plugin {
         // Backups made before these columns existed on qtype_graph_options won't
         // have them in the XML at all - fall back to the same defaults
         // save_question_options() uses for a freshly-authored question.
-        $data->strictinputchecks = $data->strictinputchecks ?? 1;
+        // strictinputchecks is no longer read (grading is always order-independent).
+        $data->strictinputchecks = 0;
         $data->newnodecontenttype = $data->newnodecontenttype ?? 'input';
         $data->newedgecontenttype = $data->newedgecontenttype ?? 'input';
         $data->showgrid = $data->showgrid ?? 1;

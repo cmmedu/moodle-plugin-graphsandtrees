@@ -53,11 +53,6 @@ class qtype_graph_question extends question_graded_automatically {
     /** @var bool whether students may delete the teacher-authored (original) nodes. */
     public $allowdeletenodes = false;
 
-    /** @var bool whether automatic grading matches blanks strictly by node/edge id (true,
-     *  the default) or also accepts any structure-preserving rearrangement among
-     *  interchangeable blanks (false) - see classes/grading.php's build_permutation(). */
-    public $strictinputchecks = true;
-
     /** @var string what a student's new node looks like: 'input', 'select', or 'text'. */
     public $newnodecontenttype = 'input';
     /** @var string meaning depends on $newnodecontenttype - see amd/src/editor.js's createNode(). */
@@ -161,7 +156,7 @@ class qtype_graph_question extends question_graded_automatically {
 
     public function grade_response(array $response) {
         $fraction = \qtype_graph\grading::grade($this->graphjson, $this->resultgraphjson, $response,
-                (bool) $this->allowaddnodes, $this->altresultgraphs, (bool) $this->strictinputchecks);
+                (bool) $this->allowaddnodes, $this->altresultgraphs, false);
         return array($fraction, question_state::graded_state_for_fraction($fraction));
     }
 
@@ -180,7 +175,7 @@ class qtype_graph_question extends question_graded_automatically {
         }
         list($correct, $total) = \qtype_graph\grading::count_parts_right($this->graphjson,
                 $this->resultgraphjson, $response, (bool) $this->allowaddnodes, $this->altresultgraphs,
-                (bool) $this->strictinputchecks);
+                false);
         // A null total tells qtype_renderer::num_parts_correct() to say nothing at all,
         // which beats claiming the student got 0 out of 0 parts right.
         return [$correct, $total > 0 ? $total : null];
@@ -200,7 +195,7 @@ class qtype_graph_question extends question_graded_automatically {
             return ['nodes' => [], 'edges' => [], 'newnodes' => [], 'floatinglabels' => []];
         }
         return \qtype_graph\grading::feedback_breakdown($this->graphjson, $this->resultgraphjson,
-                $response, (bool) $this->allowaddnodes, $this->altresultgraphs, (bool) $this->strictinputchecks);
+                $response, (bool) $this->allowaddnodes, $this->altresultgraphs, false);
     }
 
     /**
@@ -216,7 +211,7 @@ class qtype_graph_question extends question_graded_automatically {
             return $response;
         }
         return \qtype_graph\grading::clear_wrong($this->graphjson, $this->resultgraphjson,
-                $response, (bool) $this->allowaddnodes, $this->altresultgraphs, (bool) $this->strictinputchecks);
+                $response, (bool) $this->allowaddnodes, $this->altresultgraphs, false);
     }
 
     public function check_file_access($qa, $options, $component, $filearea, $args, $forcedownload) {

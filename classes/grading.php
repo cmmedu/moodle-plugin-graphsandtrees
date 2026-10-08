@@ -87,10 +87,12 @@ namespace qtype_graph;
  * answer graph, rather than trying to encode every alternative into one set
  * of accepted answers per blank.
  *
- * Strict vs. non-strict matching ($strict, the "Strict input checks" edit
- * form checkbox): the id-to-id matching described above is what "strict"
- * means, and is unaffected by anything below. When a question turns strict
- * OFF, id-to-id matching is too rigid for a common authoring pattern -
+ * Strict vs. non-strict matching ($strict): the id-to-id matching described
+ * above is what "strict" means, and is unaffected by anything below. Real
+ * questions are always graded non-strict (qtype_graph_question passes false;
+ * the old "Strict input checks" edit form checkbox was removed) - strict mode
+ * is kept only as an engine parameter for tests. Id-to-id matching is too
+ * rigid for a common authoring pattern -
  * several sibling nodes sharing an identical blank (e.g. three nodes each
  * [[Mago;Dragon;Hada]] under the same parent) - where the teacher can only
  * author ONE specific id/answer pairing, even though any permutation of it
