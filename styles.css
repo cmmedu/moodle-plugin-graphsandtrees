@@ -1034,6 +1034,38 @@
   cursor: default;
 }
 
+/* A {{F:num|den}} fraction drawn stacked - see renderLabelSegments() in
+   amd/src/editor.js. Follows the label's own font size and text colour (the
+   bar uses currentColor), so it reads on dark nodes and light canvases alike. */
+.qtype_graph-fraction {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  margin: 0 2px;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.qtype_graph-fraction-num,
+.qtype_graph-fraction-den {
+  display: block;
+  padding: 0 2px;
+}
+
+.qtype_graph-fraction-bar {
+  display: block;
+  align-self: stretch;
+  height: 1px;
+  margin: 2px 0;
+  background-color: currentColor;
+}
+
+.qtype_graph-fraction .qtype_graph-blank-input,
+.qtype_graph-fraction .qtype_graph-blank-select {
+  margin: 0;
+}
+
 .qtype_graph-blank-select {
   display: inline-block;
   max-width: 140px;

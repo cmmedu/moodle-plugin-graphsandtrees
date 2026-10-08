@@ -47,7 +47,10 @@ namespace qtype_graph;
  *   label's entire text with a single bare marker, so every gradable blank
  *   today is index 0 - a label with more than one {{T_INPUT}} token (only
  *   reachable by hand-typing the legacy embedded-answer syntax) would have
- *   its later blanks silently ungraded.
+ *   its later blanks silently ungraded. A {{F:num|den}} fraction with a blank
+ *   side is ONE such blank: its sides are composed into "num/den" before
+ *   grading (answer_matcher::compose_fraction_values()), so the answer graph
+ *   writes it as plain "a/b" or {{N:a/b}}.
  *
  * A leaf node (no outgoing edge) in a tree-mode default graph can also carry a
  * "floating label" - a separate blank, gradable exactly like the node's own
@@ -229,8 +232,12 @@ class grading {
 
         if (is_array($data['blanks'] ?? null)) {
             foreach (array_keys($report['wrongblanks']) as $key) {
-                if (array_key_exists($key, $data['blanks'])) {
-                    $data['blanks'][$key] = '';
+                // A fraction blank's sides live under ':n'/':d' (see
+                // answer_matcher::compose_fraction_values()) - clear them along with it.
+                foreach ([$key, $key . ':n', $key . ':d'] as $clearkey) {
+                    if (array_key_exists($clearkey, $data['blanks'])) {
+                        $data['blanks'][$clearkey] = '';
+                    }
                 }
             }
         }
@@ -450,6 +457,9 @@ class grading {
             $removedlist = is_array($responsedata['removednodes'] ?? null) ? $responsedata['removednodes'] : [];
             $removednodes = array_flip($removedlist);
             $blanks = is_array($responsedata['blanks'] ?? null) ? $responsedata['blanks'] : [];
+            // A fraction blank's sides are stored separately (':n'/':d'); grade its composed
+            // "n/d" value under its own key like any other blank.
+            $blanks = answer_matcher::compose_fraction_values($default, $blanks);
             $studentnodes = is_array($responsedata['nodes'] ?? null) ? $responsedata['nodes'] : [];
             $studentedges = is_array($responsedata['edges'] ?? null) ? $responsedata['edges'] : [];
         }
@@ -876,6 +886,9 @@ class grading {
 
         $fixedids = [];
         $freeids = [];
+        // Keyed by node id; each value is that blank's DEFAULT-graph label text, so
+        // permutation_delta() can strip its decorative prefix/suffix off the candidate
+        // answer exactly like node_status()/the floating-label loop do.
         $hastextblank = [];
         $hasfloatblank = [];
         foreach ($default['nodes'] as $node) {
@@ -890,10 +903,10 @@ class grading {
             if ($textblank || $floatblank) {
                 $freeids[] = $id;
                 if ($textblank) {
-                    $hastextblank[$id] = true;
+                    $hastextblank[$id] = (string) $node['text'];
                 }
                 if ($floatblank) {
-                    $hasfloatblank[$id] = true;
+                    $hasfloatblank[$id] = (string) $node['floatingLabel'];
                 }
             } else {
                 $fixedids[$id] = true;
@@ -925,9 +938,10 @@ class grading {
             if ($from === null || $to === null || $eid === null || !isset($domain[$from]) || !isset($domain[$to])) {
                 continue;
             }
-            $blank = answer_matcher::has_blank($edge['label'] ?? '');
-            $outedges[$from][] = ['to' => $to, 'edgeid' => $eid, 'blank' => $blank];
-            $inedges[$to][] = ['from' => $from, 'edgeid' => $eid, 'blank' => $blank];
+            $label = (string) ($edge['label'] ?? '');
+            $blank = answer_matcher::has_blank($label);
+            $outedges[$from][] = ['to' => $to, 'edgeid' => $eid, 'blank' => $blank, 'label' => $label];
+            $inedges[$to][] = ['from' => $from, 'edgeid' => $eid, 'blank' => $blank, 'label' => $label];
             $outto[$from][] = $to;
             $into[$to][] = $from;
             $edgeidbyendpoints[$from][$to] = $eid;
@@ -1173,7 +1187,8 @@ class grading {
             $counted++;
             if (!$deleted) {
                 $studentvalue = $blanks["node:{$id}:0"] ?? '';
-                if (answer_matcher::matches($studentvalue, $node['text'] ?? '')) {
+                $accepted = answer_matcher::strip_default_context($state['hastextblank'][$id], $node['text'] ?? '');
+                if (answer_matcher::matches($studentvalue, $accepted)) {
                     $delta += 1.0;
                 }
             }
@@ -1182,7 +1197,9 @@ class grading {
             $counted++;
             if (!$deleted) {
                 $studentvalue = $blanks["floatingLabel:{$id}:0"] ?? '';
-                if (answer_matcher::matches($studentvalue, $node['floatingLabel'] ?? '')) {
+                $accepted = answer_matcher::strip_default_context($state['hasfloatblank'][$id],
+                        $node['floatingLabel'] ?? '');
+                if (answer_matcher::matches($studentvalue, $accepted)) {
                     $delta += 1.0;
                 }
             }
@@ -1209,7 +1226,8 @@ class grading {
             }
             $mappedid = $state['edgeidbyendpoints'][$target][$rw] ?? null;
             $studentvalue = $blanks['edge:' . $info['edgeid'] . ':0'] ?? '';
-            $accepted = $mappedid !== null ? ($state['resultedges'][$mappedid]['label'] ?? '') : '';
+            $accepted = $mappedid !== null ? answer_matcher::strip_default_context($info['label'],
+                    $state['resultedges'][$mappedid]['label'] ?? '') : '';
             if (answer_matcher::matches($studentvalue, $accepted)) {
                 $delta += 1.0;
             }
@@ -1228,7 +1246,8 @@ class grading {
             }
             $mappedid = $state['edgeidbyendpoints'][$rw][$target] ?? null;
             $studentvalue = $blanks['edge:' . $info['edgeid'] . ':0'] ?? '';
-            $accepted = $mappedid !== null ? ($state['resultedges'][$mappedid]['label'] ?? '') : '';
+            $accepted = $mappedid !== null ? answer_matcher::strip_default_context($info['label'],
+                    $state['resultedges'][$mappedid]['label'] ?? '') : '';
             if (answer_matcher::matches($studentvalue, $accepted)) {
                 $delta += 1.0;
             }

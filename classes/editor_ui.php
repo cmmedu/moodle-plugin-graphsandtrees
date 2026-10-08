@@ -235,6 +235,7 @@ class editor_ui {
       <button type="button" class="qtype_graph-menubtn" data-role="add-connected-btn">+ Nodo conectado</button>
       <button type="button" class="qtype_graph-menubtn" data-role="add-input-btn" hidden>Marcar como input</button>
       <button type="button" class="qtype_graph-menubtn" data-role="add-select-btn" hidden>Marcar como selector</button>
+      <button type="button" class="qtype_graph-menubtn" data-role="add-fraction-btn" hidden>Marcar como fracción</button>
       <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-btn" hidden>+ Etiqueta flotante</button>
       <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-node-btn">Eliminar nodo</button>
     </div>
@@ -265,6 +266,7 @@ class editor_ui {
       </details>
       <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-input-btn" hidden>Marcar como input</button>
       <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-select-btn" hidden>Marcar como selector</button>
+      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-fraction-btn" hidden>Marcar como fracción</button>
       <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-floatinglabel-btn">Eliminar etiqueta</button>
     </div>
     <div class="qtype_graph-nodemenu" data-role="levellabel-menu" hidden>
@@ -286,7 +288,7 @@ class editor_ui {
     <div class="qtype_graph-nodemenu" data-role="edge-menu" hidden>
       <div class="qtype_graph-menusection" data-role="edge-text-section">
         <span class="qtype_graph-menulabel">Nombre</span>
-        <input type="text" data-role="edge-label-input" class="qtype_graph-textinput" maxlength="40">
+        <input type="text" data-role="edge-label-input" class="qtype_graph-textinput" maxlength="80">
       </div>
       <div class="qtype_graph-menusection" data-role="edge-select-section" hidden>
         <span class="qtype_graph-menulabel">Opciones [[opt1;opt2]] (puedes agregar texto antes/después de los corchetes)</span>
@@ -314,6 +316,7 @@ class editor_ui {
       </details>
       <button type="button" class="qtype_graph-menubtn" data-role="add-edge-input-btn" hidden>Marcar como input</button>
       <button type="button" class="qtype_graph-menubtn" data-role="add-edge-select-btn" hidden>Marcar como selector</button>
+      <button type="button" class="qtype_graph-menubtn" data-role="add-edge-fraction-btn" hidden>Marcar como fracción</button>
       <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-edge-btn">Eliminar conexión</button>
     </div>
   </div>

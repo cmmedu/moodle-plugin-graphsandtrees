@@ -241,7 +241,68 @@
     // index-0 blank marker in a default-graph label - used positionally by
     // stripDefaultContext() below. Must match classes/answer_matcher.php's
     // BLANK_SPAN_PATTERN.
-    const BLANK_SPAN_RE = /\{\{T_INPUT\b[^}]*\}\}|\[\[[^\]]*\]\]/;
+    const BLANK_SPAN_RE = new RegExp(String.raw`\{\{F:(?:\{\{T_INPUT\b[^}]*\}\}|\[\[[^\]]*\]\]|[^{}\[\]])*\}\}` +
+            String.raw`|\{\{T_INPUT\b[^}]*\}\}|\[\[[^\]]*\]\]`, 'g');
+
+    // A {{F:numerator|denominator}} fraction ("Marcar como fracción"), shown stacked - each
+    // side is a whole {{T_INPUT}}, a whole [[...]] select, or fixed text (no braces, brackets
+    // or '|'), spaces around it ignored. A fraction with a blank side is ONE blank, graded as
+    // its composed "n/d" value; its sides' values are stored under the blank's id + ':n'/':d'.
+    // Must match classes/answer_matcher.php's FRACTION_PART/FRACTION_TOKEN_PATTERN.
+    const FRACTION_PART_SRC = String.raw`\s*(\{\{T_INPUT\b[^}]*\}\}|\[\[[^\]]*\]\]|[^{}|\[\]]*?)\s*`;
+    const WHOLE_FRACTION_RE = new RegExp(String.raw`^\{\{F:` + FRACTION_PART_SRC + String.raw`\|` +
+            FRACTION_PART_SRC + String.raw`\}\}$`);
+    // What "Marcar como fracción" writes: two inputs, for the teacher to edit (either side
+    // can become fixed text or a [[...]] select).
+    const FRACTION_MARKER = '{{F:{{T_INPUT}}|{{T_INPUT}}}}';
+    const WHOLE_BLANK_TOKEN_RE = /^\{\{T_INPUT\b[^}]*\}\}$/;
+
+    /**
+     * Split a whole {{F:numerator|denominator}} marker into its two sides. Must match
+     * classes/answer_matcher.php's fraction_parts().
+     *
+     * @param {string} marker
+     * @return {Array|null} [numerator, denominator], or null if not exactly one fraction.
+     */
+    function fractionParts(marker) {
+        const match = marker.match(WHOLE_FRACTION_RE);
+        return match ? [match[1], match[2]] : null;
+    }
+
+    /**
+     * Find the index-0 blank in a default-graph label: the first free-text blank, select,
+     * or fraction with at least one blank side (a display-only {{F:1|2}} is skipped). Must
+     * match classes/answer_matcher.php's first_blank_span().
+     *
+     * @param {string} text
+     * @return {{index: number, marker: string}|null}
+     */
+    function firstBlankSpan(text) {
+        BLANK_SPAN_RE.lastIndex = 0;
+        let match;
+        while ((match = BLANK_SPAN_RE.exec(text)) !== null) {
+            const parts = fractionParts(match[0]);
+            if (parts === null) {
+                if (!match[0].startsWith('{{F:')) {
+                    return {index: match.index, marker: match[0]};
+                }
+            } else if (hasBlankTokens(parts[0]) || hasBlankTokens(parts[1])) {
+                return {index: match.index, marker: match[0]};
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Does this label need rendering through renderLabelSegments() in attempt mode - it
+     * has a blank, or a (possibly display-only) {{F:...}} fraction to draw stacked?
+     *
+     * @param {string} text
+     * @return {boolean}
+     */
+    function hasRichLabel(text) {
+        return hasBlankTokens(text) || (typeof text === 'string' && text.includes('{{F:'));
+    }
 
     /**
      * JS mirror of classes/answer_matcher.php's strip_default_context() - see its
@@ -262,12 +323,12 @@
         if (typeof defaultText !== 'string' || typeof resultText !== 'string') {
             return typeof resultText === 'string' ? resultText : '';
         }
-        const match = BLANK_SPAN_RE.exec(defaultText);
-        if (!match) {
+        const span = firstBlankSpan(defaultText);
+        if (!span) {
             return resultText;
         }
-        const prefix = defaultText.slice(0, match.index);
-        const suffix = defaultText.slice(match.index + match[0].length);
+        const prefix = defaultText.slice(0, span.index);
+        const suffix = defaultText.slice(span.index + span.marker.length);
         let stripped = resultText;
         if (prefix !== '' && stripped.startsWith(prefix)) {
             stripped = stripped.slice(prefix.length);
@@ -279,12 +340,34 @@
     }
 
     /**
-     * Split a node/edge label into alternating plain-text and blank segments - a
+     * Classify one side of a {{F:num|den}} fraction.
+     *
+     * @param {string} side the (already trimmed) side text.
+     * @return {{kind: string, value: string, options: Array|null}} kind is 'fixed' (plain
+     *      text, value), 'text' (a free-text blank) or 'select' (options).
+     */
+    function parseFractionSide(side) {
+        if (WHOLE_BLANK_TOKEN_RE.test(side)) {
+            return {kind: 'text', value: '', options: null};
+        }
+        const options = parseWholeSelectOptions(side);
+        if (options) {
+            return {kind: 'select', value: '', options};
+        }
+        return {kind: 'fixed', value: side, options: null};
+    }
+
+    /**
+     * Split a node/edge label into alternating plain-text, blank and fraction segments - a
      * blank is either a free-text {{T_INPUT}} marker or a [[option1;option2;...]]
-     * dropdown marker.
+     * dropdown marker; a fraction is a {{F:num|den}} marker whose sides are each fixed
+     * text or one blank (see parseFractionSide()). A fraction takes a blank index only if
+     * a side is a blank (numbering must match answer_matcher::first_blank_span()), and a
+     * malformed {{F:...}} is kept as plain text.
      *
      * @param {string} text raw label text.
-     * @return {Array} [{type:'text', value}, {type:'blank', index, kind:'text'|'select', options}, ...]
+     * @return {Array} [{type:'text', value}, {type:'blank', index, kind:'text'|'select', options},
+     *      {type:'fraction', index|null, num, den}, ...]
      */
     function parseLabelSegments(text) {
         const segments = [];
@@ -296,8 +379,16 @@
         // matches into one combined, position-sorted pass instead of interleaving two
         // regex objects (which .lastIndex bookkeeping makes easy to get wrong).
         const matches = [];
-        BLANK_TOKEN_RE.lastIndex = 0;
         let match;
+        // Fractions first: their inner markers are then skipped as overlapping matches below.
+        BLANK_SPAN_RE.lastIndex = 0;
+        while ((match = BLANK_SPAN_RE.exec(text)) !== null) {
+            if (match[0].startsWith('{{F:')) {
+                matches.push({index: match.index, length: match[0].length, kind: 'fraction',
+                        parts: fractionParts(match[0]), raw: match[0]});
+            }
+        }
+        BLANK_TOKEN_RE.lastIndex = 0;
         while ((match = BLANK_TOKEN_RE.exec(text)) !== null) {
             matches.push({index: match.index, length: match[0].length, kind: 'text', options: null});
         }
@@ -318,9 +409,23 @@
             if (m.index > lastIndex) {
                 segments.push({type: 'text', value: text.slice(lastIndex, m.index)});
             }
+            lastIndex = m.index + m.length;
+            if (m.kind === 'fraction') {
+                if (!m.parts) {
+                    segments.push({type: 'text', value: m.raw});
+                    return;
+                }
+                const num = parseFractionSide(m.parts[0]);
+                const den = parseFractionSide(m.parts[1]);
+                const hasBlank = num.kind !== 'fixed' || den.kind !== 'fixed';
+                segments.push({type: 'fraction', index: hasBlank ? blankIndex : null, num, den});
+                if (hasBlank) {
+                    blankIndex += 1;
+                }
+                return;
+            }
             segments.push({type: 'blank', index: blankIndex, kind: m.kind, options: m.options});
             blankIndex += 1;
-            lastIndex = m.index + m.length;
         });
         if (lastIndex < text.length) {
             segments.push({type: 'text', value: text.slice(lastIndex)});
@@ -362,14 +467,18 @@
 
     function renderLabelSegments(container, text, ownerKind, ownerId, editableInputs, getBlankValue, onBlankChange,
             isNumericBlank) {
-        container.innerHTML = '';
-        parseLabelSegments(text).forEach((seg) => {
-            if (seg.type === 'text') {
-                container.appendChild(document.createTextNode(seg.value));
-                return;
-            }
-            const blankId = `${ownerKind}:${ownerId}:${seg.index}`;
-            if (seg.kind === 'select') {
+        /**
+         * Build one fillable control - a <select> for a dropdown blank, a text <input> otherwise.
+         *
+         * @param {string} kind 'select' or 'text'.
+         * @param {Array|null} options the dropdown's options.
+         * @param {string} blankId response key this control's value is stored under.
+         * @param {string} numericKey response key looked up in isNumericBlank() - the blank's
+         *      own key, which for a fraction side is the whole fraction's key.
+         * @return {Element}
+         */
+        const createControl = (kind, options, blankId, numericKey) => {
+            if (kind === 'select') {
                 const select = document.createElement('select');
                 select.className = 'qtype_graph-blank-select';
                 select.dataset.blankId = blankId;
@@ -379,13 +488,13 @@
                 placeholder.value = '';
                 placeholder.textContent = '—';
                 select.appendChild(placeholder);
-                seg.options.forEach((opt) => {
+                options.forEach((opt) => {
                     const optionEl = document.createElement('option');
                     optionEl.value = opt;
                     optionEl.textContent = opt;
                     select.appendChild(optionEl);
                 });
-                select.value = seg.options.includes(currentValue) ? currentValue : '';
+                select.value = options.includes(currentValue) ? currentValue : '';
                 select.addEventListener('mousedown', (e) => e.stopPropagation());
                 select.addEventListener('click', (e) => e.stopPropagation());
                 select.addEventListener('change', () => {
@@ -393,8 +502,7 @@
                         onBlankChange(blankId, select.value);
                     }
                 });
-                container.appendChild(select);
-                return;
+                return select;
             }
             const input = document.createElement('input');
             input.type = 'text';
@@ -405,7 +513,7 @@
             // A blank every answer graph validates as {{N:...}} gets a numeric keyboard and
             // is flagged when its value is not a number. Stays type="text" (type="number"
             // would reject a ',' decimal or a 1/2 fraction); non-numbers are still saved.
-            const numeric = !!(isNumericBlank && isNumericBlank(blankId));
+            const numeric = !!(isNumericBlank && isNumericBlank(numericKey));
             const checkNumeric = () => {
                 const invalid = input.value.trim() !== '' && parseNumber(input.value) === null;
                 input.classList.toggle('qtype_graph-blank-input--invalid', invalid);
@@ -433,7 +541,41 @@
                     onBlankChange(blankId, input.value);
                 }
             });
-            container.appendChild(input);
+            return input;
+        };
+
+        container.innerHTML = '';
+        parseLabelSegments(text).forEach((seg) => {
+            if (seg.type === 'text') {
+                container.appendChild(document.createTextNode(seg.value));
+                return;
+            }
+            const blankId = `${ownerKind}:${ownerId}:${seg.index}`;
+            if (seg.type === 'fraction') {
+                // Stacked numerator / bar / denominator; each side fixed text or a control
+                // whose value is stored under the fraction's key + ':n' / ':d'.
+                const fraction = document.createElement('span');
+                fraction.className = 'qtype_graph-fraction';
+                [[seg.num, 'num', ':n'], null, [seg.den, 'den', ':d']].forEach((entry) => {
+                    const part = document.createElement('span');
+                    if (entry === null) {
+                        part.className = 'qtype_graph-fraction-bar';
+                        fraction.appendChild(part);
+                        return;
+                    }
+                    const [side, name, suffix] = entry;
+                    part.className = `qtype_graph-fraction-${name}`;
+                    if (side.kind === 'fixed') {
+                        part.textContent = side.value;
+                    } else {
+                        part.appendChild(createControl(side.kind, side.options, blankId + suffix, blankId));
+                    }
+                    fraction.appendChild(part);
+                });
+                container.appendChild(fraction);
+                return;
+            }
+            container.appendChild(createControl(seg.kind, seg.options, blankId, blankId));
         });
     }
 
@@ -1117,6 +1259,7 @@
         const addConnectedBtn = root.querySelector('[data-role="add-connected-btn"]');
         const addInputBtn = root.querySelector('[data-role="add-input-btn"]');
         const addSelectBtn = root.querySelector('[data-role="add-select-btn"]');
+        const addFractionBtn = root.querySelector('[data-role="add-fraction-btn"]');
         const addFloatingLabelBtn = root.querySelector('[data-role="add-floatinglabel-btn"]');
         const deleteNodeBtn = root.querySelector('[data-role="delete-node-btn"]');
         const floatingLabelMenu = root.querySelector('[data-role="floatinglabel-menu"]');
@@ -1129,6 +1272,7 @@
         const floatingLabelTextAlignRow = root.querySelector('[data-role="floatinglabel-textalign-row"]');
         const addFloatingLabelInputBtn = root.querySelector('[data-role="add-floatinglabel-input-btn"]');
         const addFloatingLabelSelectBtn = root.querySelector('[data-role="add-floatinglabel-select-btn"]');
+        const addFloatingLabelFractionBtn = root.querySelector('[data-role="add-floatinglabel-fraction-btn"]');
         const deleteFloatingLabelBtn = root.querySelector('[data-role="delete-floatinglabel-btn"]');
         const levelLabelMenu = root.querySelector('[data-role="levellabel-menu"]');
         const levelLabelShowCheckbox = root.querySelector('[data-role="levellabel-show-checkbox"]');
@@ -1147,6 +1291,7 @@
         const edgeTextAlignRow = root.querySelector('[data-role="edge-textalign-row"]');
         const addEdgeInputBtn = root.querySelector('[data-role="add-edge-input-btn"]');
         const addEdgeSelectBtn = root.querySelector('[data-role="add-edge-select-btn"]');
+        const addEdgeFractionBtn = root.querySelector('[data-role="add-edge-fraction-btn"]');
         const deleteEdgeBtn = root.querySelector('[data-role="delete-edge-btn"]');
         const edgeLabelInput = root.querySelector('[data-role="edge-label-input"]');
 
@@ -1157,6 +1302,9 @@
             addEdgeSelectBtn.hidden = false;
             addFloatingLabelInputBtn.hidden = false;
             addFloatingLabelSelectBtn.hidden = false;
+            addFractionBtn.hidden = false;
+            addEdgeFractionBtn.hidden = false;
+            addFloatingLabelFractionBtn.hidden = false;
         }
 
         /**
@@ -1932,7 +2080,8 @@
         // every reposition - a short/empty blank must not claim a big fixed
         // footprint that blots out the connecting line underneath it.
         const EDGE_LABEL_FO_MAX_WIDTH = 220;
-        const EDGE_LABEL_FO_MAX_HEIGHT = 60;
+        // Tall enough for a stacked {{F:...}} fraction with an input on each side.
+        const EDGE_LABEL_FO_MAX_HEIGHT = 80;
         const EDGE_LABEL_FO_MIN_WIDTH = 24;
         const EDGE_LABEL_FO_MIN_HEIGHT = 20;
         const EDGE_LABEL_FO_PADDING = 8;
@@ -2323,7 +2472,7 @@
             group.appendChild(textEl);
 
             let htmlLabel = null;
-            if (locked && attemptMode && hasBlankTokens(label)) {
+            if (locked && attemptMode && hasRichLabel(label)) {
                 const fo = document.createElementNS(SVG_NS, 'foreignObject');
                 fo.classList.add('qtype_graph-edge-label-fo');
                 const div = document.createElement('div');
@@ -2646,6 +2795,23 @@
             getAddInputTargets().forEach((target) => target.setEdgeLabel(activeEdge.id, ''));
         });
 
+        // "Marcar como fracción": a stacked {{F:num|den}} with an input on each side, for
+        // the teacher to edit in the text field (either side can become fixed text or a
+        // [[...]] select). Clears the answer graphs like "Marcar como input".
+        addEdgeFractionBtn.addEventListener('click', () => {
+            if (!activeEdge) {
+                return;
+            }
+            activeEdge.label = FRACTION_MARKER;
+            activeEdge.textEl.textContent = FRACTION_MARKER;
+            edgeLabelInput.value = FRACTION_MARKER;
+            edgeTextSection.hidden = false;
+            edgeSelectSection.hidden = true;
+            notifyChange();
+            getAddInputTargets().forEach((target) => target.setEdgeLabel(activeEdge.id, ''));
+            edgeLabelInput.focus();
+        });
+
         addEdgeSelectBtn.addEventListener('click', () => {
             if (!activeEdge) {
                 return;
@@ -2679,6 +2845,21 @@
             nodeSelectSection.hidden = true;
             notifyChange();
             getAddInputTargets().forEach((target) => target.setNodeText(activeNodeId, ''));
+        });
+
+        // Node counterpart of addEdgeFractionBtn above.
+        addFractionBtn.addEventListener('click', () => {
+            if (!activeNodeId) {
+                return;
+            }
+            const record = nodes.get(activeNodeId);
+            setRecordText(record, FRACTION_MARKER);
+            nodeTextInput.value = FRACTION_MARKER;
+            nodeTextSection.hidden = false;
+            nodeSelectSection.hidden = true;
+            notifyChange();
+            getAddInputTargets().forEach((target) => target.setNodeText(activeNodeId, ''));
+            nodeTextInput.focus();
         });
 
         addSelectBtn.addEventListener('click', () => {
@@ -2870,6 +3051,21 @@
             getAddInputTargets().forEach((target) => target.setFloatingLabel(activeFloatingLabelNodeId, ''));
         });
 
+        // Floating-label counterpart of addEdgeFractionBtn above.
+        addFloatingLabelFractionBtn.addEventListener('click', () => {
+            if (!activeFloatingLabelNodeId) {
+                return;
+            }
+            const record = nodes.get(activeFloatingLabelNodeId);
+            setRecordFloatingLabelText(record, FRACTION_MARKER);
+            floatingLabelTextInput.value = FRACTION_MARKER;
+            floatingLabelTextSection.hidden = false;
+            floatingLabelSelectSection.hidden = true;
+            notifyChange();
+            getAddInputTargets().forEach((target) => target.setFloatingLabel(activeFloatingLabelNodeId, ''));
+            floatingLabelTextInput.focus();
+        });
+
         addFloatingLabelSelectBtn.addEventListener('click', () => {
             if (!activeFloatingLabelNodeId) {
                 return;
@@ -2969,7 +3165,7 @@
             const hasVisibleContent = !nodeTextSection.hidden || !nodeSelectSection.hidden ||
                     !nodeColorSection.hidden || !nodeTextColorSection.hidden || !nodeShapeSection.hidden ||
                     !nodeTextAlignSection.hidden ||
-                    !addConnectedBtn.hidden || !addInputBtn.hidden || !addSelectBtn.hidden ||
+                    !addConnectedBtn.hidden || !addInputBtn.hidden || !addSelectBtn.hidden || !addFractionBtn.hidden ||
                     !addFloatingLabelBtn.hidden || !deleteNodeBtn.hidden;
             if (!hasVisibleContent) {
                 closeMenu();
@@ -3440,7 +3636,7 @@
             applyTextAlign(el, textAlign);
 
             let textEl;
-            if (locked && attemptMode && hasBlankTokens(text)) {
+            if (locked && attemptMode && hasRichLabel(text)) {
                 textEl = document.createElement('span');
                 textEl.className = 'qtype_graph-node-text';
                 textEl.dataset.maxWords = String(DEFAULT_MAX_WORDS);
@@ -3531,7 +3727,7 @@
             applyFloatingLabelTextAlign(floatingLabelWrap, floatingLabelTextAlign);
             const floatingLabelEl = document.createElement('span');
             floatingLabelEl.className = 'qtype_graph-floatinglabel-text';
-            if (attemptMode && hasBlankTokens(floatingLabelText)) {
+            if (attemptMode && hasRichLabel(floatingLabelText)) {
                 renderLabelSegments(floatingLabelEl, floatingLabelText, 'floatingLabel', id,
                         editable, opts.getBlankValue, opts.onBlankChange, opts.isNumericBlank);
             } else {
@@ -4054,6 +4250,11 @@
         if (trimmed === BLANK_MARKER) {
             issues.push({severity: 'error',
                     message: `${itemDescription} todavía tiene el marcador {{T_INPUT}} sin completar en el grafo de respuesta.`});
+            return;
+        }
+        if (trimmed.includes('{{F:')) {
+            issues.push({severity: 'error', message: `${itemDescription} todavía tiene el marcador de fracción ` +
+                    '{{F:...}} en el grafo de respuesta: escribe la respuesta como a/b (p. ej. 3/4 o {{N:3/4}}).'});
             return;
         }
         if (WHOLE_SELECT_RE.test(trimmed)) {

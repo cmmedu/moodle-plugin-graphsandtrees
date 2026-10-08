@@ -245,12 +245,17 @@
           <center><img src="img/graph_shapes.png" style="width: 85%;" /></center>
         </ul>
 
-        <h3>nodos como pregunta: "Marcar como input" / "Marcar como selector"</h3>
+        <h3>nodos como pregunta: "Marcar como input" / "Marcar como selector" / "Marcar como fracción"</h3>
         <ul>
           <li><strong>Marcar como input</strong> convierte el texto de un nodo o conexión en <code>{{T_INPUT}}</code>:
             el alumno verá una caja de texto para completar.</li>
           <li><strong>Marcar como selector</strong> lo convierte en <code>[[opción1;opción2]]</code>: el alumno verá una
             lista desplegable con esas opciones.</li>
+          <li><strong>Marcar como fracción</strong> escribe <code>{{F:{{T_INPUT}}|{{T_INPUT}}}}</code>: una fracción
+            apilada (numerador sobre denominador) con un input en cada lado. Cada lado puede ser un input
+            <code>{{T_INPUT}}</code>, un selector <code>[[2;4;8]]</code> o texto fijo: <code>{{F:{{T_INPUT}}|4}}</code>,
+            <code>{{F:{{T_INPUT}}|[[2;4;8]]}}</code>, o solo para mostrar, <code>{{F:1|2}}</code> o
+            <code>{{F:casos favorables|casos totales}}</code>. La fracción se califica como un solo valor "a/b".</li>
           <li>Puedes escribir texto antes y/o después de los corchetes en el mismo campo (por ejemplo
             <code>antes [[Sí;No]] después</code>) - ese texto se muestra igual, solo el contenido entre corchetes/llaves
             se convierte en el espacio en blanco.
@@ -363,8 +368,8 @@
       <p class="section-help">
         Haz clic en un nodo o conexión para editar su texto/color, añadir nodos
         conectados o eliminarlo. El botón "JSON" del propio editor permite pegar/copiar
-        el grafo directamente. "Marcar como input"/"Marcar como selector" convierten el
-        texto en un espacio en blanco ({{T_INPUT}} o [[opción1;opción2]]) para el alumno -
+        el grafo directamente. "Marcar como input"/"Marcar como selector"/"Marcar como fracción" convierten el
+        texto en un espacio en blanco ({{T_INPUT}}, [[opción1;opción2]] o la fracción {{F:numerador|denominador}}) para el alumno -
         puedes escribir texto antes/después de los corchetes en el mismo campo. En "Modo
         árbol", un nodo sin hijos ofrece además "+ Etiqueta flotante": una etiqueta aparte
         (texto, input o selector) que se muestra debajo del nodo (vertical) o a su derecha
@@ -589,6 +594,7 @@
           '      <button type="button" class="qtype_graph-menubtn" data-role="add-connected-btn">+ Nodo conectado</button>' +
           '      <button type="button" class="qtype_graph-menubtn" data-role="add-input-btn" hidden>Marcar como input</button>' +
           '      <button type="button" class="qtype_graph-menubtn" data-role="add-select-btn" hidden>Marcar como selector</button>' +
+          '      <button type="button" class="qtype_graph-menubtn" data-role="add-fraction-btn" hidden>Marcar como fracción</button>' +
           '      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-btn" hidden>+ Etiqueta flotante</button>' +
           '      <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-node-btn">Eliminar nodo</button>' +
           '    </div>' +
@@ -618,6 +624,7 @@
           '      </details>' +
           '      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-input-btn" hidden>Marcar como input</button>' +
           '      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-select-btn" hidden>Marcar como selector</button>' +
+          '      <button type="button" class="qtype_graph-menubtn" data-role="add-floatinglabel-fraction-btn" hidden>Marcar como fracción</button>' +
           '      <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-floatinglabel-btn">Eliminar etiqueta</button>' +
           '    </div>' +
           '    <div class="qtype_graph-nodemenu" data-role="levellabel-menu" hidden>' +
@@ -639,7 +646,7 @@
           '    <div class="qtype_graph-nodemenu" data-role="edge-menu" hidden>' +
           '      <div class="qtype_graph-menusection" data-role="edge-text-section">' +
           '        <span class="qtype_graph-menulabel">Nombre</span>' +
-          '        <input type="text" data-role="edge-label-input" class="qtype_graph-textinput" maxlength="40">' +
+          '        <input type="text" data-role="edge-label-input" class="qtype_graph-textinput" maxlength="80">' +
           '      </div>' +
           '      <div class="qtype_graph-menusection" data-role="edge-select-section" hidden>' +
           '        <span class="qtype_graph-menulabel">Opciones [[opt1;opt2]] (puedes agregar texto antes/después de los corchetes)</span>' +
@@ -666,6 +673,7 @@
           '      </details>' +
           '      <button type="button" class="qtype_graph-menubtn" data-role="add-edge-input-btn" hidden>Marcar como input</button>' +
           '      <button type="button" class="qtype_graph-menubtn" data-role="add-edge-select-btn" hidden>Marcar como selector</button>' +
+          '      <button type="button" class="qtype_graph-menubtn" data-role="add-edge-fraction-btn" hidden>Marcar como fracción</button>' +
           '      <button type="button" class="qtype_graph-menubtn qtype_graph-danger" data-role="delete-edge-btn">Eliminar conexión</button>' +
           '    </div>' +
           '  </div>' +

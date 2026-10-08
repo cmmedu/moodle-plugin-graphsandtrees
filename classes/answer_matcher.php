@@ -50,13 +50,25 @@ class answer_matcher {
      *  the student answers (a <select> instead of a text box), never how the answer is graded. */
     const SELECT_TOKEN_PATTERN = '/\[\[[^\]]*\]\]/';
 
-    /** @var string matches the FULL span of the (only graded, see grading.php's docblock)
-     *  index-0 blank marker in a default-graph label - either form of blank, free-text or
-     *  select. Unlike BLANK_TOKEN_PATTERN/SELECT_TOKEN_PATTERN above (existence checks),
-     *  this one is used positionally by strip_default_context() below to find where the
-     *  blank sits amid any decorative prefix/suffix text the label may also carry (e.g.
-     *  "antes [[Opción 1;Opción 2]] despues"). */
-    const BLANK_SPAN_PATTERN = '/\{\{T_INPUT\b[^}]*\}\}|\[\[[^\]]*\]\]/';
+    /** @var string one side of a {{F:numerator|denominator}} fraction (see FRACTION_TOKEN_PATTERN):
+     *  a whole {{T_INPUT}} blank, a whole [[...]] select, or fixed text (no braces, brackets or '|'),
+     *  with surrounding spaces ignored. Captures the part itself. */
+    const FRACTION_PART = '\s*(\{\{T_INPUT\b[^}]*\}\}|\[\[[^\]]*\]\]|[^{}|\[\]]*?)\s*';
+
+    /** @var string a {{F:numerator|denominator}} fraction shown stacked ("Marcar como fracción"), each
+     *  side fixed text or a single blank - e.g. {{F:1|2}} (display only), {{F:{{T_INPUT}}|4}},
+     *  {{F:{{T_INPUT}}|[[2;4;8]]}}. A fraction with at least one blank side is ONE gradable blank:
+     *  its value is composed as "numerator/denominator" (compose_fraction_values()) and graded like
+     *  any other blank, so the answer graph just writes the fraction as "a/b" (or {{N:a/b}}). */
+    const FRACTION_TOKEN_PATTERN = '/\{\{F:' . self::FRACTION_PART . '\|' . self::FRACTION_PART . '\}\}/';
+
+    /** @var string matches the FULL span of any candidate blank marker in a default-graph label - a
+     *  fraction (listed first, so its inner markers are never matched on their own), a free-text
+     *  blank, or a select. Used positionally by first_blank_span() below to find where the (only
+     *  graded, see grading.php's docblock) index-0 blank sits amid any decorative prefix/suffix
+     *  text the label may also carry (e.g. "antes [[Opción 1;Opción 2]] despues"). */
+    const BLANK_SPAN_PATTERN = '/\{\{F:(?:\{\{T_INPUT\b[^}]*\}\}|\[\[[^\]]*\]\]|[^{}\[\]])*\}\}' .
+            '|\{\{T_INPUT\b[^}]*\}\}|\[\[[^\]]*\]\]/';
 
     /** @var string matches a whole result-graph field that is a {{...}} multi-answer list -
      *  either the original quoted-items form {{"a";"b"}} or the plainer unquoted form
@@ -190,11 +202,13 @@ class answer_matcher {
         if (!is_string($defaulttext) || !is_string($resulttext)) {
             return is_string($resulttext) ? $resulttext : '';
         }
-        if (preg_match(self::BLANK_SPAN_PATTERN, $defaulttext, $match, PREG_OFFSET_CAPTURE) !== 1) {
+        $span = self::first_blank_span($defaulttext);
+        if ($span === null) {
             return $resulttext;
         }
-        $prefix = substr($defaulttext, 0, $match[0][1]);
-        $suffix = substr($defaulttext, $match[0][1] + strlen($match[0][0]));
+        [$offset, $marker] = $span;
+        $prefix = substr($defaulttext, 0, $offset);
+        $suffix = substr($defaulttext, $offset + strlen($marker));
         $stripped = $resulttext;
         if ($prefix !== '' && str_starts_with($stripped, $prefix)) {
             $stripped = substr($stripped, strlen($prefix));
@@ -203,6 +217,100 @@ class answer_matcher {
             $stripped = substr($stripped, 0, strlen($stripped) - strlen($suffix));
         }
         return $stripped;
+    }
+
+    /**
+     * Find the index-0 blank in a default-graph label: the first free-text blank, select, or
+     * fraction with at least one blank side. A display-only fraction ({{F:1|2}}) is skipped -
+     * it is not a blank, so a blank after it is still index 0. Must match amd/src/editor.js's
+     * parseLabelSegments() blank numbering.
+     *
+     * @param string $text
+     * @return array|null [byte offset, full marker text], or null if the label has no blank.
+     */
+    public static function first_blank_span(string $text): ?array {
+        if (!preg_match_all(self::BLANK_SPAN_PATTERN, $text, $matches, PREG_OFFSET_CAPTURE)) {
+            return null;
+        }
+        foreach ($matches[0] as [$marker, $offset]) {
+            $parts = self::fraction_parts($marker);
+            if ($parts === null) {
+                // A {{F:...}} span that is not a well-formed fraction is plain text.
+                if (strpos($marker, '{{F:') === 0) {
+                    continue;
+                }
+                return [$offset, $marker];
+            }
+            if (self::has_blank($parts[0]) || self::has_blank($parts[1])) {
+                return [$offset, $marker];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Split a whole {{F:numerator|denominator}} marker into its two (trimmed) sides.
+     *
+     * @param string $marker
+     * @return array|null [numerator, denominator], or null if $marker is not exactly one fraction.
+     */
+    public static function fraction_parts(string $marker): ?array {
+        $anchored = '/^' . substr(self::FRACTION_TOKEN_PATTERN, 1, -1) . '$/';
+        if (preg_match($anchored, $marker, $match) !== 1) {
+            return null;
+        }
+        return [$match[1], $match[2]];
+    }
+
+    /**
+     * Fill in the composed "numerator/denominator" value of every fraction blank in the
+     * default graph, under the fraction's own index-0 response key ('node:<id>:0',
+     * 'edge:<id>:0', 'floatingLabel:<id>:0'), so grading reads a fraction exactly like any
+     * other blank. The student's inputs for each side are stored under that key plus ':n'
+     * (numerator) / ':d' (denominator); a fixed side contributes its own text. If the
+     * student left every blank side empty, the value is '' (an unanswered blank).
+     *
+     * @param array $default decoded default graph.
+     * @param array $blanks the response's blanks map.
+     * @return array $blanks with fraction values composed in.
+     */
+    public static function compose_fraction_values(array $default, array $blanks): array {
+        $labels = [];
+        foreach (($default['nodes'] ?? []) as $node) {
+            if (isset($node['id'])) {
+                $labels["node:{$node['id']}:0"] = $node['text'] ?? '';
+                $labels["floatingLabel:{$node['id']}:0"] = $node['floatingLabel'] ?? '';
+            }
+        }
+        foreach (($default['edges'] ?? []) as $edge) {
+            if (isset($edge['id'])) {
+                $labels["edge:{$edge['id']}:0"] = $edge['label'] ?? '';
+            }
+        }
+        foreach ($labels as $key => $text) {
+            if (!is_string($text) || strpos($text, '{{F:') === false) {
+                continue;
+            }
+            $span = self::first_blank_span($text);
+            $parts = $span === null ? null : self::fraction_parts($span[1]);
+            if ($parts === null) {
+                continue;
+            }
+            $values = [];
+            $answered = false;
+            foreach ([[$parts[0], ':n'], [$parts[1], ':d']] as [$part, $suffix]) {
+                if (self::has_blank($part)) {
+                    $value = $blanks[$key . $suffix] ?? '';
+                    $value = is_string($value) ? trim($value) : '';
+                    $answered = $answered || $value !== '';
+                    $values[] = $value;
+                } else {
+                    $values[] = trim($part);
+                }
+            }
+            $blanks[$key] = $answered ? $values[0] . '/' . $values[1] : '';
+        }
+        return $blanks;
     }
 
     /**
