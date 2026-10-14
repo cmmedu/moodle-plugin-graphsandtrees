@@ -190,6 +190,54 @@
       background: #f3f4f6;
     }
 
+    .header-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .modal-box.modal-box--wide {
+      max-width: 1100px;
+      max-height: 92vh;
+    }
+
+    .studentview-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin: 12px 0;
+      font-size: 13px;
+      color: #374151;
+    }
+
+    .studentview-options label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+    }
+
+    .studentview-response {
+      margin-top: 12px;
+    }
+
+    .studentview-response summary {
+      cursor: pointer;
+      font-size: 13px;
+      color: #4b5563;
+    }
+
+    .studentview-response pre {
+      background: #f3f4f6;
+      border-radius: 6px;
+      padding: 8px 10px;
+      font-size: 12px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 200px;
+      overflow: auto;
+    }
+
   </style>
 </head>
 
@@ -200,8 +248,38 @@
       <h1>Editor de grafos</h1>
       <p>Construye un grafo y exporta su JSON para el script de montaje del curso.</p>
     </div>
-    <button type="button" class="btn-instructions" id="btn-instructions">Instrucciones</button>
+    <div class="header-actions">
+      <button type="button" class="btn-instructions" id="btn-studentview">Vista del alumno</button>
+      <button type="button" class="btn-instructions" id="btn-instructions">Instrucciones</button>
+    </div>
   </header>
+
+  <div class="modal-overlay" id="studentview-modal" hidden>
+    <div class="modal-box modal-box--wide" role="dialog" aria-modal="true" aria-labelledby="studentview-title">
+      <div class="modal-header">
+        <h2 id="studentview-title">Vista del alumno</h2>
+        <button type="button" class="modal-close" id="studentview-close" aria-label="Cerrar">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p>
+          Así verá el alumno el grafo actual en el intento: los nodos del grafo son fijos y los espacios en
+          blanco se muestran como inputs, selectores o fracciones. Es solo una vista previa - las respuestas
+          no se guardan ni se califican.
+        </p>
+        <div class="studentview-options">
+          <label><input type="checkbox" id="studentview-allowadd"> Permitir añadir nodos</label>
+          <label><input type="checkbox" id="studentview-allowdelete"> Permitir eliminar nodos</label>
+          <button type="button" class="btn" id="studentview-reset">Reiniciar respuestas</button>
+        </div>
+        <div id="studentview-host"></div>
+        <input type="hidden" id="studentview-response">
+        <details class="studentview-response">
+          <summary>Respuesta del alumno (JSON)</summary>
+          <pre id="studentview-response-view"></pre>
+        </details>
+      </div>
+    </div>
+  </div>
 
   <div class="modal-overlay" id="instructions-modal" hidden>
     <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="instructions-title">
@@ -349,6 +427,19 @@
           </li>
           <li>Pulsa <strong>"Descargar"</strong> para guardar la imagen.</li>
           <center><img src="img/grap_image_export_menu.png" style="width: 85%;" /></center>
+        </ul>
+
+        <h3>Vista del alumno</h3>
+        <ul>
+          <li>El botón <strong>"Vista del alumno"</strong> (arriba, junto a "Instrucciones") muestra el grafo actual tal
+            como lo verá el alumno en el intento: los nodos del grafo quedan fijos y los espacios en blanco aparecen como
+            inputs, selectores o fracciones que puedes probar.</li>
+          <li>Marca <strong>"Permitir añadir nodos"</strong> / <strong>"Permitir eliminar nodos"</strong> para ver cómo
+            se comporta la pregunta con esas opciones activadas (en Moodle se configuran en la pregunta).</li>
+          <li><strong>"Reiniciar respuestas"</strong> borra lo que hayas escrito en la vista previa, y
+            <strong>"Respuesta del alumno (JSON)"</strong> muestra la respuesta que se enviaría.</li>
+          <li>Es solo una vista previa: nada se guarda ni se califica (la calificación usa el grafo de respuesta, que se
+            arma dentro de Moodle).</li>
         </ul>
 
         <h3>Qué queda para el montaje en la plataforma</h3>
@@ -700,6 +791,114 @@
       // button - data-role="image-btn"/"image-panel", both wired by
       // createGraphEditor() inside editor.js), so those controls and the
       // duplicate SVG/PNG-building code that served them were removed.
+
+      // "Vista del alumno": rebuilds the current graph as the student's attempt
+      // canvas (initAttempt(), the same entry point renderer.php uses), in a modal.
+      // The canvas is recreated from scratch on every open/option change, always
+      // under the same container id, so editorRegistry just replaces its entry.
+      var studentViewModal = document.getElementById('studentview-modal');
+      var studentViewHost = document.getElementById('studentview-host');
+      var studentViewResponse = document.getElementById('studentview-response');
+      var studentViewResponseView = document.getElementById('studentview-response-view');
+      var studentViewAllowAdd = document.getElementById('studentview-allowadd');
+      var studentViewAllowDelete = document.getElementById('studentview-allowdelete');
+      var STUDENT_VIEW_ID = 'qtype_graph_studentview';
+
+      // JS port of blank_token::strip_answers() - drops legacy embedded answers
+      // ({{T_INPUT;"a";"b"}} -> {{T_INPUT}}), as the attempt page never sees them.
+      var LEGACY_TOKEN_RE = /\{\{T_INPUT(?:\s*;\s*"[^"]*")*\}\}/g;
+      function stripAnswers(text) {
+        return typeof text === 'string' ? text.replace(LEGACY_TOKEN_RE, '{{T_INPUT}}') : text;
+      }
+
+      function renderStudentView() {
+        var graph = {};
+        try {
+          graph = JSON.parse(document.getElementById('id_graphjson').value || '{}') || {};
+        } catch (e) {
+          graph = {};
+        }
+        (graph.nodes || []).forEach(function (node) {
+          node.text = stripAnswers(node.text);
+          node.floatingLabel = stripAnswers(node.floatingLabel);
+        });
+        (graph.edges || []).forEach(function (edge) {
+          edge.label = stripAnswers(edge.label);
+        });
+
+        // Canvas style comes from the editor's own gear panel (live state) rather
+        // than the hidden JSON, which only refreshes on graph edits.
+        var editorRoot = document.getElementById('qtype_graph_editor');
+        var control = function (role) {
+          return editorRoot.querySelector('[data-role="' + role + '"]');
+        };
+        var flag = function (role, fallback) {
+          var el = control(role);
+          return el ? (el.checked ? '1' : '0') : fallback;
+        };
+        var value = function (role, fallback) {
+          var el = control(role);
+          return el ? el.value : fallback;
+        };
+
+        studentViewResponse.value = '';
+        studentViewResponseView.textContent = '';
+        studentViewHost.innerHTML = renderGraphEditorSkeleton(STUDENT_VIEW_ID);
+        var root = document.getElementById(STUDENT_VIEW_ID);
+        root.dataset.teacherjson = JSON.stringify(graph);
+        root.dataset.showgrid = flag('canvas-showgrid-checkbox', '1');
+        root.dataset.bgcolor = value('canvas-bgcolor-input', '');
+        root.dataset.gridcolor = value('canvas-gridcolor-input', '');
+        root.dataset.levellabelsize = value('canvas-levellabelsize-input', '24');
+        root.dataset.showlevellabels = flag('canvas-showlevellabels-checkbox', '1');
+        root.dataset.levellabelsjson = JSON.stringify(graph.levelLabelOverrides || []);
+
+        QtypeGraphEditor.initAttempt(STUDENT_VIEW_ID, 'studentview-response', false,
+            studentViewAllowAdd.checked, studentViewAllowDelete.checked,
+            flag('canvas-shownodetrail-checkbox', '1') === '1',
+            false, false, false, false);
+
+        // initAttempt() only writes the hidden field, so mirror it for display.
+        var showResponse = function () {
+          var raw = studentViewResponse.value;
+          try {
+            studentViewResponseView.textContent = raw ? JSON.stringify(JSON.parse(raw), null, 2) : '';
+          } catch (e) {
+            studentViewResponseView.textContent = raw;
+          }
+        };
+        root.addEventListener('input', showResponse);
+        root.addEventListener('change', showResponse);
+        root.addEventListener('click', function () {
+          setTimeout(showResponse, 0);
+        });
+        root.addEventListener('mouseup', function () {
+          setTimeout(showResponse, 0);
+        });
+      }
+
+      var closeStudentView = function () {
+        studentViewModal.hidden = true;
+        studentViewHost.innerHTML = '';
+      };
+      document.getElementById('btn-studentview').addEventListener('click', function () {
+        studentViewModal.hidden = false;
+        renderStudentView();
+      });
+      document.getElementById('studentview-close').addEventListener('click', closeStudentView);
+      document.getElementById('studentview-reset').addEventListener('click', renderStudentView);
+      studentViewAllowAdd.addEventListener('change', renderStudentView);
+      studentViewAllowDelete.addEventListener('change', renderStudentView);
+      studentViewModal.addEventListener('click', function (e) {
+        if (e.target === studentViewModal) {
+          closeStudentView();
+        }
+      });
+      document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !studentViewModal.hidden) {
+          closeStudentView();
+        }
+      });
 
       var instructionsModal = document.getElementById('instructions-modal');
       var openInstructions = function () {
