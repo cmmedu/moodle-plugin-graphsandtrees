@@ -13,7 +13,7 @@ namespace qtype_graph;
  * markup that amd/src/editor.js expects to find inside the container.
  *
  * @package    qtype_graph
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 class editor_ui {

@@ -7,7 +7,7 @@
  * Graph question definition class.
  *
  * @package    qtype_graph
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 
@@ -22,7 +22,7 @@ require_once($CFG->dirroot . '/question/type/questionbase.php');
  * grading - exactly as before this feature existed - for any question
  * where resultgraphjson is still empty.
  *
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 class qtype_graph_question extends question_graded_automatically {

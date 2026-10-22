@@ -7,7 +7,7 @@
  * Question type class for the graph question type.
  *
  * @package    qtype_graph
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 
@@ -20,7 +20,7 @@ require_once($CFG->libdir . '/questionlib.php');
  * graded automatically once a result graph is authored (see question.php),
  * manually otherwise.
  *
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 class qtype_graph extends question_type {

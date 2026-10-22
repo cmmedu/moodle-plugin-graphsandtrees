@@ -15,7 +15,7 @@
  *   the response hidden field.
  *
  * @module     qtype_graph/editor
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 define(['core_form/changechecker'], function(FormChangeChecker) {

@@ -102,7 +102,7 @@ namespace qtype_graph;
  * π - both stay strictly id-based even when $strict is false.
  *
  * @package    qtype_graph
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 class grading {

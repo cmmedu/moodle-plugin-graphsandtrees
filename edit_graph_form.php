@@ -7,7 +7,7 @@
  * Defines the editing form for the graph question type.
  *
  * @package    qtype_graph
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 
@@ -17,7 +17,7 @@ defined('MOODLE_INTERNAL') || die();
  * Graph question type editing form: lets the teacher build the graph the
  * students will see, using the same editor widget as the attempt page.
  *
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 class qtype_graph_edit_form extends question_edit_form {

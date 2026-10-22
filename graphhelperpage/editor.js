@@ -24,7 +24,7 @@
  *   editable by them). Only the student-added delta is written back into
  *   the response hidden field.
  *
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 (function(window) {

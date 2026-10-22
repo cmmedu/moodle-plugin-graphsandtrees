@@ -7,7 +7,7 @@
  * Restore information for the graph question type.
  *
  * @package    qtype_graph
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 
@@ -18,7 +18,7 @@ defined('MOODLE_INTERNAL') || die();
  * one graph qtype plugin - see backup_qtype_graph_plugin for the matching
  * backup side and the structure this reads.
  *
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 class restore_qtype_graph_plugin extends restore_qtype_plugin {

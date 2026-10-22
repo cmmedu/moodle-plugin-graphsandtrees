@@ -7,7 +7,7 @@
  * Privacy Subsystem implementation for qtype_graph.
  *
  * @package    qtype_graph
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 
@@ -21,7 +21,7 @@ namespace qtype_graph\privacy;
  * standard question_attempt_step data, which is already covered by
  * core_question's own privacy provider.
  *
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 class provider implements \core_privacy\local\metadata\null_provider {

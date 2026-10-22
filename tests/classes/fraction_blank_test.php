@@ -17,7 +17,7 @@ defined('MOODLE_INTERNAL') || die();
  * Pure PHP, no DB/session dependency.
  *
  * @package    qtype_graph
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  * @covers     \qtype_graph\answer_matcher
  * @covers     \qtype_graph\grading

@@ -19,7 +19,7 @@ defined('MOODLE_INTERNAL') || die();
  * plain JSON strings and a response array, same as at grading time.
  *
  * @package    qtype_graph
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  * @covers     \qtype_graph\grading
  */

@@ -7,7 +7,7 @@
  * Graph question renderer class.
  *
  * @package    qtype_graph
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 
@@ -19,7 +19,7 @@ require_once($CFG->dirroot . '/question/type/rendererbase.php');
  * Generates the output for graph questions: the teacher's graph, locked,
  * plus whatever the student has added so far.
  *
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 class qtype_graph_renderer extends qtype_with_combined_feedback_renderer {

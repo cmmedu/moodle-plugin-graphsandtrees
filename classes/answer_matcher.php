@@ -13,7 +13,7 @@ namespace qtype_graph;
  * {{N:...}} (numeric validation - see parse_numeric_answer()), or plain text.
  *
  * @package    qtype_graph
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 class answer_matcher {

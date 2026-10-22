@@ -10,7 +10,7 @@ namespace qtype_graph;
  * tokens before a teacher-authored graph is sent to a student's browser.
  *
  * @package    qtype_graph
- * @copyright  2026 Rutas Digitales
+ * @copyright  2026 CMMEdu
  * @license    https://opensource.org/licenses/MIT MIT
  */
 class blank_token {
